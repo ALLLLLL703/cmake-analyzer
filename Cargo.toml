@@ -2,6 +2,9 @@
 name = "cmake-analyzer"
 version = "0.1.0"
 edition = "2024"
+[[bin]]
+name = "playground"
+path = "./tests/playground.rs"
 
 [dependencies]
 clap = { version = "4.6.7", features = ["derive"] }
