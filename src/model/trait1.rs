@@ -2,4 +2,9 @@ use crate::model::TextSpan;
 
 pub trait IBuffer {
     fn current_byte_to_span(&self) -> TextSpan;
+    fn buffer_advance_length(&self) -> u64;
+}
+
+pub trait ICursor {
+    fn to_span(&self) -> TextSpan;
 }
