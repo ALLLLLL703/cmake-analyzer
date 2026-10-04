@@ -25,7 +25,9 @@ impl Display for LexDisplay<'_> {
         for token in &self.buffer.lex {
             let sytle = match &token.content {
                 LexContent::Identifier(_) => Style::new().cyan(),
-                LexContent::StringLiteral(_) => Style::new().green(),
+                LexContent::StringLiteral(_) | LexContent::BracketArgument(_) => {
+                    Style::new().green()
+                }
                 LexContent::LeftParentheses | LexContent::RightParentheses => Style::new().yellow(),
             };
 
@@ -34,6 +36,7 @@ impl Display for LexDisplay<'_> {
                 LexContent::RightParentheses => String::from(")"),
                 LexContent::Identifier(s) => format!("{}: {}", "Identifier", s),
                 LexContent::StringLiteral(s) => format!("StringLiteral: {}", s),
+                LexContent::BracketArgument(s) => format!("BracketArgument: {}", s),
             };
 
             if self.colored {
@@ -50,6 +53,9 @@ impl Display for LexDisplay<'_> {
                     Some(format!("UnclosedStringLiteral at {s:?}"))
                 }
                 LexError::UnclosedParentheses(s) => Some(format!("UnclosedParentheses at {s:?}")),
+                LexError::UnclosedBracketArgument(s) => {
+                    Some(format!("UnclosedBracketArgument at {s:?}"))
+                }
                 _ => None,
             };
             if let Some(text) = option_text {

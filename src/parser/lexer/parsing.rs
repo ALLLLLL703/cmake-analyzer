@@ -42,6 +42,21 @@ impl<'a> Lexer<'a> {
                         }
                     }
                 }
+                Ok('[') => {
+                    let token = if let Some(opening_len) = self.bracket_opening_len() {
+                        self.advance_bracket_argument(opening_len, span)
+                            .map(LexContent::BracketArgument)
+                    } else {
+                        self.advance_identifier().map(LexContent::Identifier)
+                    };
+                    match token {
+                        Ok(content) => Some(content),
+                        Err(error) => {
+                            result.add_error(error);
+                            break;
+                        }
+                    }
+                }
                 Ok('(') => {
                     self.buffer.cursor.offset += 1;
                     left_parentheses_num += 1;

@@ -10,7 +10,7 @@ pub struct TextSpan {
     pub end_byte: usize,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Spanned<T> {
     pub content: T,
     pub span: TextSpan,

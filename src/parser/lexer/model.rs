@@ -35,13 +35,16 @@ pub enum LexContent {
     RightParentheses,
     /// with out double quote
     StringLiteral(String),
+    /// Raw bracket content without delimiters or the optional initial newline.
+    BracketArgument(String),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum LexError {
     ReachTheEof,
     UnclosedParentheses(TextSpan),
     UnclosedStringLiteral(TextSpan),
+    UnclosedBracketArgument(TextSpan),
 }
 
 impl<'a> RawBuffer<'a> {
