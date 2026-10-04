@@ -6,6 +6,11 @@ edition = "2024"
 name = "playground"
 path = "./tests/playground.rs"
 
+[[bin]]
+name = "lexer"
+path = "./cli/parser/lexer/main.rs"
+
 [dependencies]
 clap = { version = "4.6.7", features = ["derive"] }
+owo-colors = "4.4.0"
 tokio = { version = "1.53.1", features = ["full", "io-uring"] }

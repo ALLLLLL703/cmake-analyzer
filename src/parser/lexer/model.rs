@@ -22,9 +22,10 @@ pub struct Lexer<'a> {
     pub buffer: RawBuffer<'a>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct LexedBuffer {
     pub lex: Vec<LexContent>,
+    pub errors: Vec<LexError>,
 }
 
 #[derive(Debug)]
@@ -39,15 +40,23 @@ pub enum LexContent {
 #[derive(Debug)]
 pub enum LexError {
     ReachTheEof,
+    UnclosedParentheses(TextSpan),
+    UnclosedStringLiteral(TextSpan),
 }
 
-impl<'a> IBuffer for RawBuffer<'a> {
-    fn current_byte_to_span(&self) -> model::TextSpan {
+impl<'a> RawBuffer<'a> {
+    pub fn current_byte_to_span(&self) -> model::TextSpan {
         self.cursor.to_span(self.text)
     }
 
-    fn buffer_advance_length(&self) -> usize {
+    pub fn buffer_advance_length(&self) -> usize {
         self.text.len()
+    }
+
+    pub fn span_to_text(&self, span: TextSpan) -> Option<String> {
+        self.text
+            .get(span.start_byte..=span.end_byte)
+            .map(|s| s.to_owned())
     }
 }
 
@@ -83,5 +92,15 @@ impl RawBufferCursor {
             offset: 0,
             length: len,
         }
+    }
+}
+
+impl LexedBuffer {
+    pub fn add_error(&mut self, error: LexError) {
+        self.errors.push(error)
+    }
+
+    pub fn add_lex(&mut self, lex: LexContent) {
+        self.lex.push(lex);
     }
 }
