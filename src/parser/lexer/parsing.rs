@@ -10,47 +10,39 @@ impl<'a> Lexer<'a> {
     }
     pub fn parse(&mut self) -> LexedBuffer {
         let mut result = LexedBuffer::default();
-        if let Err(LexError::ReachTheEof) = self.skip_whitespace() {
-            result.add_error(LexError::ReachTheEof);
-            return result;
-        }
-        let mut advance_result = match self
-            .buffer
-            .text
-            .get(self.buffer.cursor.offset..)
-            .and_then(|rest| rest.chars().next())
-        {
-            Some(c) => {
-                self.buffer.cursor.offset += c.len_utf8();
-                Ok(c)
-            }
-            None => Err(LexError::ReachTheEof),
-        };
-
         let mut left_parentheses_num: usize = 0;
         let mut last_parentheses_loc: TextSpan = TextSpan::default();
         loop {
-            match advance_result {
-                Err(LexError::ReachTheEof) => {
-                    result.add_error(LexError::ReachTheEof);
+            if let Err(error) = self.skip_whitespace() {
+                result.add_error(error);
+                break;
+            }
+
+            match self.peek() {
+                Err(LexError::ReachTheEof) => break,
+                Err(error) => {
+                    result.add_error(error);
                     break;
                 }
-                Ok('"') => match self.advance_string_literal() {
-                    Err(LexError::ReachTheEof) => {
-                        result.add_error(LexError::ReachTheEof);
-                        break;
+                Ok('"') => {
+                    // Consume the opening quote; the scanner consumes the closing one.
+                    self.buffer.cursor.offset += 1;
+                    match self.advance_string_literal() {
+                        Ok(text) => result.add_lex(LexContent::StringLiteral(text)),
+                        Err(error) => {
+                            result.add_error(error);
+                            break;
+                        }
                     }
-                    Ok(ok) => result.add_lex(LexContent::StringLiteral(ok)),
-
-                    _ => {}
-                },
-
+                }
                 Ok('(') => {
+                    self.buffer.cursor.offset += 1;
                     left_parentheses_num += 1;
                     last_parentheses_loc = self.buffer.current_byte_to_span();
                     result.add_lex(LexContent::LeftParentheses);
                 }
                 Ok(')') => {
+                    self.buffer.cursor.offset += 1;
                     if left_parentheses_num > 0 {
                         left_parentheses_num -= 1;
                         result.add_lex(LexContent::RightParentheses);
@@ -61,21 +53,13 @@ impl<'a> Lexer<'a> {
                     }
                 }
                 Ok(_) => match self.advance_identifier() {
-                    Err(LexError::ReachTheEof) => {
-                        result.add_error(LexError::ReachTheEof);
+                    Ok(text) => result.add_lex(LexContent::Identifier(text)),
+                    Err(error) => {
+                        result.add_error(error);
                         break;
                     }
-                    Err(e) => result.add_error(e),
-                    Ok(ok) => result.add_lex(LexContent::Identifier(ok)),
                 },
-                _ => {}
             }
-            if let Err(LexError::ReachTheEof) = self.skip_whitespace() {
-                result.add_error(LexError::ReachTheEof);
-                return result;
-            }
-
-            advance_result = self.advance();
         }
 
         if left_parentheses_num > 0 {
@@ -139,8 +123,8 @@ impl<'a> Lexer<'a> {
         Ok(rest[..length].to_owned())
     }
 
-    /// should be call when offset is at "
-    ///  skip the last "
+    /// Called immediately after consuming the opening quote.
+    /// Consumes the closing quote.
     pub fn advance_string_literal(&mut self) -> LexResult<String> {
         let start = self.buffer.cursor.offset;
         let rest = self
