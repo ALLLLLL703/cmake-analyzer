@@ -1,5 +1,5 @@
 use crate::{
-    model::{TextSpan, trait1::IBuffer},
+    model::{Spanned, TextSpan},
     parser::lexer::model::{LexContent, LexError, LexedBuffer, Lexer, RawBuffer},
 };
 
@@ -12,13 +12,20 @@ impl<'a> Lexer<'a> {
         let mut result = LexedBuffer::default();
         let mut left_parentheses_num: usize = 0;
         let mut last_parentheses_loc: TextSpan = TextSpan::default();
+        let mut position = self.buffer.current_byte_to_span();
         loop {
             if let Err(error) = self.skip_whitespace() {
                 result.add_error(error);
                 break;
             }
 
-            match self.peek() {
+            let whitespace_start = position.start_byte;
+            advance_position(
+                &mut position,
+                &self.buffer.text[whitespace_start..self.buffer.cursor.offset],
+            );
+            let mut span = position;
+            let content = match self.peek() {
                 Err(LexError::ReachTheEof) => break,
                 Err(error) => {
                     result.add_error(error);
@@ -28,7 +35,7 @@ impl<'a> Lexer<'a> {
                     // Consume the opening quote; the scanner consumes the closing one.
                     self.buffer.cursor.offset += 1;
                     match self.advance_string_literal() {
-                        Ok(text) => result.add_lex(LexContent::StringLiteral(text)),
+                        Ok(text) => Some(LexContent::StringLiteral(text)),
                         Err(error) => {
                             result.add_error(error);
                             break;
@@ -38,27 +45,40 @@ impl<'a> Lexer<'a> {
                 Ok('(') => {
                     self.buffer.cursor.offset += 1;
                     left_parentheses_num += 1;
-                    last_parentheses_loc = self.buffer.current_byte_to_span();
-                    result.add_lex(LexContent::LeftParentheses);
+                    last_parentheses_loc = TextSpan {
+                        end_byte: self.buffer.cursor.offset,
+                        ..span
+                    };
+                    Some(LexContent::LeftParentheses)
                 }
                 Ok(')') => {
                     self.buffer.cursor.offset += 1;
                     if left_parentheses_num > 0 {
                         left_parentheses_num -= 1;
-                        result.add_lex(LexContent::RightParentheses);
+                        Some(LexContent::RightParentheses)
                     } else {
-                        result.add_error(LexError::UnclosedParentheses(
-                            self.buffer.current_byte_to_span(),
-                        ));
+                        result.add_error(LexError::UnclosedParentheses(TextSpan {
+                            end_byte: self.buffer.cursor.offset,
+                            ..span
+                        }));
+                        None
                     }
                 }
                 Ok(_) => match self.advance_identifier() {
-                    Ok(text) => result.add_lex(LexContent::Identifier(text)),
+                    Ok(text) => Some(LexContent::Identifier(text)),
                     Err(error) => {
                         result.add_error(error);
                         break;
                     }
                 },
+            };
+            span.end_byte = self.buffer.cursor.offset;
+            advance_position(
+                &mut position,
+                &self.buffer.text[span.start_byte..span.end_byte],
+            );
+            if let Some(content) = content {
+                result.add_lex(Spanned { content, span });
             }
         }
 
@@ -156,4 +176,18 @@ impl<'a> Lexer<'a> {
             self.buffer.current_byte_to_span(),
         ))
     }
+}
+
+// Track only newly consumed text instead of rescanning the source for every token.
+fn advance_position(position: &mut TextSpan, consumed: &str) {
+    for ch in consumed.chars() {
+        if ch == '\n' {
+            position.row += 1;
+            position.column = 0;
+        } else {
+            position.column += 1;
+        }
+    }
+    position.start_byte += consumed.len();
+    position.end_byte = position.start_byte;
 }

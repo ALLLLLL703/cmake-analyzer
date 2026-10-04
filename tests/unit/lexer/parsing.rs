@@ -10,7 +10,7 @@ fn identifiers_keep_their_first_character() {
     let identifiers: Vec<&str> = result
         .lex
         .iter()
-        .filter_map(|token| match token {
+        .filter_map(|token| match &token.content {
             LexContent::Identifier(text) => Some(text.as_str()),
             _ => None,
         })
@@ -21,7 +21,7 @@ fn identifiers_keep_their_first_character() {
         result
             .lex
             .iter()
-            .filter(|token| matches!(token, LexContent::LeftParentheses))
+            .filter(|token| matches!(&token.content, LexContent::LeftParentheses))
             .count(),
         2
     );
@@ -29,7 +29,7 @@ fn identifiers_keep_their_first_character() {
         result
             .lex
             .iter()
-            .filter(|token| matches!(token, LexContent::RightParentheses))
+            .filter(|token| matches!(&token.content, LexContent::RightParentheses))
             .count(),
         2
     );
@@ -44,7 +44,7 @@ fn unicode_identifiers_keep_their_first_character() {
     let identifiers: Vec<&str> = result
         .lex
         .iter()
-        .filter_map(|token| match token {
+        .filter_map(|token| match &token.content {
             LexContent::Identifier(text) => Some(text.as_str()),
             _ => None,
         })
@@ -62,7 +62,7 @@ fn quoted_strings_consume_both_quotes() {
     let strings: Vec<&str> = result
         .lex
         .iter()
-        .filter_map(|token| match token {
+        .filter_map(|token| match &token.content {
             LexContent::StringLiteral(text) => Some(text.as_str()),
             _ => None,
         })
@@ -72,7 +72,7 @@ fn quoted_strings_consume_both_quotes() {
         result
             .lex
             .iter()
-            .any(|token| matches!(token, LexContent::Identifier(text) if text == "next"))
+            .any(|token| matches!(&token.content, LexContent::Identifier(text) if text == "next"))
     );
     assert_eq!(lexer.buffer.cursor.offset, source.len());
 }

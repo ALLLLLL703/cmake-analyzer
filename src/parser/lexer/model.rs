@@ -1,7 +1,7 @@
 use std::fmt::LowerExp;
 
 use crate::model::{
-    self, TextSpan,
+    self, Spanned, TextSpan,
     trait1::{IBuffer, ICursor},
 };
 
@@ -24,7 +24,7 @@ pub struct Lexer<'a> {
 
 #[derive(Debug, Default)]
 pub struct LexedBuffer {
-    pub lex: Vec<LexContent>,
+    pub lex: Vec<Spanned<LexContent>>,
     pub errors: Vec<LexError>,
 }
 
@@ -55,7 +55,7 @@ impl<'a> RawBuffer<'a> {
 
     pub fn span_to_text(&self, span: TextSpan) -> Option<String> {
         self.text
-            .get(span.start_byte..=span.end_byte)
+            .get(span.start_byte..span.end_byte)
             .map(|s| s.to_owned())
     }
 }
@@ -72,12 +72,16 @@ impl<'a> RawBuffer<'a> {
 impl ICursor for RawBufferCursor {
     fn to_span(&self, content: &str) -> model::TextSpan {
         let mut span = TextSpan::default();
-        for ch in content.chars() {
+        for (offset, ch) in content.char_indices() {
+            if offset >= self.offset {
+                break;
+            }
             if ch == '\n' {
                 span.row += 1;
-                continue;
+                span.column = 0;
+            } else {
+                span.column += 1;
             }
-            span.column += 1;
         }
         span.start_byte = self.offset;
         span.end_byte = self.offset;
@@ -100,7 +104,7 @@ impl LexedBuffer {
         self.errors.push(error)
     }
 
-    pub fn add_lex(&mut self, lex: LexContent) {
+    pub fn add_lex(&mut self, lex: Spanned<LexContent>) {
         self.lex.push(lex);
     }
 }

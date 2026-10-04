@@ -23,13 +23,13 @@ impl LexedBuffer {
 impl Display for LexDisplay<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         for token in &self.buffer.lex {
-            let sytle = match token {
+            let sytle = match &token.content {
                 LexContent::Identifier(_) => Style::new().cyan(),
                 LexContent::StringLiteral(_) => Style::new().green(),
                 LexContent::LeftParentheses | LexContent::RightParentheses => Style::new().yellow(),
             };
 
-            let text = match token {
+            let text = match &token.content {
                 LexContent::LeftParentheses => String::from("("),
                 LexContent::RightParentheses => String::from(")"),
                 LexContent::Identifier(s) => format!("{}: {}", "Identifier", s),
