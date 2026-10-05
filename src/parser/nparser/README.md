@@ -15,3 +15,14 @@ String allocations are moved from lexer tokens into the result. Consumed token s
 `parse()` forwards lexical errors even for an empty token stream. It skips invalid top-level tokens and, when an opening parenthesis is missing, leaves the next token available as a potential command. An unterminated argument list is diagnosed at its opening parenthesis; incomplete commands are omitted. Missing closing parentheses may consume the rest of the token stream, since command-like text can legally occur inside arguments.
 
 Normal EOF between commands is not an error. This implementation does not yet enforce whitespace/newline separation rules or validate control-block matching.
+
+## Display and CLI
+
+`NParsedBuffer::display(colored)` returns a borrowed display adapter, matching the lexer's interface. `Display` on the buffer itself uses plain output. Commands are grouped with indented arguments; diagnostics include their spans. Source string contents are escaped, and formatting errors are propagated without allocating a complete output string.
+
+```rust
+println!("{}", parsed.display(true)); // ANSI colors
+println!("{parsed}");                // Plain output
+```
+
+The [NParser CLI](../../../cli/parser/nparser/README.md) exposes this display for files, direct text, and stdin.

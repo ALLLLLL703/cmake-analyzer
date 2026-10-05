@@ -1,3 +1,5 @@
+mod display;
+
 use cmake_analyzer::{
     model::{Spanned, TextSpan},
     parser::{
