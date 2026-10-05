@@ -38,7 +38,7 @@ impl Display for NParseDisplay<'_> {
             for argument in &command.args {
                 let (label, text, style) = match &argument.content {
                     NParsedArgument::Unquoted(text) => {
-                        ("Unquoted", Some(text), Style::new().cyan())
+                        ("Unquoted", Some(text), Style::new().blue())
                     }
                     NParsedArgument::Quoted(text) => ("Quoted", Some(text), Style::new().green()),
                     NParsedArgument::Bracked(text) => ("Bracked", Some(text), Style::new().green()),

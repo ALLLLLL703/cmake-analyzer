@@ -34,3 +34,4 @@ Exit codes:
 Input is read asynchronously. Lexing, parsing, formatting, and buffered stdout writes run in one awaited blocking worker; source and token strings are moved rather than cloned.
 
 This is a syntax inspection tool, not a CMake interpreter or complete validator. See [Command Parser](../../../src/parser/nparser/README.md) for current parsing behavior and limitations.
+
