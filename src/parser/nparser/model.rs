@@ -39,6 +39,10 @@ pub enum NParsedArgument {
 pub enum NParsedError {
     LexError(LexError),
     ReachTheEof,
+    ExpectedCommandName,
+    InvalidCommandName,
+    ExpectedLeftParenthesis,
+    UnclosedArguments(TextSpan),
 }
 
 impl NParser {
