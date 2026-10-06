@@ -1,4 +1,7 @@
-use cmake_analyzer::parser::lexer::model::{LexContent, LexError, Lexer, RawBuffer};
+use cmake_analyzer::{
+    model::Spanned,
+    parser::lexer::model::{LexContent, LexError, Lexer, RawBuffer},
+};
 
 #[test]
 fn identifiers_keep_their_first_character() {
@@ -94,7 +97,10 @@ fn unterminated_strings_are_reported() {
     let result = lexer.parse();
     assert!(matches!(
         result.errors.as_slice(),
-        [LexError::UnclosedStringLiteral(_)]
+        [Spanned {
+            content: LexError::UnclosedStringLiteral,
+            ..
+        }]
     ));
 }
 
@@ -107,7 +113,7 @@ fn parentheses_errors_are_still_reported() {
             result
                 .errors
                 .iter()
-                .any(|error| matches!(error, LexError::UnclosedParentheses(_)))
+                .any(|error| matches!(error.content, LexError::UnclosedParentheses))
         );
     }
 }

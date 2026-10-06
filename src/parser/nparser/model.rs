@@ -16,8 +16,13 @@ pub struct NParseCursor {
 
 #[derive(Default, Debug, Clone)]
 pub struct NParsedBuffer {
-    pub commands: Vec<NParsedCommand>,
-    pub error: Vec<Spanned<NParsedError>>,
+    pub nodes: Vec<Spanned<NParsedNode>>,
+}
+
+#[derive(Clone, Debug)]
+pub enum NParsedNode {
+    Command(NParsedCommand),
+    Error(NParsedError),
 }
 
 #[derive(Debug, Clone)]
@@ -38,7 +43,10 @@ pub enum NParsedArgument {
 #[derive(Debug, Clone)]
 pub enum NParsedError {
     LexError(LexError),
+    ShouldBeCommand,
+    ShouldHaveLeftParentheses,
     ReachTheEof,
+    UnArgStringLiteral,
 }
 
 impl NParser {
@@ -52,14 +60,44 @@ impl NParser {
 }
 
 impl NParsedBuffer {
-    pub fn add_command(&mut self, command: NParsedCommand) {
-        self.commands.push(command);
+    pub fn add_node(&mut self, node: NParsedNode, span: TextSpan) {
+        self.nodes.push(Spanned {
+            content: node,
+            span,
+        });
+    }
+}
+
+impl NParsedCommand {
+    pub fn new(name: &str, span: TextSpan) -> Self {
+        let spanned = Spanned {
+            content: name.to_owned(),
+            span,
+        };
+        Self {
+            name: spanned,
+            args: Vec::new(),
+        }
     }
 
-    pub fn add_error(&mut self, error: NParsedError, span: TextSpan) {
-        self.error.push(Spanned {
+    pub fn add_argument(&mut self, argument: NParsedArgument, span: TextSpan) {
+        self.args.push(Spanned {
+            content: argument,
             span,
-            content: error,
         });
+    }
+
+    pub fn append(&mut self, args: &mut Vec<Spanned<NParsedArgument>>) {
+        self.args.append(args);
+    }
+}
+
+impl NParsedNode {
+    pub fn new_error(error: NParsedError) -> Self {
+        NParsedNode::Error(error)
+    }
+
+    pub fn new_command(content: NParsedCommand) -> Self {
+        NParsedNode::Command(content)
     }
 }

@@ -137,9 +137,11 @@ fn unterminated_brackets_report_the_opener_and_consume_to_eof() {
         let mut lexer = Lexer::new(RawBuffer::new(source));
         let result = lexer.parse();
         assert_eq!(result.lex.len(), 1);
-        let [LexError::UnclosedBracketArgument(span)] = result.errors.as_slice() else {
+        let [error] = result.errors.as_slice() else {
             panic!("unexpected errors: {:?}", result.errors);
         };
+        assert!(matches!(error.content, LexError::UnclosedBracketArgument));
+        let span = error.span;
         assert_eq!(
             (span.start_byte, span.end_byte, span.row, span.column),
             (4, source.len(), 0, 2)

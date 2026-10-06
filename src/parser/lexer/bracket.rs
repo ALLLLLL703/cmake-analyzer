@@ -1,6 +1,6 @@
-use crate::model::TextSpan;
+use crate::model::{Spanned, TextSpan};
 
-use super::model::{LexError, Lexer};
+use super::model::{LexError, LexResult, Lexer};
 
 impl Lexer<'_> {
     /// Returns the byte length of a bracket opener at the current cursor.
@@ -22,7 +22,7 @@ impl Lexer<'_> {
         &mut self,
         opening_len: usize,
         mut span: TextSpan,
-    ) -> Result<String, LexError> {
+    ) -> LexResult<String> {
         let text = self.buffer.text;
         let bytes = text.as_bytes();
         let equals = opening_len - 2;
@@ -54,6 +54,9 @@ impl Lexer<'_> {
 
         self.buffer.cursor.offset = bytes.len();
         span.end_byte = bytes.len();
-        Err(LexError::UnclosedBracketArgument(span))
+        Err(Spanned {
+            content: LexError::UnclosedBracketArgument,
+            span,
+        })
     }
 }

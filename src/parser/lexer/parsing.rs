@@ -1,13 +1,13 @@
 use crate::{
     model::{Spanned, TextSpan},
-    parser::lexer::model::{LexContent, LexError, LexedBuffer, Lexer, RawBuffer},
+    parser::lexer::model::{LexContent, LexError, LexResult, LexedBuffer, Lexer, RawBuffer},
 };
 
-type LexResult<T> = Result<T, LexError>;
 impl<'a> Lexer<'a> {
     pub fn new(buffer: RawBuffer<'a>) -> Self {
         Lexer { buffer }
     }
+
     pub fn parse(&mut self) -> LexedBuffer {
         let mut result = LexedBuffer::default();
         let mut left_parentheses_num: usize = 0;
@@ -15,7 +15,7 @@ impl<'a> Lexer<'a> {
         let mut position = self.buffer.current_byte_to_span();
         loop {
             if let Err(error) = self.skip_whitespace() {
-                result.add_error(error);
+                result.add_error(error.content, error.span);
                 break;
             }
 
@@ -26,9 +26,9 @@ impl<'a> Lexer<'a> {
             );
             let mut span = position;
             let content = match self.peek() {
-                Err(LexError::ReachTheEof) => break,
+                Err(error) if matches!(error.content, LexError::ReachTheEof) => break,
                 Err(error) => {
-                    result.add_error(error);
+                    result.add_error(error.content, error.span);
                     break;
                 }
                 Ok('"') => {
@@ -37,7 +37,7 @@ impl<'a> Lexer<'a> {
                     match self.advance_string_literal() {
                         Ok(text) => Some(LexContent::StringLiteral(text)),
                         Err(error) => {
-                            result.add_error(error);
+                            result.add_error(error.content, error.span);
                             break;
                         }
                     }
@@ -52,7 +52,7 @@ impl<'a> Lexer<'a> {
                     match token {
                         Ok(content) => Some(content),
                         Err(error) => {
-                            result.add_error(error);
+                            result.add_error(error.content, error.span);
                             break;
                         }
                     }
@@ -72,17 +72,20 @@ impl<'a> Lexer<'a> {
                         left_parentheses_num -= 1;
                         Some(LexContent::RightParentheses)
                     } else {
-                        result.add_error(LexError::UnclosedParentheses(TextSpan {
-                            end_byte: self.buffer.cursor.offset,
-                            ..span
-                        }));
+                        result.add_error(
+                            LexError::UnclosedParentheses,
+                            TextSpan {
+                                end_byte: self.buffer.cursor.offset,
+                                ..span
+                            },
+                        );
                         None
                     }
                 }
                 Ok(_) => match self.advance_identifier() {
                     Ok(text) => Some(LexContent::Identifier(text)),
                     Err(error) => {
-                        result.add_error(error);
+                        result.add_error(error.content, error.span);
                         break;
                     }
                 },
@@ -98,20 +101,18 @@ impl<'a> Lexer<'a> {
         }
 
         if left_parentheses_num > 0 {
-            result.add_error(LexError::UnclosedParentheses(last_parentheses_loc));
+            result.add_error(LexError::UnclosedParentheses, last_parentheses_loc);
         }
-
         result
     }
 
-    /// offset will stay at the first non-whitespace char
+    /// Offset will stay at the first non-whitespace character.
     pub fn skip_whitespace(&mut self) -> LexResult<()> {
         let rest = self
             .buffer
             .text
             .get(self.buffer.cursor.offset..)
-            .ok_or(LexError::ReachTheEof)?;
-
+            .ok_or_else(|| self.eof_error())?;
         let skipped = rest
             .bytes()
             .take_while(|byte| matches!(byte, b' ' | b'\t' | b'\n' | b'\r'))
@@ -120,16 +121,15 @@ impl<'a> Lexer<'a> {
         Ok(())
     }
 
-    /// return the current char(before advance)
+    /// Returns the current character before advancing.
     pub fn advance(&mut self) -> LexResult<char> {
         let ch = self
             .buffer
             .text
             .get(self.buffer.cursor.offset..)
             .and_then(|rest| rest.chars().next())
-            .ok_or(LexError::ReachTheEof)?;
+            .ok_or_else(|| self.eof_error())?;
         self.buffer.cursor.offset += ch.len_utf8();
-
         Ok(ch)
     }
 
@@ -138,18 +138,17 @@ impl<'a> Lexer<'a> {
             .text
             .get(self.buffer.cursor.offset..)
             .and_then(|rest| rest.chars().next())
-            .ok_or(LexError::ReachTheEof)
+            .ok_or_else(|| self.eof_error())
     }
 
-    /// not skip the last char of the Identifier
+    /// Does not skip the identifier's first character.
     pub fn advance_identifier(&mut self) -> LexResult<String> {
         let rest = self
             .buffer
             .text
             .get(self.buffer.cursor.offset..)
             .filter(|rest| !rest.is_empty())
-            .ok_or(LexError::ReachTheEof)?;
-
+            .ok_or_else(|| self.eof_error())?;
         let length = rest
             .bytes()
             .take_while(|byte| !matches!(byte, b' ' | b'\t' | b'\n' | b'\r' | b'(' | b')'))
@@ -158,23 +157,20 @@ impl<'a> Lexer<'a> {
         Ok(rest[..length].to_owned())
     }
 
-    /// Called immediately after consuming the opening quote.
-    /// Consumes the closing quote.
+    /// Called after consuming the opening quote; consumes the closing quote.
     pub fn advance_string_literal(&mut self) -> LexResult<String> {
         let start = self.buffer.cursor.offset;
         let rest = self
             .buffer
             .text
-            .get(self.buffer.cursor.offset..)
-            .ok_or(LexError::ReachTheEof)?;
-
+            .get(start..)
+            .ok_or_else(|| self.eof_error())?;
         let mut escaped = false;
         for (index, ch) in rest.char_indices() {
             if escaped {
                 escaped = false;
                 continue;
             }
-
             match ch {
                 '\\' => escaped = true,
                 '"' => {
@@ -185,11 +181,22 @@ impl<'a> Lexer<'a> {
                 _ => {}
             }
         }
-
         self.buffer.cursor.offset = self.buffer.text.len();
-        Err(LexError::UnclosedStringLiteral(
-            self.buffer.current_byte_to_span(),
-        ))
+        let mut opening = RawBuffer::new(self.buffer.text);
+        opening.cursor.offset = start.saturating_sub(1);
+        let mut span = opening.current_byte_to_span();
+        span.end_byte = self.buffer.text.len();
+        Err(Spanned {
+            content: LexError::UnclosedStringLiteral,
+            span,
+        })
+    }
+
+    fn eof_error(&self) -> Spanned<LexError> {
+        Spanned {
+            content: LexError::ReachTheEof,
+            span: self.buffer.current_byte_to_span(),
+        }
     }
 }
 

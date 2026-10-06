@@ -48,22 +48,20 @@ impl Display for LexDisplay<'_> {
 
         for error in &self.buffer.errors {
             let style = Style::new().red();
-            let option_text = match error {
-                LexError::UnclosedStringLiteral(s) => {
-                    Some(format!("UnclosedStringLiteral at {s:?}"))
-                }
-                LexError::UnclosedParentheses(s) => Some(format!("UnclosedParentheses at {s:?}")),
-                LexError::UnclosedBracketArgument(s) => {
-                    Some(format!("UnclosedBracketArgument at {s:?}"))
-                }
-                _ => None,
+            let label = match &error.content {
+                LexError::ReachTheEof => "ReachTheEof",
+                LexError::UnclosedStringLiteral => "UnclosedStringLiteral",
+                LexError::UnclosedParentheses => "UnclosedParentheses",
+                LexError::UnclosedBracketArgument => "UnclosedBracketArgument",
             };
-            if let Some(text) = option_text {
-                if self.colored {
-                    let _ = writeln!(f, "{}", format_args!("{text}").style(style));
-                } else {
-                    let _ = writeln!(f, "{}", format_args!("{text}"));
-                }
+            if self.colored {
+                writeln!(
+                    f,
+                    "{}",
+                    format_args!("{label} at {:?}", error.span).style(style)
+                )?;
+            } else {
+                writeln!(f, "{label} at {:?}", error.span)?;
             }
         }
         Ok(())
