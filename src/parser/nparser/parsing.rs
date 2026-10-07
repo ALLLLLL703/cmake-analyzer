@@ -34,12 +34,37 @@ impl NParser {
                     let mut command = NParsedCommand::new(lex.clone());
 
                     command.closed = closed;
+                    if let CommandState::Unclosed { opening_span: span } = closed {
+                        result.add_node(
+                            NParsedNode::Error(NParsedError::UnclosedLeftParentheses),
+                            span,
+                        );
+                    }
                     let mut temp_lex = lex.clone();
                     for arg in &args {
                         temp_lex.span.self_combine_with_middle(arg.span);
                     }
+                    if let Some(right_parenth_lex) = self.peek() {
+                        temp_lex
+                            .span
+                            .self_combine_with_middle(right_parenth_lex.span);
+                    }
                     command.append_arg(&mut args);
                     result.add_node(NParsedNode::Command(command), temp_lex.span);
+                } else if let Err(NParsedError::CalledInnerError) = args_result {
+                    if let Some(lex) = self.peek() {
+                        result.add_node(
+                            NParsedNode::Error(NParsedError::ShouldHaveLeftParentheses),
+                            lex.span,
+                        );
+                    }
+                } else {
+                    if let Some(lex) = self.peek() {
+                        result.add_node(
+                            NParsedNode::Error(NParsedError::ShouldHaveLeftParentheses),
+                            lex.span,
+                        );
+                    }
                 }
             } else {
                 // let span = lex.span;
@@ -47,28 +72,37 @@ impl NParser {
                 match &lex.content {
                     LexContent::LeftParentheses => {
                         let opening_span = lex.span;
-                        result.add_node(
-                            NParsedNode::Error(NParsedError::ShouldBeCommand),
-                            opening_span,
-                        );
-                        let args = self.consume_function_args();
-                        match args {
-                            Ok(ok) => {
-                                for arg in ok.0 {
+                        match self.consume_function_args() {
+                            Ok((args, state)) => {
+                                let mut error_span = opening_span;
+                                for arg in args {
+                                    error_span.self_combine_with_middle(arg.span);
+                                }
+                                result.add_node(
+                                    NParsedNode::Error(NParsedError::ShouldBeCommand),
+                                    error_span,
+                                );
+                                if let CommandState::Unclosed { opening_span } = state {
                                     result.add_node(
-                                        NParsedNode::Error(NParsedError::ShouldBeCommand),
-                                        arg.span,
+                                        NParsedNode::Error(NParsedError::UnclosedLeftParentheses),
+                                        opening_span,
                                     );
                                 }
                             }
-                            Err(NParsedError::ReachTheEof) => {
+                            Err(error) => {
                                 result.add_node(
-                                    NParsedNode::Error(NParsedError::UnclosedLeftParentheses),
+                                    NParsedNode::Error(NParsedError::ShouldBeCommand),
                                     opening_span,
                                 );
+                                let error = match error {
+                                    NParsedError::ReachTheEof => {
+                                        NParsedError::UnclosedLeftParentheses
+                                    }
+                                    other => other,
+                                };
+                                result.add_node(NParsedNode::Error(error), opening_span);
                             }
-                            _ => {}
-                        };
+                        }
                     }
                     LexContent::RightParentheses => {
                         result.add_node(
