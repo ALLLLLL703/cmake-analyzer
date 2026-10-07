@@ -29,6 +29,7 @@ pub enum NParsedNode {
 pub struct NParsedCommand {
     pub name: Spanned<LexContent>,
     pub args: Vec<Spanned<NParsedArgument>>,
+    pub closed: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -48,6 +49,7 @@ pub enum NParsedError {
     UnclosedLeftParentheses,
     ReachTheEof,
     UnArgStringLiteral,
+    CalledInnerError,
 }
 
 impl NParser {
@@ -74,6 +76,7 @@ impl NParsedCommand {
         Self {
             name,
             args: Vec::new(),
+            closed: true,
         }
     }
 
@@ -84,7 +87,7 @@ impl NParsedCommand {
         });
     }
 
-    pub fn append(&mut self, args: &mut Vec<Spanned<NParsedArgument>>) {
+    pub fn append_arg(&mut self, args: &mut Vec<Spanned<NParsedArgument>>) {
         self.args.append(args);
     }
 }

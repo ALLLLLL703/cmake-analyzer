@@ -1,5 +1,7 @@
 use std::{ops::Range, str::Chars};
 
+use crate::model::Spanned;
+
 use super::TextSpan;
 
 impl TextSpan {
@@ -20,6 +22,14 @@ impl TextSpan {
     /// Iterates Unicode scalar values, not bytes or grapheme clusters.
     pub fn iter_text<'a>(&self, source: &'a str) -> Option<Chars<'a>> {
         self.text(source).map(str::chars)
+    }
+
+    pub fn combine_with_middle(span1: Self, span2: Self) -> Self {}
+}
+
+impl<T> Spanned<T> {
+    pub fn new(content: T, span: TextSpan) -> Self {
+        Spanned { content, span }
     }
 }
 
