@@ -30,11 +30,15 @@ impl NParser {
                 if let Ok(ok) = args_result {
                     let (mut args, closed) = ok;
 
-                    let mut command = NParsedCommand::new(lex);
+                    let mut command = NParsedCommand::new(lex.clone());
 
                     command.append_arg(&mut args);
                     command.closed = closed;
-                    result.add_node(NParsedNode::Command(command), span);
+                    let mut temp_lex = lex.clone();
+                    for arg in &args {
+                        temp_lex.span.self_combine_with_middle(arg.span);
+                    }
+                    result.add_node(NParsedNode::Command(command), temp_lex.span);
                 }
             } else {
                 // let span = lex.span;

@@ -1,4 +1,4 @@
-use std::{ops::Range, str::Chars};
+use std::{fmt::format, ops::Range, str::Chars};
 
 use crate::model::Spanned;
 
@@ -24,7 +24,58 @@ impl TextSpan {
         self.text(source).map(str::chars)
     }
 
-    pub fn combine_with_middle(span1: Self, span2: Self) -> Self {}
+    pub fn combine_with_middle(span1: Self, span2: Self) -> Self {
+        let follow_span = if span1.end_byte > span2.end_byte {
+            span1
+        } else {
+            span2
+        };
+        let based = if span1.start_byte < span2.start_byte {
+            span1
+        } else {
+            span2
+        };
+
+        let mut new_span = TextSpan::default();
+        (
+            new_span.column,
+            new_span.row,
+            new_span.start_byte,
+            new_span.end_byte,
+        ) = (
+            based.column,
+            based.row,
+            based.start_byte,
+            follow_span.end_byte,
+        );
+
+        new_span
+    }
+
+    pub fn self_combine_with_middle(&mut self, span2: Self) {
+        let follow_span = if self.end_byte > span2.end_byte {
+            *self
+        } else {
+            span2
+        };
+        let based = if self.start_byte < span2.start_byte {
+            *self
+        } else {
+            span2
+        };
+
+        self.column = based.column;
+        self.row = based.row;
+        self.start_byte = based.start_byte;
+        self.end_byte = follow_span.end_byte;
+    }
+
+    pub fn loc_info(&self) -> String {
+        format!(
+            "{{ col: {} row: {} end_byte: {} }}",
+            self.column, self.row, self.end_byte
+        )
+    }
 }
 
 impl<T> Spanned<T> {
