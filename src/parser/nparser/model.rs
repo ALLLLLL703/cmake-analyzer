@@ -29,7 +29,16 @@ pub enum NParsedNode {
 pub struct NParsedCommand {
     pub name: Spanned<LexContent>,
     pub args: Vec<Spanned<NParsedArgument>>,
-    pub closed: bool,
+    pub closed: CommandState,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CommandState {
+    Closed,
+    /// The command's outer opening parenthesis, not an inner argument parenthesis.
+    Unclosed {
+        opening_span: TextSpan,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -50,6 +59,7 @@ pub enum NParsedError {
     ReachTheEof,
     UnArgStringLiteral,
     CalledInnerError,
+    UnArgBracket,
 }
 
 impl NParser {
@@ -76,7 +86,7 @@ impl NParsedCommand {
         Self {
             name,
             args: Vec::new(),
-            closed: true,
+            closed: CommandState::Closed,
         }
     }
 

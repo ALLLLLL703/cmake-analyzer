@@ -1,3 +1,5 @@
+// AI-generated tests.
+
 use cmake_analyzer::{
     model::TextSpan,
     parser::lexer::model::{LexError, LexResult, LexedBuffer, Lexer, RawBuffer},

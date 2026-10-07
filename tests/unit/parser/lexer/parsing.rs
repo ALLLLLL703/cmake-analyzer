@@ -1,3 +1,5 @@
+// Contains AI-generated tests or test edits.
+
 use cmake_analyzer::{
     model::Spanned,
     parser::lexer::model::{LexContent, LexError, Lexer, RawBuffer},

@@ -1,3 +1,5 @@
+// AI-generated tests.
+
 use cmake_analyzer::model::TextSpan;
 
 fn span(start_byte: usize, end_byte: usize) -> TextSpan {

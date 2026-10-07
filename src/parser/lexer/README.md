@@ -1,3 +1,5 @@
+> AI-generated content.
+
 # Span-Based Lexer Results
 
 Lexer tokens are `Spanned<LexContent>`; enum variants identify token kinds without owning strings. Errors are `Spanned<LexError>`. Keep the original source alongside each result, and use that same source snapshot when resolving spans.

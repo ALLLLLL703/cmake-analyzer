@@ -51,7 +51,12 @@ impl Display for NParsedDisplay<'_> {
                         args_label = format!("{}, {}", args_label.clone(), arg_label.style(style));
                     }
 
-                    format!("{}: [ {} ]\n", command_label.cyan(), args_label)
+                    format!(
+                        "{}: [ {} ] state: {:?}\n",
+                        command_label.cyan(),
+                        args_label,
+                        command.closed
+                    )
                 }
                 NParsedNode::Error(e) => {
                     let span = node.span;

@@ -3,7 +3,8 @@ use crate::{
     parser::{
         lexer::model::{LexContent, LexError},
         nparser::model::{
-            NParsedArgument, NParsedBuffer, NParsedCommand, NParsedError, NParsedNode, NParser,
+            CommandState, NParsedArgument, NParsedBuffer, NParsedCommand, NParsedError,
+            NParsedNode, NParser,
         },
     },
 };
@@ -32,12 +33,12 @@ impl NParser {
 
                     let mut command = NParsedCommand::new(lex.clone());
 
-                    command.append_arg(&mut args);
                     command.closed = closed;
                     let mut temp_lex = lex.clone();
                     for arg in &args {
                         temp_lex.span.self_combine_with_middle(arg.span);
                     }
+                    command.append_arg(&mut args);
                     result.add_node(NParsedNode::Command(command), temp_lex.span);
                 }
             } else {
@@ -84,6 +85,10 @@ impl NParser {
                         self.cursor.offset += 1;
                     }
 
+                    LexContent::BracketArgument => {
+                        result.add_node(NParsedNode::Error(NParsedError::UnArgBracket), lex.span);
+                        self.cursor.offset += 1;
+                    }
                     _ => continue,
                 }
             }
@@ -107,7 +112,7 @@ impl NParser {
     /// should be called when cursor is at '(' or error
     /// when error ,the offset will not advance
     /// end with the offset at ')'
-    pub fn consume_function_args(&mut self) -> NParseResult<(FunctionArgs, bool)> {
+    pub fn consume_function_args(&mut self) -> NParseResult<(FunctionArgs, CommandState)> {
         if let Some(lex) = self.peek() {
             let first_lex = lex.clone();
 
@@ -132,6 +137,7 @@ impl NParser {
                             if left_parens.len() == 1 {
                                 left_parens.clear();
                                 success_exit_loop = true;
+                                self.cursor.offset += 1;
                                 break;
                             }
 
@@ -146,9 +152,14 @@ impl NParser {
                     self.cursor.offset += 1;
                 }
                 if success_exit_loop {
-                    Ok((result, true))
+                    Ok((result, CommandState::Closed))
                 } else {
-                    Ok((result, false))
+                    Ok((
+                        result,
+                        CommandState::Unclosed {
+                            opening_span: first_lex.span,
+                        },
+                    ))
                 }
             } else {
                 Err(NParsedError::CalledInnerError)

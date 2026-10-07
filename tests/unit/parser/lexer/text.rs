@@ -2,6 +2,8 @@ use cmake_analyzer::{
     model::{Spanned, TextSpan},
     parser::lexer::model::{LexContent, Lexer, RawBuffer},
 };
+// AI-generated tests.
+
 use std::fmt;
 
 #[test]

@@ -1,9 +1,12 @@
+// Contains AI-generated tests or test edits.
+
 use cmake_analyzer::{
     model::Spanned,
     parser::{
         lexer::model::{LexContent, Lexer, RawBuffer},
         nparser::model::{
-            NParsedArgument, NParsedBuffer, NParsedCommand, NParsedError, NParsedNode, NParser,
+            CommandState, NParsedArgument, NParsedBuffer, NParsedCommand, NParsedError,
+            NParsedNode, NParser,
         },
     },
 };
@@ -13,6 +16,7 @@ fn command_and_argument_models_refer_to_source_without_owning_strings() {
     let source = "call(\"中\" [=[\r\nraw]=])";
     let lexed = Lexer::new(RawBuffer::new(source)).parse();
     let mut command = NParsedCommand::new(lexed.lex[0].clone());
+    assert_eq!(command.closed, CommandState::Closed);
     command.add_argument(NParsedArgument::Quoted, lexed.lex[2].span);
     command.add_argument(NParsedArgument::Bracked, lexed.lex[3].span);
     assert_eq!(command.name.content, LexContent::Identifier);
@@ -32,6 +36,41 @@ fn command_and_argument_models_refer_to_source_without_owning_strings() {
     let mut parsed = NParsedBuffer::default();
     parsed.add_node(NParsedNode::Command(command), lexed.lex[0].span);
     assert_eq!(parsed.nodes.len(), 1);
+}
+
+#[test]
+fn parsed_commands_record_closed_or_outer_unclosed_parentheses() {
+    for source in [
+        "foo()",
+        "foo(a (b))",
+        "foo(",
+        "foo(a",
+        "foo(a (b)",
+        "foo(a (b",
+        "\n  foo(中",
+    ] {
+        let lexed = Lexer::new(RawBuffer::new(source)).parse();
+        let opening_span = lexed.lex[1].span;
+        let expected = if source == "foo()" || source == "foo(a (b))" {
+            CommandState::Closed
+        } else {
+            CommandState::Unclosed { opening_span }
+        };
+        let parsed = NParser::new(lexed).parse(source);
+        let commands: Vec<_> = parsed
+            .nodes
+            .iter()
+            .filter_map(|node| match &node.content {
+                NParsedNode::Command(command) => Some(command),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(commands.len(), 1, "{source}");
+        assert_eq!(commands[0].closed, expected, "{source}");
+        if let CommandState::Unclosed { opening_span } = commands[0].closed {
+            assert_eq!(opening_span.text(source), Some("("));
+        }
+    }
 }
 
 #[test]
