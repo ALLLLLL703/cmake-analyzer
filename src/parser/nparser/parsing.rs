@@ -14,7 +14,7 @@ type FunctionArg = Spanned<NParsedArgument>;
 type FunctionArgs = Vec<FunctionArg>;
 
 impl NParser {
-    pub fn parse(&mut self) -> NParsedBuffer {
+    pub fn parse<'src>(&mut self, source: &'src str) -> NParsedBuffer {
         let mut result = NParsedBuffer::default();
         self.inherit_error(&mut result);
         if self.cursor.max_length == 0 {
@@ -27,6 +27,7 @@ impl NParser {
                 let command_name = lex.clone();
             } else {
                 // let span = lex.span;
+                // no command_name error handle(maybe too long,,,)
                 match &lex.content {
                     LexContent::LeftParentheses => {
                         let opening_span = lex.span;

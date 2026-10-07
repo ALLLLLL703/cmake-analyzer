@@ -39,3 +39,6 @@ Lexer display now requires the source: `display(colored, source)`. The `lexer` C
 Nparser command names are spanned lexer kinds, arguments are spanned argument kinds, and error text is recovered through its outer node span. `Spanned<NParsedArgument>::text(source)` provides the same unwrapped view. The handwritten nparser control flow and its two TODO scanners remain unfinished; this migration does not implement them. In particular, its unfinished identifier path still needs cursor advancement before the parser can be used on normal commands.
 
 These models prepare for snapshot-based/incremental analysis but do not implement incremental updates. Spans and their row/column metadata must not be reused against edited source without updating or recomputing them.
+
+
+## ai generated md
