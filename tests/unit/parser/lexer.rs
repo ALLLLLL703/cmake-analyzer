@@ -8,3 +8,5 @@ mod errors;
 mod parsing;
 #[cfg(test)]
 mod spans;
+#[cfg(test)]
+mod text;

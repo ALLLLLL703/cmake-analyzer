@@ -1,6 +1,6 @@
 use crate::{
     model::{Spanned, TextSpan},
-    parser::lexer::model::{LexError, LexedBuffer},
+    parser::lexer::model::{LexContent, LexError, LexedBuffer},
 };
 
 pub struct NParser {
@@ -27,15 +27,15 @@ pub enum NParsedNode {
 
 #[derive(Debug, Clone)]
 pub struct NParsedCommand {
-    pub name: Spanned<String>,
+    pub name: Spanned<LexContent>,
     pub args: Vec<Spanned<NParsedArgument>>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum NParsedArgument {
-    Unquoted(String),
-    Quoted(String),
-    Bracked(String),
+    Unquoted,
+    Quoted,
+    Bracked,
     LeftParen,
     RightParen,
 }
@@ -45,6 +45,7 @@ pub enum NParsedError {
     LexError(LexError),
     ShouldBeCommand,
     ShouldHaveLeftParentheses,
+    UnclosedLeftParentheses,
     ReachTheEof,
     UnArgStringLiteral,
 }
@@ -69,13 +70,9 @@ impl NParsedBuffer {
 }
 
 impl NParsedCommand {
-    pub fn new(name: &str, span: TextSpan) -> Self {
-        let spanned = Spanned {
-            content: name.to_owned(),
-            span,
-        };
+    pub fn new(name: Spanned<LexContent>) -> Self {
         Self {
-            name: spanned,
+            name,
             args: Vec::new(),
         }
     }

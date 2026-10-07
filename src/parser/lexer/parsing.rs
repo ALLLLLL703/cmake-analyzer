@@ -35,7 +35,7 @@ impl<'a> Lexer<'a> {
                     // Consume the opening quote; the scanner consumes the closing one.
                     self.buffer.cursor.offset += 1;
                     match self.advance_string_literal() {
-                        Ok(text) => Some(LexContent::StringLiteral(text)),
+                        Ok(()) => Some(LexContent::StringLiteral),
                         Err(error) => {
                             result.add_error(error.content, error.span);
                             break;
@@ -45,9 +45,9 @@ impl<'a> Lexer<'a> {
                 Ok('[') => {
                     let token = if let Some(opening_len) = self.bracket_opening_len() {
                         self.advance_bracket_argument(opening_len, span)
-                            .map(LexContent::BracketArgument)
+                            .map(|()| LexContent::BracketArgument)
                     } else {
-                        self.advance_identifier().map(LexContent::Identifier)
+                        self.advance_identifier().map(|()| LexContent::Identifier)
                     };
                     match token {
                         Ok(content) => Some(content),
@@ -83,7 +83,7 @@ impl<'a> Lexer<'a> {
                     }
                 }
                 Ok(_) => match self.advance_identifier() {
-                    Ok(text) => Some(LexContent::Identifier(text)),
+                    Ok(()) => Some(LexContent::Identifier),
                     Err(error) => {
                         result.add_error(error.content, error.span);
                         break;
@@ -142,7 +142,7 @@ impl<'a> Lexer<'a> {
     }
 
     /// Does not skip the identifier's first character.
-    pub fn advance_identifier(&mut self) -> LexResult<String> {
+    pub fn advance_identifier(&mut self) -> LexResult<()> {
         let rest = self
             .buffer
             .text
@@ -154,11 +154,11 @@ impl<'a> Lexer<'a> {
             .take_while(|byte| !matches!(byte, b' ' | b'\t' | b'\n' | b'\r' | b'(' | b')'))
             .count();
         self.buffer.cursor.offset += length;
-        Ok(rest[..length].to_owned())
+        Ok(())
     }
 
     /// Called after consuming the opening quote; consumes the closing quote.
-    pub fn advance_string_literal(&mut self) -> LexResult<String> {
+    pub fn advance_string_literal(&mut self) -> LexResult<()> {
         let start = self.buffer.cursor.offset;
         let rest = self
             .buffer
@@ -176,7 +176,7 @@ impl<'a> Lexer<'a> {
                 '"' => {
                     let end = start + index;
                     self.buffer.cursor.offset = end + 1;
-                    return Ok(self.buffer.text[start..end].to_owned());
+                    return Ok(());
                 }
                 _ => {}
             }

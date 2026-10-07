@@ -26,9 +26,8 @@ fn tokens_keep_exact_ranges_and_start_positions() {
         );
         assert_eq!(lexer.buffer.span_to_text(span).as_deref(), Some(raw));
     }
-    assert!(
-        matches!(&result.lex[3].content, LexContent::StringLiteral(text) if text == "a\\\"🦀\n尾")
-    );
+    assert_eq!(result.lex[3].content, LexContent::StringLiteral);
+    assert_eq!(result.lex[3].text(source), Some("a\\\"🦀\n尾"));
 }
 
 #[test]
@@ -36,7 +35,8 @@ fn empty_strings_have_a_two_byte_token_range() {
     let mut lexer = Lexer::new(RawBuffer::new("\"\""));
     let result = lexer.parse();
     assert!(result.errors.is_empty());
-    assert!(matches!(&result.lex[0].content, LexContent::StringLiteral(text) if text.is_empty()));
+    assert_eq!(result.lex[0].content, LexContent::StringLiteral);
+    assert_eq!(result.lex[0].text("\"\""), Some(""));
     let span = result.lex[0].span;
     assert_eq!(
         (span.start_byte, span.end_byte, span.row, span.column),
@@ -57,7 +57,8 @@ fn parsing_from_an_existing_cursor_keeps_absolute_positions() {
         (span.start_byte, span.end_byte, span.row, span.column),
         (6, 9, 1, 2)
     );
-    assert!(matches!(&result.lex[0].content, LexContent::Identifier(text) if text == "abc"));
+    assert_eq!(result.lex[0].content, LexContent::Identifier);
+    assert_eq!(result.lex[0].text("前\n  abc"), Some("abc"));
 }
 
 #[test]
@@ -99,8 +100,13 @@ fn display_still_formats_token_content_with_optional_color() {
     let mut lexer = Lexer::new(RawBuffer::new("foo(\"bar\")"));
     let result = lexer.parse();
     assert_eq!(
-        result.display(false).to_string(),
+        result.display(false, "foo(\"bar\")").to_string(),
         "Identifier: foo\n(\nStringLiteral: bar\n)\n"
     );
-    assert!(result.display(true).to_string().contains("\x1b["));
+    assert!(
+        result
+            .display(true, "foo(\"bar\")")
+            .to_string()
+            .contains("\x1b[")
+    );
 }

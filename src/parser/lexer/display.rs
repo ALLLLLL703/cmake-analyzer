@@ -1,69 +1,68 @@
-use std::fmt::Display;
-
-use owo_colors::OwoColorize;
-use owo_colors::Style;
-
-use crate::parser::lexer::model::LexError;
-use crate::parser::lexer::model::{LexContent, LexedBuffer};
+use super::model::{LexContent, LexError, LexedBuffer};
+use owo_colors::{OwoColorize, Style};
+use std::fmt::{self, Display};
 
 pub struct LexDisplay<'a> {
     buffer: &'a LexedBuffer,
+    source: &'a str,
     colored: bool,
 }
 
 impl LexedBuffer {
-    pub fn display(&self, colored: bool) -> LexDisplay<'_> {
+    pub fn display<'a>(&'a self, colored: bool, source: &'a str) -> LexDisplay<'a> {
         LexDisplay {
             buffer: self,
+            source,
             colored,
         }
     }
 }
 
 impl Display for LexDisplay<'_> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         for token in &self.buffer.lex {
-            let sytle = match &token.content {
-                LexContent::Identifier(_) => Style::new().cyan(),
-                LexContent::StringLiteral(_) | LexContent::BracketArgument(_) => {
-                    Style::new().green()
+            let (label, style) = match token.content {
+                LexContent::Identifier => (Some("Identifier"), Style::new().cyan()),
+                LexContent::StringLiteral => (Some("StringLiteral"), Style::new().green()),
+                LexContent::BracketArgument => (Some("BracketArgument"), Style::new().green()),
+                LexContent::LeftParentheses | LexContent::RightParentheses => {
+                    (None, Style::new().yellow())
                 }
-                LexContent::LeftParentheses | LexContent::RightParentheses => Style::new().yellow(),
             };
-
-            let text = match &token.content {
-                LexContent::LeftParentheses => String::from("("),
-                LexContent::RightParentheses => String::from(")"),
-                LexContent::Identifier(s) => format!("{}: {}", "Identifier", s),
-                LexContent::StringLiteral(s) => format!("StringLiteral: {}", s),
-                LexContent::BracketArgument(s) => format!("BracketArgument: {}", s),
-            };
-
-            if self.colored {
-                let _ = writeln!(f, "{}", format_args!("{text}").style(sytle));
+            let text = token.text(self.source).ok_or(fmt::Error)?;
+            if let Some(label) = label {
+                line(f, format_args!("{label}: {text}"), style, self.colored)?;
             } else {
-                let _ = writeln!(f, "{text}");
+                line(f, format_args!("{text}"), style, self.colored)?;
             }
         }
-
         for error in &self.buffer.errors {
-            let style = Style::new().red();
-            let label = match &error.content {
+            let label = match error.content {
                 LexError::ReachTheEof => "ReachTheEof",
                 LexError::UnclosedStringLiteral => "UnclosedStringLiteral",
                 LexError::UnclosedParentheses => "UnclosedParentheses",
                 LexError::UnclosedBracketArgument => "UnclosedBracketArgument",
             };
-            if self.colored {
-                writeln!(
-                    f,
-                    "{}",
-                    format_args!("{label} at {:?}", error.span).style(style)
-                )?;
-            } else {
-                writeln!(f, "{label} at {:?}", error.span)?;
-            }
+            line(
+                f,
+                format_args!("{label} at {:?}", error.span),
+                Style::new().red(),
+                self.colored,
+            )?;
         }
         Ok(())
+    }
+}
+
+fn line(
+    f: &mut fmt::Formatter<'_>,
+    text: fmt::Arguments<'_>,
+    style: Style,
+    colored: bool,
+) -> fmt::Result {
+    if colored {
+        writeln!(f, "{}", text.style(style))
+    } else {
+        writeln!(f, "{text}")
     }
 }

@@ -18,9 +18,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         let buffer = lexer.parse();
         let stdout = std::io::stdout();
         let mut output = std::io::BufWriter::new(stdout.lock());
-        write!(output, "{}", buffer.display(colored))?;
+        write!(output, "{}", buffer.display(colored, &source))?;
 
-        output.flush();
+        output.flush()?;
 
         Ok(())
     })

@@ -22,7 +22,7 @@ impl Lexer<'_> {
         &mut self,
         opening_len: usize,
         mut span: TextSpan,
-    ) -> LexResult<String> {
+    ) -> LexResult<()> {
         let text = self.buffer.text;
         let bytes = text.as_bytes();
         let equals = opening_len - 2;
@@ -39,7 +39,6 @@ impl Lexer<'_> {
                 offset += 1;
                 continue;
             }
-            let closing_start = offset;
             offset += 1;
             let equals_start = offset;
             while bytes.get(offset) == Some(&b'=') {
@@ -47,7 +46,7 @@ impl Lexer<'_> {
             }
             if offset - equals_start == equals && bytes.get(offset) == Some(&b']') {
                 self.buffer.cursor.offset = offset + 1;
-                return Ok(text[content_start..closing_start].to_owned());
+                return Ok(());
             }
             // A mismatched final ']' may itself begin the real closing delimiter.
         }

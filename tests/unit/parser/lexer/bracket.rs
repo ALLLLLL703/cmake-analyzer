@@ -14,15 +14,14 @@ fn bracket_arguments_are_unwrapped_but_keep_their_token_kind_and_full_span() {
         let result = lexer.parse();
         assert!(result.errors.is_empty(), "{source}: {:?}", result.errors);
         assert_eq!(result.lex.len(), 1);
-        assert!(
-            matches!(&result.lex[0].content, LexContent::BracketArgument(text) if text == expected)
-        );
+        assert_eq!(result.lex[0].content, LexContent::BracketArgument);
+        assert_eq!(result.lex[0].text(source), Some(expected));
         let span = result.lex[0].span;
         assert_eq!(
             (span.start_byte, span.end_byte, span.row, span.column),
             (0, source.len(), 0, 0)
         );
-        assert_eq!(lexer.buffer.span_to_text(span).as_deref(), Some(source));
+        assert_eq!(lexer.buffer.span_to_text(span), Some(source));
         assert_eq!(lexer.buffer.cursor.offset, source.len());
     }
 }
@@ -38,25 +37,21 @@ fn exactly_one_initial_lf_or_crlf_is_removed() {
         ("[[\rhello]]", "\rhello"),
         ("[[\n]]", ""),
     ] {
-        let mut lexer = Lexer::new(RawBuffer::new(source));
-        let result = lexer.parse();
+        let result = Lexer::new(RawBuffer::new(source)).parse();
         assert!(result.errors.is_empty());
-        assert!(
-            matches!(&result.lex[0].content, LexContent::BracketArgument(text) if text == expected)
-        );
+        assert_eq!(result.lex[0].content, LexContent::BracketArgument);
+        assert_eq!(result.lex[0].text(source), Some(expected));
     }
 }
 
 #[test]
 fn multiline_brackets_do_not_affect_parentheses_and_preserve_later_positions() {
     let source = "  message([=[\r\n中 ( \"${x}\"\n]=])\r\nnext()";
-    let mut lexer = Lexer::new(RawBuffer::new(source));
-    let result = lexer.parse();
+    let result = Lexer::new(RawBuffer::new(source)).parse();
     assert!(result.errors.is_empty());
     let bracket = &result.lex[2];
-    assert!(
-        matches!(&bracket.content, LexContent::BracketArgument(text) if text == "中 ( \"${x}\"\n")
-    );
+    assert_eq!(bracket.content, LexContent::BracketArgument);
+    assert_eq!(bracket.text(source), Some("中 ( \"${x}\"\n"));
     assert_eq!(
         (bracket.span.start_byte, bracket.span.end_byte),
         (source.find("[=[").unwrap(), source.find("]=]").unwrap() + 3)
@@ -65,36 +60,27 @@ fn multiline_brackets_do_not_affect_parentheses_and_preserve_later_positions() {
     let next = result
         .lex
         .iter()
-        .find(|token| matches!(&token.content, LexContent::Identifier(text) if text == "next"))
+        .find(|token| token.content == LexContent::Identifier && token.text(source) == Some("next"))
         .unwrap();
     assert_eq!((next.span.row, next.span.column), (3, 0));
-    assert_eq!(
-        result
-            .lex
-            .iter()
-            .filter(|token| matches!(&token.content, LexContent::LeftParentheses))
-            .count(),
-        2
-    );
-    assert_eq!(
-        result
-            .lex
-            .iter()
-            .filter(|token| matches!(&token.content, LexContent::RightParentheses))
-            .count(),
-        2
-    );
+    for kind in [LexContent::LeftParentheses, LexContent::RightParentheses] {
+        assert_eq!(
+            result
+                .lex
+                .iter()
+                .filter(|token| token.content == kind)
+                .count(),
+            2
+        );
+    }
 }
 
 #[test]
 fn closing_delimiters_can_overlap_a_mismatched_candidate() {
     for (source, expected) in [("[=[x]==]=]", "x]=="), ("[=[x]]=]", "x]")] {
-        let mut lexer = Lexer::new(RawBuffer::new(source));
-        let result = lexer.parse();
+        let result = Lexer::new(RawBuffer::new(source)).parse();
         assert!(result.errors.is_empty());
-        assert!(
-            matches!(&result.lex[0].content, LexContent::BracketArgument(text) if text == expected)
-        );
+        assert_eq!(result.lex[0].text(source), Some(expected));
     }
 }
 
@@ -103,32 +89,32 @@ fn delimiters_support_arbitrary_equals_counts() {
     for count in (0..64).chain([4096]) {
         let equals = "=".repeat(count);
         let source = format!("[{equals}[文本 ) ${{x}} \\n]{equals}]");
-        let mut lexer = Lexer::new(RawBuffer::new(&source));
-        let result = lexer.parse();
+        let result = Lexer::new(RawBuffer::new(&source)).parse();
         assert!(result.errors.is_empty());
-        assert!(
-            matches!(&result.lex[0].content, LexContent::BracketArgument(text) if text == "文本 ) ${x} \\n")
-        );
+        assert_eq!(result.lex[0].content, LexContent::BracketArgument);
+        assert_eq!(result.lex[0].text(&source), Some("文本 ) ${x} \\n"));
     }
 }
 
 #[test]
 fn invalid_openers_and_embedded_brackets_remain_unquoted() {
     for source in ["[", "[=", "[==foo", "[text]", "prefix[[text]]"] {
-        let mut lexer = Lexer::new(RawBuffer::new(source));
-        let result = lexer.parse();
+        let result = Lexer::new(RawBuffer::new(source)).parse();
         assert!(result.errors.is_empty());
-        assert!(matches!(&result.lex[0].content, LexContent::Identifier(text) if text == source));
+        assert_eq!(result.lex[0].content, LexContent::Identifier);
+        assert_eq!(result.lex[0].text(source), Some(source));
     }
 }
 
 #[test]
 fn bracket_arguments_do_not_nest() {
-    let mut lexer = Lexer::new(RawBuffer::new("[[a [[b]] tail"));
-    let result = lexer.parse();
+    let source = "[[a [[b]] tail";
+    let result = Lexer::new(RawBuffer::new(source)).parse();
     assert!(result.errors.is_empty());
-    assert!(matches!(&result.lex[0].content, LexContent::BracketArgument(text) if text == "a [[b"));
-    assert!(matches!(&result.lex[1].content, LexContent::Identifier(text) if text == "tail"));
+    assert_eq!(result.lex[0].content, LexContent::BracketArgument);
+    assert_eq!(result.lex[0].text(source), Some("a [[b"));
+    assert_eq!(result.lex[1].content, LexContent::Identifier);
+    assert_eq!(result.lex[1].text(source), Some("tail"));
 }
 
 #[test]
@@ -152,18 +138,18 @@ fn unterminated_brackets_report_the_opener_and_consume_to_eof() {
 
 #[test]
 fn bracket_tokens_and_errors_can_be_displayed() {
-    let mut lexer = Lexer::new(RawBuffer::new("[[hello]]"));
-    let result = lexer.parse();
+    let source = "[[hello]]";
+    let result = Lexer::new(RawBuffer::new(source)).parse();
     assert_eq!(
-        result.display(false).to_string(),
+        result.display(false, source).to_string(),
         "BracketArgument: hello\n"
     );
-    assert!(result.display(true).to_string().contains("\x1b["));
-    let mut lexer = Lexer::new(RawBuffer::new("[=[unfinished"));
+    assert!(result.display(true, source).to_string().contains("\x1b["));
+    let source = "[=[unfinished";
     assert!(
-        lexer
+        Lexer::new(RawBuffer::new(source))
             .parse()
-            .display(false)
+            .display(false, source)
             .to_string()
             .contains("UnclosedBracketArgument")
     );

@@ -1,9 +1,4 @@
-use std::fmt::LowerExp;
-
-use crate::model::{
-    self, Spanned, TextSpan,
-    trait1::{IBuffer, ICursor},
-};
+use crate::model::{self, Spanned, TextSpan, trait1::ICursor};
 
 #[derive(Debug)]
 pub struct RawBuffer<'a> {
@@ -28,15 +23,15 @@ pub struct LexedBuffer {
     pub errors: Vec<Spanned<LexError>>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LexContent {
-    Identifier(String),
+    Identifier,
     LeftParentheses,
     RightParentheses,
     /// with out double quote
-    StringLiteral(String),
+    StringLiteral,
     /// Raw bracket content without delimiters or the optional initial newline.
-    BracketArgument(String),
+    BracketArgument,
 }
 
 #[derive(Debug, Clone)]
@@ -58,10 +53,8 @@ impl<'a> RawBuffer<'a> {
         self.text.len()
     }
 
-    pub fn span_to_text(&self, span: TextSpan) -> Option<String> {
-        self.text
-            .get(span.start_byte..span.end_byte)
-            .map(|s| s.to_owned())
+    pub fn span_to_text(&self, span: TextSpan) -> Option<&'a str> {
+        span.text(self.text)
     }
 }
 

@@ -50,7 +50,7 @@ fn string_error_spans_include_the_opener_through_eof() {
 fn direct_string_scanner_returns_the_same_spanned_error_type() {
     let mut lexer = Lexer::new(RawBuffer::new("\"unfinished"));
     lexer.advance().unwrap();
-    let result: LexResult<String> = lexer.advance_string_literal();
+    let result: LexResult<()> = lexer.advance_string_literal();
     let error = result.unwrap_err();
     assert!(matches!(error.content, LexError::UnclosedStringLiteral));
     assert_eq!(
@@ -77,7 +77,7 @@ fn parentheses_and_display_use_the_external_span() {
     );
     assert!(
         result
-            .display(false)
+            .display(false, "前\n)")
             .to_string()
             .contains("UnclosedParentheses at TextSpan")
     );
@@ -85,7 +85,7 @@ fn parentheses_and_display_use_the_external_span() {
     buffer.add_error(LexError::ReachTheEof, TextSpan::default());
     assert!(
         buffer
-            .display(false)
+            .display(false, "")
             .to_string()
             .contains("ReachTheEof at TextSpan")
     );
