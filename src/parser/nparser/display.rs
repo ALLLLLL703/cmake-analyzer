@@ -23,6 +23,12 @@ impl NParsedBuffer {
     }
 }
 
+impl NParsedDisplay<'_> {
+    fn style(&self, style: Style) -> Style {
+        if self.colored { style } else { Style::new() }
+    }
+}
+
 impl Display for NParsedDisplay<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         for node in &self.buffer.nodes {
@@ -48,12 +54,16 @@ impl Display for NParsedDisplay<'_> {
                                 "command arg name lost,,,".to_string()
                             }
                         };
-                        args_label = format!("{}, {}", args_label.clone(), arg_label.style(style));
+                        args_label = format!(
+                            "{}, {}",
+                            args_label.clone(),
+                            arg_label.style(self.style(style))
+                        );
                     }
 
                     format!(
                         "{}: [ {} ] state: {:?}\n",
-                        command_label.cyan(),
+                        command_label.style(self.style(Style::new().cyan())),
                         args_label,
                         command.closed
                     )
@@ -80,7 +90,9 @@ impl Display for NParsedDisplay<'_> {
                         NParsedError::ShouldHaveLeftParentheses => {
                             Some("ShouldHaveLeftParentheses")
                         }
-                        _ => None,
+                        NParsedError::UnArgBracket => Some("UnArgBracket"),
+                        NParsedError::ReachTheEof => Some("ReachTheEof"),
+                        NParsedError::CalledInnerError => Some("CalledInnerError"),
                     };
 
                     let loc_info = span.loc_info();
@@ -88,16 +100,16 @@ impl Display for NParsedDisplay<'_> {
                     if let Some(label) = label {
                         format!(
                             "({}: [ loc: {},  source: {} ])\n",
-                            label.red(),
-                            loc_info.yellow(),
-                            source.white()
+                            label.style(self.style(Style::new().red())),
+                            loc_info.style(self.style(Style::new().yellow())),
+                            source.style(self.style(Style::new().white()))
                         )
                     } else {
                         format!("")
                     }
                 }
             };
-            writeln!(f, "{}", label);
+            writeln!(f, "{}", label)?;
         }
         Ok(())
     }
