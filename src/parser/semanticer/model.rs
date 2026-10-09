@@ -12,3 +12,14 @@ pub struct SemanticCursor {
 
 #[derive(Default, Clone, Debug)]
 pub struct SemanticedBuffer {}
+
+// 需要干什么?
+//首先需要虑出所有symbol
+// and then extract all variable and its !Span and where it might be changed bind the scope with id
+// then extract all function and its !Span
+// then find all blocks and its Span
+// then find all out args function and mark the variable changes
+// need a scope struct to represent the scope of a variable (can be invert!)
+// scope should not own the variable struct
+//
+// writing in the paper is extremely important,,, i see
