@@ -1,8 +1,17 @@
-use crate::{model::TextSpan, parser::nparser::model::NParsedBuffer};
+use std::collections::HashMap;
+
+use crate::{
+    model::TextSpan,
+    parser::{
+        nparser::model::{NParsedBuffer, NParsedError},
+        semanticer::schema::CommandSchema,
+    },
+};
 
 pub struct Semanticer {
     pub buffer: NParsedBuffer,
     pub cursor: SemanticCursor,
+    pub schemas: HashMap<String, CommandSchema>,
 }
 
 #[derive(Default, Debug)]
@@ -11,88 +20,82 @@ pub struct SemanticCursor {
     pub max_length: usize,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Default, Clone, Debug)]
 pub struct SemanticedBuffer {
-    pub symbols: Vec<SemanticSymbol>,
-    pub variable: Vec<SemanticVariable>,
     pub id: FileId,
-    pub scopes: Vec<SemanticScope>,
-    pub blocks: Vec<SemanticBlock>,
-    pub commands: Vec<CommandId>,
+    pub commands: Vec<SemanticCommandRepresent>,
+    pub variables: Vec<SemanticVariable>,
+}
+
+#[derive(Clone, Debug)]
+pub enum SemanticError {
+    NParsedError(NParsedError),
+    CommandNotFound(String),
 }
 
 #[derive(Clone, Debug)]
 pub struct SemanticVariable {
-    pub value: String,
-    pub id: VariableId,
-    pub block: Option<BlockId>,
-    pub scope: Option<ScopeId>,
+    pub init_value: String,
+    pub scope: Option<SemanticScope>,
+    pub changing: Vec<VariableChanging>,
 }
 
 #[derive(Clone, Debug)]
-pub struct SemanticSymbol {
-    pub kind: SemanticSymbolKind,
-    pub block_id: BlockId,
-    pub id: SymbolId,
+pub struct VariableChanging {
+    pub command: CommandId,
+}
+#[derive(Clone, Debug)]
+pub struct SemanticCommandRepresent {
+    pub id: CommandId,
+    pub kind: CommandKind,
     pub span: TextSpan,
+    pub args: Vec<SemanticArg>,
+}
+
+#[derive(Clone, Debug)]
+pub enum ArgKind {
+    ReferencingVar,
+    Out,
+    Pure,
+
+    Path,
+}
+
+#[derive(Clone, Debug)]
+pub struct SemanticArg {
+    pub kind: Vec<ArgKind>,
+
+    pub content: String,
+}
+
+#[derive(Clone, Debug)]
+pub enum CommandKind {
+    Builtin(BuiltinCommand),
+    Other(String),
+}
+
+#[derive(Clone, Debug)]
+pub enum BuiltinCommand {
+    KeyWord,
+    Other,
+}
+
+#[derive(Clone, Debug)]
+pub enum KeyWordCommand {
+    If,
+    EndIf,
+    Function,
+    EndFunction,
 }
 
 #[derive(Clone, Debug)]
 pub struct SemanticScope {
-    pub id: ScopeId,
+    pub conatains: Vec<CommandId>,
     pub span: TextSpan,
-    pub file: FileId,
-    pub variable: Vec<VariableId>,
-    pub child: Vec<ScopeId>,
-    pub parent: Option<ScopeId>,
-    pub commands: Vec<CommandId>,
-}
-#[derive(Clone, Debug)]
-pub enum SemanticSymbolKind {
-    If,
-    While,
-    Function,
-    Foreach,
-    TopCommand,
-    Variable,
-    Option,
-    Unset,
+    pub closed: bool,
 }
 
-#[derive(Clone, Debug)]
-pub struct SemanticBlock {
-    pub id: BlockId,
-    pub binding_scope: Option<ScopeId>,
-    pub parent: Option<BlockId>,
-    pub child: Vec<BlockId>,
-    pub commands: Vec<CommandId>,
-}
-
-#[derive(Clone, Debug)]
-pub struct VariableId {
-    pub id: u32,
-}
-
-#[derive(Clone, Debug)]
-pub struct BlockId {
-    pub id: u32,
-}
-
-#[derive(Clone, Debug)]
-pub struct ScopeId {
-    pub id: u32,
-}
-
-#[derive(Clone, Debug)]
-pub struct FunctionId {
-    pub id: u32,
-}
-
-#[derive(Clone, Debug)]
-pub struct SymbolId {
-    pub id: u32,
-}
-#[derive(Clone, Debug)]
+#[derive(Default, Clone, Debug)]
 pub struct FileId {
     pub id: u32,
 }
@@ -101,6 +104,57 @@ pub struct FileId {
 pub struct CommandId {
     pub id: u32,
 }
+
+impl SemanticCursor {
+    pub fn new(max_length: usize) -> Self {
+        Self {
+            offset: 0,
+            max_length,
+        }
+    }
+}
+
+impl Semanticer {
+    pub fn new(buffer: NParsedBuffer, schemas: HashMap<String, CommandSchema>) -> Self {
+        let max_length = buffer.nodes.len();
+        Self {
+            buffer,
+            cursor: SemanticCursor::new(max_length),
+            schemas,
+        }
+    }
+}
+
+impl SemanticedBuffer {
+    pub fn new_with_file_id(id: FileId) -> Self {
+        Self {
+            id,
+            ..Default::default()
+        }
+    }
+
+    /// discard
+    pub fn new_command<'cmd>(
+        &'cmd mut self,
+        command_name: String,
+        span: TextSpan,
+        kind: CommandKind,
+    ) -> &'cmd mut SemanticCommandRepresent {
+        let result = SemanticCommandRepresent {
+            id: CommandId {
+                id: self.commands.len() as u32,
+            },
+            args: Vec::new(),
+            kind,
+            span,
+        };
+
+        self.commands.push(result);
+
+        todo!()
+    }
+}
+
 // 需要干什么?
 //首先需要虑出所有symbol
 // and then extract all variable and its !Span and where it might be changed bind the scope with id
