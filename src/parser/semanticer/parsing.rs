@@ -1,36 +1,132 @@
+// AI-generated implementation.
+mod outputs;
+mod version;
+
 use crate::{
-    model::Spanned,
+    model::{Spanned, TextSpan},
     parser::{
-        nparser::model::NParsedNode,
+        nparser::model::{CommandState, NParsedArgument, NParsedError, NParsedNode},
         semanticer::{
-            model::{CommandId, FileId, SemanticCommandRepresent, SemanticedBuffer, Semanticer},
-            schema::CommandSchema,
+            model::{
+                ArgKind, CommandId, CommandKind, FileId, SemanticArg, SemanticArgForm,
+                SemanticCommandRepresent, SemanticError, SemanticedBuffer, Semanticer,
+            },
+            schema::builtin,
+            variables,
         },
     },
 };
+use std::sync::Arc;
 
 impl Semanticer {
-    pub fn parse<'src>(&mut self, source: &'src str, file_id: FileId) -> SemanticedBuffer {
-        let mut buffer = SemanticedBuffer::new_with_file_id(file_id);
-        'wh: while let Some(node) = self.peek() {
-            if let NParsedNode::Command(command) = node.content {
-                if let Some(text) = command.name.span.text(source) {
-                    if let Some(schema) = self.schemas.get(text) {
-                        let mut command_rpre = SemanticCommandRepresent {
-                            id: CommandId {
-                                id: buffer.commands.len() as u32,
-                            },
-                            span: command.name.span,
-                            args: Vec::new(),
-                            kind: schema.kind.clone(),
-                        };
-                    } else {
-                        continue 'wh;
+    pub async fn parse(&mut self, source: &str, file_id: FileId) -> SemanticedBuffer {
+        let mut result = SemanticedBuffer::new_with_file_id(file_id);
+        self.version = None;
+        match self.scan_version(source).await {
+            Ok(version) => {
+                self.version = Some(version);
+                result.version = Some(version);
+            }
+            Err(message) => result.diagnostics.push(Spanned::new(
+                SemanticError::Version(message),
+                TextSpan::default(),
+            )),
+        }
+        let schemas = match self.version {
+            Some(version) => match builtin::schemas_for_version(version.major, version.minor) {
+                Some(schemas) => schemas,
+                None => {
+                    result.diagnostics.push(Spanned::new(
+                        SemanticError::UnsupportedVersion(version),
+                        TextSpan::default(),
+                    ));
+                    builtin::BASE_SCHEMAS
+                        .iter()
+                        .map(|s| (s.command_name.clone(), s.clone()))
+                        .collect()
+                }
+            },
+            None => builtin::BASE_SCHEMAS
+                .iter()
+                .map(|s| (s.command_name.clone(), s.clone()))
+                .collect(),
+        };
+        self.schemas = schemas
+            .into_iter()
+            .map(|(name, schema)| (name, Arc::new(schema)))
+            .collect();
+        self.schemas.extend(
+            self.injected_schemas
+                .iter()
+                .map(|(name, schema)| (name.to_ascii_lowercase(), schema.clone())),
+        );
+        result.variables = self
+            .version
+            .and_then(|v| variables::builtin::variables_for_version(v.major, v.minor))
+            .unwrap_or_else(|| variables::builtin::BASE_VARIABLES.clone());
+        self.scan_commands(source, &mut result);
+        self.track_variable_changes(&mut result);
+        self.cursor.offset = self.buffer.nodes.len();
+        result
+    }
+
+    pub fn scan_commands(&self, source: &str, result: &mut SemanticedBuffer) {
+        for node in &self.buffer.nodes {
+            match &node.content {
+                NParsedNode::Error(error) => result.diagnostics.push(Spanned::new(
+                    SemanticError::NParsedError(error.clone()),
+                    node.span,
+                )),
+                NParsedNode::Command(command) => {
+                    let Some(name) = command.name.span.text(source) else {
+                        continue;
                     };
+                    let schema = self.schemas.get(&name.to_ascii_lowercase()).cloned();
+                    let kind = match &schema {
+                        Some(schema) => schema.kind.clone(),
+                        None => {
+                            result.diagnostics.push(Spanned::new(
+                                SemanticError::CommandNotFound(name.to_owned()),
+                                command.name.span,
+                            ));
+                            CommandKind::Other(name.to_owned())
+                        }
+                    };
+                    if let CommandState::Unclosed { opening_span } = command.closed {
+                        result.diagnostics.push(Spanned::new(
+                            SemanticError::NParsedError(NParsedError::UnclosedLeftParentheses),
+                            opening_span,
+                        ));
+                    }
+                    result.commands.push(SemanticCommandRepresent {
+                        id: CommandId {
+                            id: result.commands.len() as u32,
+                        },
+                        kind,
+                        span: command.name.span,
+                        name: name.to_owned(),
+                        closed: command.closed == CommandState::Closed,
+                        schema,
+                        args: command
+                            .args
+                            .iter()
+                            .map(|arg| SemanticArg {
+                                kind: Vec::<ArgKind>::new(),
+                                content: arg.text(source).unwrap_or_default().to_owned(),
+                                span: arg.span,
+                                form: match arg.content {
+                                    NParsedArgument::Unquoted => SemanticArgForm::Unquoted,
+                                    NParsedArgument::Quoted => SemanticArgForm::Quoted,
+                                    NParsedArgument::Bracked => SemanticArgForm::Bracket,
+                                    NParsedArgument::LeftParen => SemanticArgForm::LeftParen,
+                                    NParsedArgument::RightParen => SemanticArgForm::RightParen,
+                                },
+                            })
+                            .collect(),
+                    });
                 }
             }
         }
-        todo!()
     }
 
     pub fn peek(&self) -> Option<Spanned<NParsedNode>> {

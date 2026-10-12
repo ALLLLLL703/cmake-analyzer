@@ -1,0 +1,226 @@
+// AI-generated implementation.
+use crate::parser::semanticer::{
+    model::{
+        ArgKind, OutputMatch, SemanticArgForm, SemanticVariable, SemanticedBuffer, Semanticer,
+        VariableChanging,
+    },
+    schema::ArgSchemaKind,
+};
+use std::collections::{BTreeMap, HashMap};
+
+impl Semanticer {
+    pub fn track_variable_changes(&self, result: &mut SemanticedBuffer) {
+        let mut variables: HashMap<String, usize> = result
+            .variables
+            .iter()
+            .enumerate()
+            .map(|(id, v)| (v.name.clone(), id))
+            .collect();
+        for command in &mut result.commands {
+            if !command.closed {
+                continue;
+            }
+            let Some(schema) = &command.schema else {
+                continue;
+            };
+            if !schema.args.iter().any(|arg| contains_out(&arg.kind)) {
+                continue;
+            }
+            let indices = {
+                let arguments: Vec<&str> = command
+                    .args
+                    .iter()
+                    .map(|arg| arg.content.as_str())
+                    .collect();
+                let roots: Vec<&ArgSchemaKind> = schema.args.iter().map(|arg| &arg.kind).collect();
+                sequence(
+                    &roots,
+                    vec![OutputMatch {
+                        position: 0,
+                        indices: Vec::new(),
+                        keywords: 0,
+                    }],
+                    &arguments,
+                )
+                .into_iter()
+                .find(|state| state.position == arguments.len())
+                .map(|state| state.indices)
+            };
+            let Some(indices) = indices else {
+                continue;
+            };
+            for index in indices {
+                let argument = &command.args[index];
+                let name = argument.content.as_str();
+                if name.is_empty() {
+                    continue;
+                }
+                if argument.form != SemanticArgForm::Bracket
+                    && (name.contains('$')
+                        || name.contains('\\')
+                        || (argument.form == SemanticArgForm::Unquoted && name.contains(';')))
+                {
+                    continue;
+                }
+                if command.args[..index].iter().any(|arg| {
+                    arg.form == SemanticArgForm::Unquoted
+                        && (arg.content.contains('$') || arg.content.contains(';'))
+                }) {
+                    continue;
+                }
+                let variable = match variables.get(name).copied() {
+                    Some(id) => id,
+                    None => {
+                        let id = result.variables.len();
+                        result.variables.push(SemanticVariable {
+                            name: name.to_owned(),
+                            init_value: String::new(),
+                            scope: None,
+                            changing: Vec::new(),
+                        });
+                        variables.insert(name.to_owned(), id);
+                        id
+                    }
+                };
+                if !result.variables[variable]
+                    .changing
+                    .iter()
+                    .any(|change| change.command.id == command.id.id)
+                {
+                    result.variables[variable].changing.push(VariableChanging {
+                        command: command.id.clone(),
+                    });
+                }
+                if let Some(arg) = command.args.get_mut(index) {
+                    if !arg.kind.iter().any(|kind| matches!(kind, ArgKind::Out)) {
+                        arg.kind.push(ArgKind::Out);
+                    }
+                }
+            }
+        }
+    }
+}
+fn contains_out(kind: &ArgSchemaKind) -> bool {
+    match kind {
+        ArgSchemaKind::Out => true,
+        ArgSchemaKind::Optional(args)
+        | ArgSchemaKind::AllOf(args)
+        | ArgSchemaKind::Repeat { args, .. } => args.iter().any(contains_out),
+        ArgSchemaKind::Choice(choices) => choices.iter().flatten().any(contains_out),
+        _ => false,
+    }
+}
+fn sequence(
+    kinds: &[&ArgSchemaKind],
+    mut states: Vec<OutputMatch>,
+    arguments: &[&str],
+) -> Vec<OutputMatch> {
+    for kind in kinds {
+        states = merge(
+            states
+                .into_iter()
+                .flat_map(|state| step(kind, state, arguments))
+                .collect(),
+        );
+        if states.is_empty() {
+            break;
+        }
+    }
+    states
+}
+fn group(kinds: &[ArgSchemaKind], state: OutputMatch, arguments: &[&str]) -> Vec<OutputMatch> {
+    sequence(&kinds.iter().collect::<Vec<_>>(), vec![state], arguments)
+}
+fn step(kind: &ArgSchemaKind, state: OutputMatch, arguments: &[&str]) -> Vec<OutputMatch> {
+    match kind {
+        ArgSchemaKind::Optional(args) => {
+            let mut states = group(args, state.clone(), arguments);
+            states.push(state);
+            merge(states)
+        }
+        ArgSchemaKind::Choice(choices) => merge(
+            choices
+                .iter()
+                .flat_map(|choice| group(choice, state.clone(), arguments))
+                .collect(),
+        ),
+        ArgSchemaKind::Repeat { args, min } => {
+            let mut frontier = vec![state];
+            let mut matches = Vec::new();
+            for count in 0..=arguments.len() {
+                if count >= *min {
+                    matches.extend(frontier.iter().cloned());
+                }
+                let next = frontier
+                    .into_iter()
+                    .flat_map(|state| {
+                        let position = state.position;
+                        group(args, state, arguments)
+                            .into_iter()
+                            .filter(move |next| next.position > position)
+                    })
+                    .collect();
+                frontier = merge(next);
+                if frontier.is_empty() {
+                    break;
+                }
+            }
+            merge(matches)
+        }
+        ArgSchemaKind::Unmodeled => (state.position..=arguments.len())
+            .map(|position| OutputMatch {
+                position,
+                ..state.clone()
+            })
+            .collect(),
+        ArgSchemaKind::Keyword(word) => {
+            if arguments.get(state.position).copied() != Some(word.as_str()) {
+                return Vec::new();
+            }
+            vec![OutputMatch {
+                position: state.position + 1,
+                keywords: state.keywords + 1,
+                ..state
+            }]
+        }
+        ArgSchemaKind::AllOf(kinds) => {
+            if state.position >= arguments.len() {
+                return Vec::new();
+            }
+            if kinds.iter().any(|kind|matches!(kind,ArgSchemaKind::Keyword(word) if arguments[state.position]!=word)){return Vec::new()}
+            let mut next = state;
+            if kinds.iter().any(contains_out) {
+                next.indices.push(next.position);
+            }
+            next.position += 1;
+            vec![next]
+        }
+        _ => {
+            if state.position >= arguments.len() {
+                return Vec::new();
+            }
+            let mut next = state;
+            if matches!(kind, ArgSchemaKind::Out) {
+                next.indices.push(next.position);
+            }
+            next.position += 1;
+            vec![next]
+        }
+    }
+}
+fn merge(states: Vec<OutputMatch>) -> Vec<OutputMatch> {
+    let mut positions: BTreeMap<usize, OutputMatch> = BTreeMap::new();
+    for state in states {
+        match positions.get_mut(&state.position) {
+            Some(old) if old.keywords < state.keywords => *old = state,
+            Some(old) if old.keywords == state.keywords => {
+                old.indices.retain(|index| state.indices.contains(index))
+            }
+            Some(_) => {}
+            None => {
+                positions.insert(state.position, state);
+            }
+        }
+    }
+    positions.into_values().collect()
+}

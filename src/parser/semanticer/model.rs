@@ -1,4 +1,5 @@
-use std::collections::HashMap;
+// AI-generated import change.
+use std::{collections::HashMap, sync::Arc};
 
 use crate::{
     model::{Spanned, TextSpan},
@@ -11,7 +12,11 @@ use crate::{
 pub struct Semanticer {
     pub buffer: NParsedBuffer,
     pub cursor: SemanticCursor,
-    pub schemas: HashMap<String, CommandSchema>,
+    // AI-generated change.
+    pub schemas: HashMap<String, Arc<CommandSchema>>,
+    // AI-generated additions.
+    pub version: Option<CMakeVersion>,
+    pub(super) injected_schemas: HashMap<String, Arc<CommandSchema>>,
 }
 
 #[derive(Default, Debug)]
@@ -26,16 +31,23 @@ pub struct SemanticedBuffer {
     pub commands: Vec<SemanticCommandRepresent>,
     pub variables: Vec<SemanticVariable>,
     pub diagnostics: Vec<Spanned<SemanticError>>,
+    // AI-generated addition.
+    pub version: Option<CMakeVersion>,
 }
 
 #[derive(Clone, Debug)]
 pub enum SemanticError {
     NParsedError(NParsedError),
     CommandNotFound(String),
+    // AI-generated additions.
+    Version(String),
+    UnsupportedVersion(CMakeVersion),
 }
 
 #[derive(Clone, Debug)]
 pub struct SemanticVariable {
+    // AI-generated addition.
+    pub name: String,
     pub init_value: String,
     pub scope: Option<SemanticScope>,
     pub changing: Vec<VariableChanging>,
@@ -51,6 +63,10 @@ pub struct SemanticCommandRepresent {
     pub kind: CommandKind,
     pub span: TextSpan,
     pub args: Vec<SemanticArg>,
+    // AI-generated additions.
+    pub name: String,
+    pub closed: bool,
+    pub schema: Option<Arc<CommandSchema>>,
 }
 
 #[derive(Clone, Debug)]
@@ -67,6 +83,19 @@ pub struct SemanticArg {
     pub kind: Vec<ArgKind>,
 
     pub content: String,
+    // AI-generated additions.
+    pub span: TextSpan,
+    pub form: SemanticArgForm,
+}
+
+// AI-generated implementation.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SemanticArgForm {
+    Unquoted,
+    Quoted,
+    Bracket,
+    LeftParen,
+    RightParen,
 }
 
 #[derive(Clone, Debug)]
@@ -96,6 +125,24 @@ pub struct SemanticScope {
     pub closed: bool,
 }
 
+// AI-generated implementation.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct CMakeVersion {
+    pub major: u32,
+    pub minor: u32,
+    pub patch: u32,
+}
+
+#[derive(Clone)]
+pub(super) struct OutputMatch {
+    /// the position of the arg
+    pub position: usize,
+    /// the possible collect of out arg
+    pub indices: Vec<usize>,
+    /// the keywords sum
+    pub keywords: usize,
+}
+
 #[derive(Default, Clone, Debug)]
 pub struct FileId {
     pub id: u32,
@@ -118,10 +165,18 @@ impl SemanticCursor {
 impl Semanticer {
     pub fn new(buffer: NParsedBuffer, schemas: HashMap<String, CommandSchema>) -> Self {
         let max_length = buffer.nodes.len();
+        // AI-generated addition.
+        let schemas: HashMap<_, _> = schemas
+            .into_iter()
+            .map(|(name, schema)| (name.to_ascii_lowercase(), Arc::new(schema)))
+            .collect();
         Self {
             buffer,
             cursor: SemanticCursor::new(max_length),
+            // AI-generated additions.
+            injected_schemas: schemas.clone(),
             schemas,
+            version: None,
         }
     }
 }
@@ -148,6 +203,10 @@ impl SemanticedBuffer {
             args: Vec::new(),
             kind,
             span,
+            // AI-generated additions.
+            name: command_name,
+            closed: true,
+            schema: None,
         };
 
         self.commands.push(result);
