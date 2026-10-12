@@ -14,6 +14,8 @@
 
 ## Design Requests
 
+- Prefer existing dependencies.
+
 - Decline requests that conflict with project code rules or clearly impose unjustified performance costs or reduce readability. Explain the concrete problem respectfully and offer a better alternative.
 - For viable requests with design flaws or meaningful trade-offs, use the question tool to agree on a better approach rather than rejecting or silently changing the design.
 

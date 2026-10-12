@@ -4,7 +4,7 @@
 
 ## Current implementation
 
-The `hand` branch contains a handwritten CMake lexer, command parser, and static semantic analyzer. `src/main.rs` remains a placeholder; there is no running LSP on this branch. `src/lib.rs` exports `model` and `parser`. The `lexer` and `nparser` inspection binaries are under `cli/parser/`.
+The `hand` branch contains a handwritten CMake lexer, command parser, and static semantic analyzer. `src/main.rs` remains a placeholder; there is no running LSP on this branch. `src/lib.rs` exports `model`, `parser`, and a user-owned experimental `rpc` scaffold. The `lexer`, `nparser`, and `semanticer` inspection binaries are under `cli/parser/`.
 
 ## Syntax and source ranges
 
@@ -45,6 +45,14 @@ IDs are indices into one analysis snapshot, not persistent identities across par
 - `schema/builtin.rs`: lazy static command tables with version additions and replacements; `schemas_for_version` applies the layers.
 - `variables/builtin.rs`: lazy static `SemanticVariable` tables; `variables_for_version` applies variable additions. Initial values are empty placeholders, and template names are not expanded into runtime variables.
 - `outputs.rs`: `sequence`, `group`, and `step` locate outputs structurally without validating scalar parameter types. `merge` prefers more literal keyword matches at the same position and intersects equally preferred output candidates. Unresolved output names or earlier unquoted expansion/list splitting prevent a guessed write.
+
+## Semantic inspection CLI
+
+- `src/parser/semanticer/display.rs`: borrowed, streaming `SemanticedBuffer::display(colored)` adapter. It prints version, root symbols, commands and raw argument forms, blocks, scopes, variables/write IDs, and diagnostics without cloning the analysis arenas. Source-derived strings are debug-escaped; Color formatting uses the existing `owo-colors` dependency with a reusable `Style` palette; no handwritten ANSI escapes.
+- `SemanticDisplay::with_all_variables`: opt into unchanged builtin variable records, which are hidden by default to avoid flooding the output.
+- `cli/parser/semanticer/args.rs`: positional file or `-`/stdin, `--text`, `--color`, and `--all-variables`.
+- `io.rs`: asynchronous input loading. `output.rs`: lexer/parser/semantic analysis and buffered display writing. `main.rs`: CLI assembly and a blocking worker for analysis/rendering; the worker uses the running Tokio handle for asynchronous version detection.
+- Exit codes: `0` for clean analysis or broken pipe, `1` when analysis diagnostics exist, and `2` for input/output failures. Clap handles invalid CLI arguments. Color is explicit, disabled by default, and distinguishes headings, IDs, keyword/native/external commands, scopes, variables, outputs, argument forms, closure states, and errors.
 
 ## Deliberate limits
 

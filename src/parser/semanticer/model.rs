@@ -39,6 +39,13 @@ pub struct SemanticedBuffer {
     pub symbols: Vec<SemanticSymbol>,
 }
 
+// AI-generated implementation.
+pub struct SemanticDisplay<'a> {
+    pub(super) buffer: &'a SemanticedBuffer,
+    pub(super) colored: bool,
+    pub(super) all_variables: bool,
+}
+
 #[derive(Clone, Debug)]
 pub enum SemanticError {
     NParsedError(NParsedError),
