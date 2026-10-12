@@ -27,8 +27,34 @@ pub enum ArgSchemaKind {
     List,
     Out,
     Unset,
-    BindValue { var_place: usize },
+    BindValue {
+        var_place: usize,
+    },
     Unknown,
+    // AI-generated additions.
+    Unmodeled,
+    Target,
+    Command,
+    Property,
+    Condition,
+    Integer,
+    Number,
+    Boolean,
+    Version,
+    Language,
+    TestName,
+    PackageName,
+    Url,
+    Expression,
+    Value,
+    Keyword(String),
+    Optional(Vec<ArgSchemaKind>),
+    Repeat {
+        args: Vec<ArgSchemaKind>,
+        min: usize,
+    },
+    Choice(Vec<Vec<ArgSchemaKind>>),
+    AllOf(Vec<ArgSchemaKind>),
 }
 
 #[derive(Clone, Debug)]

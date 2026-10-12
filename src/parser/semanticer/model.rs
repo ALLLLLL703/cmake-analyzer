@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use crate::{
-    model::TextSpan,
+    model::{Spanned, TextSpan},
     parser::{
         nparser::model::{NParsedBuffer, NParsedError},
         semanticer::schema::CommandSchema,
@@ -25,6 +25,7 @@ pub struct SemanticedBuffer {
     pub id: FileId,
     pub commands: Vec<SemanticCommandRepresent>,
     pub variables: Vec<SemanticVariable>,
+    pub diagnostics: Vec<Spanned<SemanticError>>,
 }
 
 #[derive(Clone, Debug)]
