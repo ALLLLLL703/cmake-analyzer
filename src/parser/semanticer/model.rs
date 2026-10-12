@@ -33,6 +33,10 @@ pub struct SemanticedBuffer {
     pub diagnostics: Vec<Spanned<SemanticError>>,
     // AI-generated addition.
     pub version: Option<CMakeVersion>,
+    // AI-generated additions.
+    pub blocks: Vec<SemanticBlock>,
+    pub scopes: Vec<SemanticScope>,
+    pub symbols: Vec<SemanticSymbol>,
 }
 
 #[derive(Clone, Debug)]
@@ -42,6 +46,11 @@ pub enum SemanticError {
     // AI-generated additions.
     Version(String),
     UnsupportedVersion(CMakeVersion),
+    // AI-generated additions.
+    UnclosedBlock(BlockKind),
+    UnexpectedBlockEnd(String),
+    UnexpectedBranch(String),
+    InvalidIfBranch(String),
 }
 
 #[derive(Clone, Debug)]
@@ -49,7 +58,8 @@ pub struct SemanticVariable {
     // AI-generated addition.
     pub name: String,
     pub init_value: String,
-    pub scope: Option<SemanticScope>,
+    // AI-generated change.
+    pub scope: Option<ScopeId>,
     pub changing: Vec<VariableChanging>,
 }
 
@@ -67,6 +77,10 @@ pub struct SemanticCommandRepresent {
     pub name: String,
     pub closed: bool,
     pub schema: Option<Arc<CommandSchema>>,
+    // AI-generated additions.
+    pub full_span: TextSpan,
+    pub block: Option<BlockId>,
+    pub scope: Option<ScopeId>,
 }
 
 #[derive(Clone, Debug)]
@@ -118,11 +132,71 @@ pub enum KeyWordCommand {
     EndFunction,
 }
 
+// AI-generated implementation.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct BlockId {
+    pub id: u32,
+}
+
+// AI-generated implementation.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct ScopeId {
+    pub id: u32,
+}
+
+// AI-generated implementation.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum BlockKind {
+    If,
+    While,
+    Foreach,
+    Function,
+    Macro,
+    Block,
+}
+
+// AI-generated implementation.
+#[derive(Clone, Debug)]
+pub struct SemanticBlock {
+    pub id: BlockId,
+    pub kind: BlockKind,
+    pub contains: Vec<CommandId>,
+    pub children: Vec<BlockId>,
+    pub parent: Option<BlockId>,
+    pub opening: CommandId,
+    pub closing: Option<CommandId>,
+    pub closed: bool,
+    pub span: TextSpan,
+}
+
+// AI-generated implementation.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ScopeKind {
+    Function,
+    VariablesBlock,
+}
+
+// AI-generated implementation.
 #[derive(Clone, Debug)]
 pub struct SemanticScope {
-    pub conatains: Vec<CommandId>,
+    pub id: ScopeId,
+    pub kind: ScopeKind,
+    pub block: BlockId,
+    pub parent: Option<ScopeId>,
+}
+
+// AI-generated implementation.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SemanticSymbolKind {
+    Block(BlockId),
+    Command(CommandId),
+}
+
+// AI-generated implementation.
+#[derive(Clone, Debug)]
+pub struct SemanticSymbol {
+    pub kind: SemanticSymbolKind,
     pub span: TextSpan,
-    pub closed: bool,
 }
 
 // AI-generated implementation.
@@ -148,7 +222,8 @@ pub struct FileId {
     pub id: u32,
 }
 
-#[derive(Clone, Debug)]
+// AI-generated derive change.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct CommandId {
     pub id: u32,
 }
@@ -207,6 +282,9 @@ impl SemanticedBuffer {
             name: command_name,
             closed: true,
             schema: None,
+            full_span: span,
+            block: None,
+            scope: None,
         };
 
         self.commands.push(result);

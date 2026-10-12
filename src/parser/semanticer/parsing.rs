@@ -1,5 +1,8 @@
 // AI-generated implementation.
+pub mod block;
 mod outputs;
+pub mod scope;
+pub mod symbols;
 mod version;
 
 use crate::{
@@ -65,7 +68,10 @@ impl Semanticer {
             .and_then(|v| variables::builtin::variables_for_version(v.major, v.minor))
             .unwrap_or_else(|| variables::builtin::BASE_VARIABLES.clone());
         self.scan_commands(source, &mut result);
+        self.scan_blocks(&mut result);
+        self.scan_scopes(&mut result);
         self.track_variable_changes(&mut result);
+        self.collect_symbols(&mut result);
         self.cursor.offset = self.buffer.nodes.len();
         result
     }
@@ -107,6 +113,9 @@ impl Semanticer {
                         name: name.to_owned(),
                         closed: command.closed == CommandState::Closed,
                         schema,
+                        full_span: node.span,
+                        block: None,
+                        scope: None,
                         args: command
                             .args
                             .iter()

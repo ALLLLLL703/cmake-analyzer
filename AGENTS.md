@@ -11,3 +11,14 @@
 - These requirements also apply to test helpers, test-module scaffolding, documentation, and this file itself.
 - Before finishing, verify that all Markdown and test files created or modified by the assistant carry an appropriate AI provenance label.
 - Keep Markdown content in English.
+
+## Design Requests
+
+- Decline requests that conflict with project code rules or clearly impose unjustified performance costs or reduce readability. Explain the concrete problem respectfully and offer a better alternative.
+- For viable requests with design flaws or meaningful trade-offs, use the question tool to agree on a better approach rather than rejecting or silently changing the design.
+
+## Architecture Record
+
+- Maintain `agent-instructions/Architect.md` as the project architecture record, including relevant files, responsibilities, key functions, and implementation limits.
+- On agent initialization and after every architecture change, inspect the current source and create or update this record. Keep it consistent with implemented behavior, not planned features.
+- The coding agent is responsible for this maintenance. Follow the Markdown provenance and English-language rules above.

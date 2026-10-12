@@ -44,10 +44,21 @@ impl NParser {
                     for arg in &args {
                         temp_lex.span.self_combine_with_middle(arg.span);
                     }
-                    if let Some(right_parenth_lex) = self.peek() {
-                        temp_lex
-                            .span
-                            .self_combine_with_middle(right_parenth_lex.span);
+                    // AI-generated span fix.
+                    match closed {
+                        CommandState::Closed => {
+                            if let Some(closing) = self
+                                .cursor
+                                .offset
+                                .checked_sub(1)
+                                .and_then(|index| self.buffer.lex.get(index))
+                            {
+                                temp_lex.span.self_combine_with_middle(closing.span);
+                            }
+                        }
+                        CommandState::Unclosed { opening_span } => {
+                            temp_lex.span.self_combine_with_middle(opening_span)
+                        }
                     }
                     command.append_arg(&mut args);
                     result.add_node(NParsedNode::Command(command), temp_lex.span);

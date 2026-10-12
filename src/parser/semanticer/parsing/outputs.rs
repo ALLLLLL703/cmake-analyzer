@@ -1,8 +1,8 @@
 // AI-generated implementation.
 use crate::parser::semanticer::{
     model::{
-        ArgKind, OutputMatch, SemanticArgForm, SemanticVariable, SemanticedBuffer, Semanticer,
-        VariableChanging,
+        ArgKind, OutputMatch, ScopeId, SemanticArgForm, SemanticVariable, SemanticedBuffer,
+        Semanticer, VariableChanging,
     },
     schema::ArgSchemaKind,
 };
@@ -10,12 +10,13 @@ use std::collections::{BTreeMap, HashMap};
 
 impl Semanticer {
     pub fn track_variable_changes(&self, result: &mut SemanticedBuffer) {
-        let mut variables: HashMap<String, usize> = result
-            .variables
-            .iter()
-            .enumerate()
-            .map(|(id, v)| (v.name.clone(), id))
-            .collect();
+        let mut variables: HashMap<Option<ScopeId>, HashMap<String, usize>> = HashMap::new();
+        for (id, variable) in result.variables.iter().enumerate() {
+            variables
+                .entry(variable.scope)
+                .or_default()
+                .insert(variable.name.clone(), id);
+        }
         for command in &mut result.commands {
             if !command.closed {
                 continue;
@@ -49,6 +50,7 @@ impl Semanticer {
             let Some(indices) = indices else {
                 continue;
             };
+            let variables = variables.entry(command.scope).or_default();
             for index in indices {
                 let argument = &command.args[index];
                 let name = argument.content.as_str();
@@ -75,7 +77,7 @@ impl Semanticer {
                         result.variables.push(SemanticVariable {
                             name: name.to_owned(),
                             init_value: String::new(),
-                            scope: None,
+                            scope: command.scope,
                             changing: Vec::new(),
                         });
                         variables.insert(name.to_owned(), id);
