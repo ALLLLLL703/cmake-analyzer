@@ -1,5 +1,5 @@
 // AI-generated implementation.
-//! Keeps file results and project links. See src/workspace/README.md for the flow.
+// See src/workspace/README.md for the flow.
 mod display;
 mod documents;
 mod graph;

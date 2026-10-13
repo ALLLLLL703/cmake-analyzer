@@ -4,7 +4,19 @@
 
 ## Current implementation
 
-The `hand` branch contains a handwritten CMake lexer, command parser, and static semantic analyzer. `src/main.rs` remains a placeholder; there is no running LSP on this branch. `src/lib.rs` exports `model`, `parser`, `workspace`, and a user-owned experimental `rpc` scaffold. The `lexer`, `nparser`, `semanticer`, `build-struct`, and `dependency-graph` inspection binaries are under `cli/parser/`.
+The `hand` branch contains a handwritten CMake lexer, command parser, and static semantic analyzer. `src/main.rs` remains a placeholder; there is no running LSP on this branch. `src/lib.rs` exports `model`, `parser`, and `workspace`; the old `rpc` scaffold has been removed. The `lexer`, `nparser`, `semanticer`, `build-struct`, and `dependency-graph` inspection binaries are under `cli/parser/`.
+
+## Cargo workspace
+
+- Root `Cargo.toml`: the analyzer package and `crates/lspally` library share a Cargo workspace with resolver 3. Existing `clap`, `owo-colors`, and `tokio` versions/features live in `[workspace.dependencies]`; both packages inherit them. `lspally` also inherits `serde` (derive), `serde_json`, and `lsp-types 0.97`.
+- `crates/lspally/Cargo.toml` and `src/lib.rs`: edition 2024 library exporting `rpc`. No transport, handlers, or executable yet.
+
+## LSP JSON-RPC
+
+- `crates/lspally/src/rpc/model.rs`: serde-compatible `Request`, `Notification`, `Response`, and untagged `Message`; JSON-RPC version is always 2.0. IDs reuse `lsp_types::NumberOrString`; parameters reuse its object/array union. Unknown method names and raw parameters remain available; there is no duplicate method enum or registry. Absent/null parameters normalize to omission. Responses contain either a JSON result (including null) or an error; null IDs are only accepted for errors.
+- `rpc/methods.rs`: generic construction and parameter extraction use `lsp_types::request::Request` / `notification::Notification` markers and associated types. `take_params` consumes the JSON tree without cloning and retains the envelope/ID. `decode_response` verifies method and ID before consuming and decoding the result into the request's associated result type. Outstanding-request tracking is left to the caller. Raw progress parameters preserve partial results not modeled by lsp-types' work-done progress type.
+- `rpc/serde.rs`: small adapters preserve missing-vs-null result/error fields, reject notifications carrying IDs and responses with both/neither payloads, and classify messages by field presence without falling back from malformed requests to notifications.
+- `rpc/display.rs`: `to_lsp_string(&message)` and `.display()` return a fallible String containing `Content-Length: <UTF-8 bytes>\r\n\r\n<compact JSON>`. No ANSI colors or extra trailing newline. Serialization errors are returned; no framing parser or stream I/O is implemented.
 
 ## Syntax and source ranges
 

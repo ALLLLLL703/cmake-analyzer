@@ -1,0 +1,13 @@
+# AI-generated library scaffold.
+[package]
+name = "lspally"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+clap.workspace = true
+owo-colors.workspace = true
+tokio.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+lsp-types.workspace = true
