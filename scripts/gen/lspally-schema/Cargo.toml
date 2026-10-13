@@ -1,0 +1,9 @@
+# AI-generated development helper.
+[package]
+name = "lspally-schema-gen"
+version = "0.0.0"
+edition = "2024"
+[workspace]
+[dependencies]
+syn = { version = "2", features = ["full", "extra-traits"] }
+quote = "1"

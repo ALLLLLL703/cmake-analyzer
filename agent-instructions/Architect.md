@@ -9,7 +9,7 @@ The `hand` branch contains a handwritten CMake lexer, command parser, and static
 ## Cargo workspace
 
 - Root `Cargo.toml`: the analyzer package and `crates/lspally` library share a Cargo workspace with resolver 3. Existing `clap`, `owo-colors`, and `tokio` versions/features live in `[workspace.dependencies]`; both packages inherit them. `lspally` also inherits `serde` (derive), `serde_json`, and `lsp-types 0.97`.
-- `crates/lspally/Cargo.toml` and `src/lib.rs`: edition 2024 library exporting `rpc`. No transport, handlers, or executable yet.
+- `crates/lspally/Cargo.toml` and `src/lib.rs`: edition 2024 library exporting `rpc` and `server`. `server/model.rs` declares the server framework; `server/wrapper/` implements stream transport and execution. No analyzer-backed server executable is wired yet.
 
 ## LSP JSON-RPC
 
@@ -17,6 +17,19 @@ The `hand` branch contains a handwritten CMake lexer, command parser, and static
 - `rpc/methods.rs`: generic construction and parameter extraction use `lsp_types::request::Request` / `notification::Notification` markers and associated types. `take_params` consumes the JSON tree without cloning and retains the envelope/ID. `decode_response` verifies method and ID before consuming and decoding the result into the request's associated result type. Outstanding-request tracking is left to the caller. Raw progress parameters preserve partial results not modeled by lsp-types' work-done progress type.
 - `rpc/serde.rs`: small adapters preserve missing-vs-null result/error fields, reject notifications carrying IDs and responses with both/neither payloads, and classify messages by field presence without falling back from malformed requests to notifications.
 - `rpc/display.rs`: `to_lsp_string(&message)` and `.display()` return a fallible String containing `Content-Length: <UTF-8 bytes>\r\n\r\n<compact JSON>`. No ANSI colors or extra trailing newline. Serialization errors are returned; no framing parser or stream I/O is implemented.
+
+## Reusable LSP server
+
+- `server/model.rs`: `ILanguageServer` requires 51 standard request handlers, 20 notification handlers, and two custom hooks, without default bodies. `Wrapper<S>`, `ClientHandle`, `Limits`, and private session state live here. The direction inventory is in `todos/d1/lsp-methods.md`.
+- `server/model/`: independent document, lifecycle, capabilities, edits, diagnostics, and feature records. Standard business APIs expose neither serde nor lsp-types. `Data` carries arbitrary application data; only `Extension` exposes raw JSON. `Position` uses zero-based coordinates in `Context::encoding`; the wrapper does not translate analyzer byte spans or manage document text.
+- `model/context.rs`: business errors, negotiated UTF-8/UTF-16/UTF-32 encoding, and cooperative cancellation. `model/client.rs`: URI/version-qualified diagnostic publications and arbitrary partial-result progress.
+- `wrapper/convert/`: moved field-level model adapters; private lsp-types scalar wrappers use small serde bridges. `dispatch.rs` routes standard methods into feature handlers under `handlers/`; only unknown non-reserved methods reach extension hooks. Known invalid parameters return InvalidParams, not an extension fallback.
+- `wrapper/runtime.rs`: `Wrapper::run(reader, writer)` and `run_stdio`. One business worker preserves notification/query arrival order; an independent reader receives responses while a handler awaits a client call. Queues and outstanding client requests are bounded. Full request queues produce errors; full notification queues end the connection rather than silently losing document changes.
+- `wrapper/lifecycle.rs`: client capability checks, dynamic-registration method checks, initialization progress token, and position encoding negotiation. The reader enforces initialization/shutdown phases and applies cancellation/trace actions before business hooks. Successful shutdown retires outgoing waits; exit/EOF cancels the session and joins tasks, including a failed worker or blocked writer.
+- `wrapper/transport.rs`: bounded ASCII CRLF headers, one Content-Length, UTF-8 bodies, exact reads, and one serialized writer with flush acknowledgements. Reader-generated errors enqueue without awaiting a socket flush. Logs use stderr, not protocol stdout.
+- `wrapper/client.rs` and `pending.rs`: typed standard outgoing calls, unique IDs, response correlation, capability/lifecycle checks, initialization-output restrictions, diagnostics clearing, work-done/partial progress, and trace filtering. Short pending-map locks are never held across a business await; drop guards retire abandoned waits.
+- `scripts/gen/lspally-schema/`: authored generators for seed models/adapters, method inventory, registration checks, and explicit unsupported test scaffolding. Seed output is not a complete regeneration of manually adapted production files. Generated sections retain script-origin labels; manual changes are marked separately. Temporary verification sources stay outside `target/`; no persistent tests were added.
+- Current execution is serialized, not parallel query execution. Business implementations choose advertised feature capabilities and own text/version semantics. No HTTP, reconnect, CMake Workspace integration, or automatic configure is implemented.
 
 ## Syntax and source ranges
 
@@ -87,4 +100,4 @@ See [Workspace README](../src/workspace/README.md) for flow, examples, and limit
 
 This is static structural analysis, not CMake execution. Variable references are not scanned or diagnosed. Argument validation, runtime values, function/macro call resolution, runtime caller scopes, cache namespaces, `PARENT_SCOPE`, and `PROPAGATE` effects are not implemented. Some schema branches remain explicitly `Unmodeled`. Function-body writes are snapshot-local possible writes, not evidence of a function call.
 
-No document-symbol protocol handler exists yet; `SemanticedBuffer.symbols` is its intended structural input. Tests already present are wired through `tests/suite.rs` and `tests/integration.rs`. Under the current user instruction, do not add new tests or general documentation; maintain this requested architecture record and ownership labels.
+No CMake-backed document-symbol handler exists yet; `SemanticedBuffer.symbols` is its intended structural input. The reusable server trait and router do declare that protocol method. Tests already present are wired through `tests/suite.rs` and `tests/integration.rs`. Under the current user instruction, do not add new tests or general documentation; maintain this requested architecture record and ownership labels.

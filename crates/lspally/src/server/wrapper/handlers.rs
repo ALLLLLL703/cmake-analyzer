@@ -1,0 +1,10 @@
+// AI-generated implementation.
+pub(super) mod actions;
+pub(super) mod annotations;
+pub(super) mod completion;
+pub(super) mod diagnostics;
+pub(super) mod documents;
+pub(super) mod editing;
+pub(super) mod hierarchies;
+pub(super) mod lifecycle;
+pub(super) mod navigation;
