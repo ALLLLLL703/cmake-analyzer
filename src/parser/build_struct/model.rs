@@ -1,7 +1,7 @@
 // AI-generated implementation.
 use crate::{
-    model::TextSpan,
-    parser::semanticer::model::{BlockId, CommandId, ScopeId, SemanticedBuffer},
+    model::{Spanned, TextSpan},
+    parser::semanticer::model::{BlockId, CommandId, ScopeId, SemanticError, SemanticedBuffer},
 };
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -134,6 +134,13 @@ pub struct BuildStruct {
     pub facts: Vec<BuildFact>,
     pub diagnostics: Vec<BuildDiagnostic>,
 }
+// AI-generated display model.
+pub struct BuildDisplay<'a> {
+    pub(super) buffer: &'a BuildStruct,
+    pub(super) colored: bool,
+    pub(super) semantic_diagnostics: &'a [Spanned<SemanticError>],
+}
+
 /// Temporary borrow; the returned BuildStruct owns its payloads.
 pub struct BuildStructAnalyzer<'a> {
     pub buffer: &'a SemanticedBuffer,

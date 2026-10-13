@@ -19,6 +19,16 @@ path = "./cli/parser/nparser/main.rs"
 name = "semanticer"
 path = "./cli/parser/semanticer/main.rs"
 
+# AI-generated binary registration.
+[[bin]]
+name = "build-struct"
+path = "./cli/parser/build_struct/main.rs"
+
+# AI-generated binary registration.
+[[bin]]
+name = "dependency-graph"
+path = "./cli/parser/dependency_graph/main.rs"
+
 [dependencies]
 clap = { version = "4.6.7", features = ["derive"] }
 owo-colors = "4.4.0"

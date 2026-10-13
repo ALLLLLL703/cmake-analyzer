@@ -1,4 +1,5 @@
 // AI-generated implementation.
+// review over
 use crate::parser::{
     build_struct::model::{BuildStruct, DependencyKind, SourceRef},
     semanticer::model::SemanticedBuffer,
@@ -90,6 +91,20 @@ pub struct RootGraph {
     // Each pair selects a file visit, then a fact in that visit's saved BuildStruct.
     pub facts: Vec<(usize, usize)>,
     pub diagnostics: Vec<WorkspaceDiagnostic>,
+}
+
+// AI-generated display models.
+/// Borrowed terminal view; the graph field can also be printed on its own.
+#[allow(non_snake_case)] // Requested public field name.
+pub struct WorkspaceDisplay<'a> {
+    pub(super) workspace: &'a Workspace,
+    pub(super) colored: bool,
+    pub DependcyGraphDisplay: DependencyGraphDisplay<'a>,
+}
+pub struct DependencyGraphDisplay<'a> {
+    pub(super) graph: Option<&'a RootGraph>,
+    pub(super) root: &'a Root,
+    pub(super) colored: bool,
 }
 
 /// One root project and its files. Changes wait for flush().

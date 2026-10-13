@@ -1,4 +1,5 @@
 // AI-generated implementation.
+// review over
 use super::model::{DocumentSnapshot, Workspace};
 use crate::parser::{
     build_struct::model::{AnalysisKey, BuildStructAnalyzer},
@@ -74,6 +75,7 @@ impl Workspace {
 
     /// Parse pending changes; rebuild this project's graph only when its inputs changed.
     pub async fn flush(&mut self) -> io::Result<()> {
+        //human review over
         let dirty = std::mem::take(&mut self.dirty);
         let rebuild = dirty
             .iter()

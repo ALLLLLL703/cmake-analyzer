@@ -4,13 +4,25 @@
 
 One Workspace owns one root project, its file results, and one dependency graph. Multiple projects need separate Workspaces. It reads code; it does not configure or build the project.
 
+## Terminal display
+
+`workspace.display(colored)` returns a borrowed `WorkspaceDisplay`. Its public field `DependcyGraphDisplay` can be printed separately. The graph uses ASCII branches and `owo-colors`, with unique visit IDs even when files repeat. Missing, unresolved, conditional, deferred, and unvisited edges remain visible. Snapshot diagnostics appear once per file revision. Pending/stale graphs require `flush()` first.
+
+```sh
+cargo run --bin dependency-graph -- CMakeLists.txt --color
+cargo run --bin dependency-graph -- CMakeLists.txt --module-path cmake
+```
+
+File, `-`/stdin, and `--text` work like the other inspection CLIs. Stdin/text uses `cwd/CMakeLists.txt` as its path. `--binary-directory` and `--builtin-module-directory` are optional. No configure runs. Exit codes: 0 clean/broken pipe, 1 diagnostics, 2 I/O errors.
+
 ## Parts
 
 | File | Job |
 | --- | --- |
 | `../workspace.rs` | Module entrypoint |
-| `model.rs` | Files, one root/graph, saved results, visits, scopes, limits |
-| `documents.rs` | Editor text, disk fallback, paths, root registration, queries |
+| `model.rs` | Files, one root/graph, saved results, visits, scopes, limits, display adapters |
+| `display.rs` | Workspace overview, colored ASCII dependency tree, scopes, diagnostics |
+| `documents.rs` | Editor text, disk fallback, paths, root-bound construction, queries |
 | `parser.rs` | Process pending changes; save results; refresh this project |
 | `graph.rs` | Follow includes/subdirectories and track their scopes |
 
