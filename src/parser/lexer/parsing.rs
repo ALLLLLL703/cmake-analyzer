@@ -42,6 +42,23 @@ impl<'a> Lexer<'a> {
                         }
                     }
                 }
+                // AI-generated comment handling: quoted/bracket payloads never reach this branch.
+                Ok('#') => {
+                    self.buffer.cursor.offset += 1;
+                    if let Some(opening_len) = self.bracket_opening_len() {
+                        if let Err(mut error) = self.advance_bracket_argument(opening_len, span) {
+                            error.content = LexError::UnclosedBracketComment;
+                            result.add_error(error.content, error.span);
+                            break;
+                        }
+                    } else {
+                        self.buffer.cursor.offset += self.buffer.text[self.buffer.cursor.offset..]
+                            .bytes()
+                            .take_while(|byte| *byte != b'\n')
+                            .count();
+                    }
+                    None
+                }
                 Ok('[') => {
                     let token = if let Some(opening_len) = self.bracket_opening_len() {
                         self.advance_bracket_argument(opening_len, span)
@@ -149,10 +166,26 @@ impl<'a> Lexer<'a> {
             .get(self.buffer.cursor.offset..)
             .filter(|rest| !rest.is_empty())
             .ok_or_else(|| self.eof_error())?;
-        let length = rest
-            .bytes()
-            .take_while(|byte| !matches!(byte, b' ' | b'\t' | b'\n' | b'\r' | b'(' | b')'))
-            .count();
+        // AI-generated: escaped '#' and legacy embedded quotes are argument text.
+        let bytes = rest.as_bytes();
+        let mut length = 0;
+        let mut quoted = false;
+        while length < bytes.len() {
+            match bytes[length] {
+                b'\\' => {
+                    length += 1;
+                    if length < bytes.len() {
+                        length += 1;
+                    }
+                }
+                b'"' => {
+                    quoted = !quoted;
+                    length += 1;
+                }
+                b' ' | b'\t' | b'\n' | b'\r' | b'(' | b')' | b'#' if !quoted => break,
+                _ => length += 1,
+            }
+        }
         self.buffer.cursor.offset += length;
         Ok(())
     }

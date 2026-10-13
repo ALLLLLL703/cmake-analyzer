@@ -42,6 +42,8 @@ impl Display for LexDisplay<'_> {
                 LexError::UnclosedStringLiteral => "UnclosedStringLiteral",
                 LexError::UnclosedParentheses => "UnclosedParentheses",
                 LexError::UnclosedBracketArgument => "UnclosedBracketArgument",
+                // AI-generated diagnostic.
+                LexError::UnclosedBracketComment => "UnclosedBracketComment",
             };
             line(
                 f,

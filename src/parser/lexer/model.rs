@@ -40,6 +40,8 @@ pub enum LexError {
     UnclosedParentheses,
     UnclosedStringLiteral,
     UnclosedBracketArgument,
+    // AI-generated diagnostic.
+    UnclosedBracketComment,
 }
 
 pub type LexResult<T> = Result<T, Spanned<LexError>>;

@@ -83,6 +83,8 @@ impl Display for NParsedDisplay<'_> {
                             LexError::UnclosedBracketArgument => {
                                 "UnclosedBracketArgument(LexError)"
                             }
+                            // AI-generated diagnostic.
+                            LexError::UnclosedBracketComment => "UnclosedBracketComment(LexError)",
                         }),
                         NParsedError::ShouldBeCommand => Some("ShouldBeCommand"),
                         NParsedError::UnclosedLeftParentheses => Some("UnclosedLeftParentheses"),
