@@ -1,0 +1,126 @@
+// AI-generated implementation.
+use crate::parser::{
+    build_struct::model::{BuildStruct, DependencyKind, SourceRef},
+    semanticer::model::SemanticedBuffer,
+};
+use std::{
+    collections::{BTreeSet, HashMap, HashSet},
+    path::PathBuf,
+    sync::Arc,
+};
+
+#[derive(Clone, Debug)]
+pub struct WorkspaceLimits {
+    pub workers: usize,
+    pub files: usize,
+    pub depth: usize,
+    pub invocations: usize,
+}
+impl Default for WorkspaceLimits {
+    fn default() -> Self {
+        Self {
+            workers: 2,
+            files: 256,
+            depth: 64,
+            invocations: 1024,
+        }
+    }
+}
+#[derive(Debug)]
+/// Saved file results, shared by readers and each visit to the file.
+pub struct DocumentSnapshot {
+    pub text: Arc<str>,
+    pub semantics: SemanticedBuffer,
+    pub build: BuildStruct,
+}
+pub(super) struct Document {
+    pub id: u32,
+    pub revision: u64,
+    pub overlay: Option<Arc<str>>,
+    pub snapshot: Option<Arc<DocumentSnapshot>>,
+}
+#[derive(Clone, Debug)]
+pub struct Root {
+    pub file: PathBuf,
+    pub binary_directory: Option<PathBuf>,
+}
+#[derive(Clone, Debug)]
+pub struct DirectoryContext {
+    pub source: PathBuf,
+    pub binary: Option<PathBuf>,
+}
+#[derive(Clone, Debug)]
+pub struct VariableScope {
+    pub parent: Option<usize>,
+    // Share the names until one side changes; later parent writes must not reach the child.
+    pub possible_writes: Arc<BTreeSet<String>>,
+    pub project: Option<String>,
+}
+#[derive(Clone, Debug)]
+pub struct Invocation {
+    pub snapshot: Arc<DocumentSnapshot>,
+    pub file: PathBuf,
+    pub analysis: crate::parser::build_struct::model::AnalysisKey,
+    pub parent: Option<usize>,
+    pub scope: usize,
+    pub directory: DirectoryContext,
+}
+#[derive(Clone, Debug)]
+pub struct DependencyEdge {
+    pub caller: usize,
+    pub source: SourceRef,
+    pub kind: DependencyKind,
+    pub optional: bool,
+    // Recheck the root if a missing module appears or an earlier search path gains one.
+    pub candidates: Vec<PathBuf>,
+    pub resolved: Option<PathBuf>,
+    pub invocation: Option<usize>,
+}
+#[derive(Clone, Debug)]
+pub struct WorkspaceDiagnostic {
+    pub file: PathBuf,
+    pub source: Option<SourceRef>,
+    pub message: String,
+}
+#[derive(Clone, Debug, Default)]
+pub struct RootGraph {
+    pub invocations: Vec<Invocation>,
+    pub edges: Vec<DependencyEdge>,
+    pub scopes: Vec<VariableScope>,
+    // Each pair selects a file visit, then a fact in that visit's saved BuildStruct.
+    pub facts: Vec<(usize, usize)>,
+    pub diagnostics: Vec<WorkspaceDiagnostic>,
+}
+
+/// One root project and its files. Changes wait for flush().
+pub struct Workspace {
+    pub(super) limits: WorkspaceLimits,
+    pub(super) workers: Arc<tokio::sync::Semaphore>,
+    pub(super) documents: HashMap<PathBuf, Document>,
+    pub(super) root: Root,
+    pub(super) graph: Option<RootGraph>,
+    /// the pre-handled document
+    pub(super) dirty: BTreeSet<PathBuf>,
+    // Files and search paths whose changes require rebuilding this project's graph.
+    pub(super) dependencies: HashSet<PathBuf>,
+    pub(super) next_file: u32,
+    pub(super) module_paths: Vec<PathBuf>,
+    pub(super) builtin_module_directory: Option<PathBuf>,
+}
+impl Workspace {
+    pub(super) fn from_root(root: Root, limits: WorkspaceLimits) -> Self {
+        let dirty = BTreeSet::from([root.file.clone()]);
+        Self {
+            workers: Arc::new(tokio::sync::Semaphore::new(limits.workers.max(1))),
+            limits,
+            documents: HashMap::new(),
+            root,
+            graph: None,
+            dirty,
+            dependencies: HashSet::new(),
+            next_file: 0,
+            module_paths: Vec::new(),
+            builtin_module_directory: None,
+        }
+    }
+}

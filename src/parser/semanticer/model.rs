@@ -110,6 +110,23 @@ pub struct SemanticArg {
 }
 
 // AI-generated implementation.
+impl SemanticArg {
+    /// Return raw text only when expansion, escaping, or list splitting is unnecessary.
+    pub fn literal_text(&self) -> Option<&str> {
+        match self.form {
+            // Bracket arguments suppress expansion and escape processing.
+            SemanticArgForm::Bracket => Some(&self.content),
+            SemanticArgForm::Quoted | SemanticArgForm::Unquoted => {
+                (!self.content.contains(['$', '\\'])
+                    && (self.form != SemanticArgForm::Unquoted || !self.content.contains(';')))
+                .then_some(self.content.as_str())
+            }
+            _ => None,
+        }
+    }
+}
+
+// AI-generated implementation.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum SemanticArgForm {
     Unquoted,

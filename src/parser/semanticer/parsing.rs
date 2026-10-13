@@ -4,6 +4,8 @@ mod outputs;
 pub mod scope;
 pub mod symbols;
 mod version;
+// AI-generated implementation.
+mod templates;
 
 use crate::{
     model::{Spanned, TextSpan},
@@ -70,6 +72,21 @@ impl Semanticer {
         self.scan_commands(source, &mut result);
         self.scan_blocks(&mut result);
         self.scan_scopes(&mut result);
+        // AI-generated template specialization.
+        let specialized = self.detect_specialized_variables(&result);
+        result
+            .variables
+            .retain(|variable| !variable.name.contains(['<', '>']));
+        let mut names: std::collections::HashSet<_> = result
+            .variables
+            .iter()
+            .map(|variable| variable.name.clone())
+            .collect();
+        result.variables.extend(
+            specialized
+                .into_iter()
+                .filter(|variable| names.insert(variable.name.clone())),
+        );
         self.track_variable_changes(&mut result);
         self.collect_symbols(&mut result);
         self.cursor.offset = self.buffer.nodes.len();

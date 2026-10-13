@@ -858,6 +858,27 @@ pub fn variables_for_version(major: u32, minor: u32) -> Option<Vec<SemanticVaria
     }
     Some(variables)
 }
+// AI-generated implementation.
+/// Borrow versioned template names without cloning variable records.
+pub fn template_names_for_version(major: u32, minor: u32) -> impl Iterator<Item = &'static str> {
+    BASE_NAMES
+        .iter()
+        .copied()
+        .chain(
+            CMAKE_3_NAMES
+                .iter()
+                .filter(move |(m, _)| (3, *m) <= (major, minor))
+                .map(|(_, name)| *name),
+        )
+        .chain(
+            CMAKE_4_NAMES
+                .iter()
+                .filter(move |(m, _)| (4, *m) <= (major, minor))
+                .map(|(_, name)| *name),
+        )
+        .filter(|name| name.contains('<'))
+}
+
 fn variable(name: &str) -> SemanticVariable {
     SemanticVariable {
         name: name.to_owned(),

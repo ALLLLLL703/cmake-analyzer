@@ -1,5 +1,5 @@
 pub mod builtin;
-
+unsafe extern "C" {}
 use crate::parser::semanticer::model::CommandKind;
 
 #[derive(Clone, Debug)]

@@ -15,9 +15,17 @@
 ## Design Requests
 
 - Prefer existing dependencies.
+- For technical proposals, flag concrete rule, performance, or readability problems and offer better alternatives.
 
 - Decline requests that conflict with project code rules or clearly impose unjustified performance costs or reduce readability. Explain the concrete problem respectfully and offer a better alternative.
 - For viable requests with design flaws or meaningful trade-offs, use the question tool to agree on a better approach rather than rejecting or silently changing the design.
+
+## Writing and Checks
+
+- Keep Markdown and comments terse.
+- Document non-obvious APIs; explain obscure logic inline. Short, clear functions need no comments.
+- Apply this to new and edited code.
+- Installed `.cmake` files under `/usr/lib/cmake` may be used as read-only test inputs.
 
 ## Architecture Record
 
