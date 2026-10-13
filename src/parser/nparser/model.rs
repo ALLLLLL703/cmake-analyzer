@@ -3,6 +3,18 @@ use crate::{
     parser::lexer::model::{LexContent, LexError, LexedBuffer},
 };
 
+// AI-authored incremental cache. Units contain only parser results, not inherited lexer errors.
+pub struct IncrementalNParser {
+    pub buffer: NParsedBuffer,
+    pub work: crate::model::incremental::IncrementalWork,
+    pub(super) units: Vec<ParsedUnit>,
+}
+pub(super) struct ParsedUnit {
+    pub span: TextSpan,
+    pub tokens: usize,
+    pub node: Spanned<NParsedNode>,
+}
+
 pub struct NParser {
     pub buffer: LexedBuffer,
     pub cursor: NParseCursor,

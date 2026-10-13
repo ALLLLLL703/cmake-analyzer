@@ -31,14 +31,31 @@ impl Default for WorkspaceLimits {
 /// Saved file results, shared by readers and each visit to the file.
 pub struct DocumentSnapshot {
     pub text: Arc<str>,
-    pub semantics: SemanticedBuffer,
-    pub build: BuildStruct,
+    // AI-authored shared incremental outputs; old snapshots retain their own revision.
+    pub semantics: Arc<SemanticedBuffer>,
+    pub build: Arc<BuildStruct>,
+    pub work: DocumentWork,
 }
 pub(super) struct Document {
     pub id: u32,
     pub revision: u64,
     pub overlay: Option<Arc<str>>,
     pub snapshot: Option<Arc<DocumentSnapshot>>,
+    pub analysis: Option<DocumentAnalysis>,
+}
+// AI-authored per-file computation state and visible reuse counters.
+pub(super) struct DocumentAnalysis {
+    pub lexer: crate::parser::lexer::model::IncrementalLexer,
+    pub parser: crate::parser::nparser::model::IncrementalNParser,
+    pub semantics: crate::parser::semanticer::model::IncrementalSemanticer,
+    pub build: crate::parser::build_struct::model::IncrementalBuildStruct,
+}
+#[derive(Clone, Debug, Default)]
+pub struct DocumentWork {
+    pub lexer: crate::model::incremental::IncrementalWork,
+    pub parser: crate::model::incremental::IncrementalWork,
+    pub semantics: crate::model::incremental::IncrementalWork,
+    pub build: crate::model::incremental::IncrementalWork,
 }
 #[derive(Clone, Debug)]
 pub struct Root {
@@ -114,6 +131,9 @@ pub struct Workspace {
     pub(super) documents: HashMap<PathBuf, Document>,
     pub(super) root: Root,
     pub(super) graph: Option<RootGraph>,
+    pub(super) graph_invalidated: bool,
+    pub graph_rebuilt: bool,
+    pub reused_invocations: usize,
     /// the pre-handled document
     pub(super) dirty: BTreeSet<PathBuf>,
     // Files and search paths whose changes require rebuilding this project's graph.
@@ -131,6 +151,9 @@ impl Workspace {
             documents: HashMap::new(),
             root,
             graph: None,
+            graph_invalidated: true,
+            graph_rebuilt: false,
+            reused_invocations: 0,
             dirty,
             dependencies: HashSet::new(),
             next_file: 0,

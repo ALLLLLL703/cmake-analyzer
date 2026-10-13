@@ -10,6 +10,14 @@ use std::collections::{BTreeMap, HashMap};
 
 impl Semanticer {
     pub fn track_variable_changes(&self, result: &mut SemanticedBuffer) {
+        self.track_variable_changes_cached(result, &std::collections::HashSet::new());
+    }
+    // AI-authored cache path. Scope changes rebuild write lists, but do not change argument matching.
+    pub(crate) fn track_variable_changes_cached(
+        &self,
+        result: &mut SemanticedBuffer,
+        reused: &std::collections::HashSet<crate::parser::semanticer::model::CommandId>,
+    ) {
         let mut variables: HashMap<Option<ScopeId>, HashMap<String, usize>> = HashMap::new();
         for (id, variable) in result.variables.iter().enumerate() {
             variables
@@ -27,7 +35,21 @@ impl Semanticer {
             if !schema.args.iter().any(|arg| contains_out(&arg.kind)) {
                 continue;
             }
-            let indices = {
+            let indices = if reused.contains(&command.id) {
+                Some(
+                    command
+                        .args
+                        .iter()
+                        .enumerate()
+                        .filter_map(|(i, arg)| {
+                            arg.kind
+                                .iter()
+                                .any(|k| matches!(k, ArgKind::Out))
+                                .then_some(i)
+                        })
+                        .collect(),
+                )
+            } else {
                 let arguments: Vec<&str> = command
                     .args
                     .iter()

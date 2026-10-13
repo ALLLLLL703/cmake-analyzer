@@ -8,6 +8,54 @@ use std::{
     },
 };
 static NEXT: AtomicU64 = AtomicU64::new(0);
+
+// AI-generated incremental regression tests.
+#[tokio::test]
+async fn local_edits_reuse_analysis_and_dependency_visits() {
+    let p = Project::new().await;
+    p.write(
+        "CMakeLists.txt",
+        "set(A one)\ninclude(child.cmake)\nadd_library(core STATIC a.cpp)",
+    )
+    .await;
+    p.write("child.cmake", "set(CHILD value)").await;
+    let mut workspace = p.workspace();
+    workspace.flush().await.unwrap();
+    let root = p.0.join("CMakeLists.txt");
+    let child = p.0.join("child.cmake");
+    let before = workspace.snapshot(&root).unwrap().unwrap();
+    let child_before = workspace.snapshot(&child).unwrap().unwrap();
+    workspace.set_overlay(&root,"cmake_minimum_required(VERSION 3.31)\nset(A two)\ninclude(child.cmake)\nadd_library(core STATIC a.cpp)").unwrap();
+    workspace.flush().await.unwrap();
+    let after = workspace.snapshot(&root).unwrap().unwrap();
+    assert_eq!(after.work.parser.recomputed, 1);
+    assert_eq!(after.work.semantics.recomputed, 1);
+    assert_eq!(after.work.build.recomputed, 1);
+    assert!(!workspace.graph_rebuilt);
+    assert_eq!(workspace.reused_invocations, 2);
+    assert!(Arc::ptr_eq(
+        &child_before,
+        &workspace.snapshot(&child).unwrap().unwrap()
+    ));
+    assert!(before.text.contains("one"));
+    assert!(after.text.contains("two"));
+    assert_eq!(
+        workspace.root_graph().unwrap().invocations[0].analysis,
+        after.build.analysis
+    );
+    assert_eq!(
+        workspace.root_graph().unwrap().edges[0].source.analysis,
+        after.build.analysis
+    );
+    // Changing the declared write name changes inherited graph state and must replay it.
+    workspace.set_overlay(&root,"cmake_minimum_required(VERSION 3.31)\nset(NEW two)\ninclude(child.cmake)\nadd_library(core STATIC a.cpp)").unwrap();
+    workspace.flush().await.unwrap();
+    assert!(workspace.graph_rebuilt);
+    let graph = workspace.root_graph().unwrap();
+    assert!(graph.scopes[0].possible_writes.contains("NEW"));
+    assert!(!graph.scopes[0].possible_writes.contains("A"));
+}
+
 struct Project(PathBuf);
 impl Project {
     async fn new() -> Self {

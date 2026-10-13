@@ -20,7 +20,7 @@ pub struct SourceRef {
     pub conditional: bool,
     pub deferred: bool,
 }
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Argument {
     pub text: String,
     pub literal: bool,
@@ -30,7 +30,7 @@ pub enum DependencyKind {
     Include,
     Subdirectory,
 }
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Dependency {
     pub kind: DependencyKind,
     pub path: Argument,
@@ -38,7 +38,7 @@ pub struct Dependency {
     pub optional: bool,
     pub no_policy_scope: bool,
 }
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ProjectDeclaration {
     pub name: Argument,
     pub version: Option<Argument>,
@@ -139,6 +139,19 @@ pub struct BuildDisplay<'a> {
     pub(super) buffer: &'a BuildStruct,
     pub(super) colored: bool,
     pub(super) semantic_diagnostics: &'a [Spanned<SemanticError>],
+}
+
+// AI-authored per-command effect cache. Ranges point into the previous owned output.
+pub struct IncrementalBuildStruct {
+    pub buffer: std::sync::Arc<BuildStruct>,
+    pub work: crate::model::incremental::IncrementalWork,
+    pub(super) units: Vec<BuildUnit>,
+}
+pub(super) struct BuildUnit {
+    pub span: TextSpan,
+    pub schema: Option<std::sync::Arc<crate::parser::semanticer::schema::CommandSchema>>,
+    pub facts: std::ops::Range<usize>,
+    pub diagnostics: std::ops::Range<usize>,
 }
 
 /// Temporary borrow; the returned BuildStruct owns its payloads.

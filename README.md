@@ -13,3 +13,7 @@ i didn't review most of the code at commits (see below), it's fully written by o
 
 # AnyWay 
 ## this project is still wip and cant be used
+
+
+>我承认我有点急想快点弄完这个,但是我可能不太会使用AI,,,,
+>如果有人想炮轰它,我不是不会写这个,可以回炉重造的,,,

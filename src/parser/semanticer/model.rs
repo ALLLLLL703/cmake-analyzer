@@ -9,6 +9,17 @@ use crate::{
     },
 };
 
+// AI-authored incremental analysis cache.
+pub struct IncrementalSemanticer {
+    pub buffer: Arc<SemanticedBuffer>,
+    pub work: crate::model::incremental::IncrementalWork,
+    pub structure_rebuilt: bool,
+    pub templates_rebuilt: bool,
+    pub(super) analyzer: Semanticer,
+    pub(super) source: std::sync::Arc<str>,
+    pub(super) variable_seed: Vec<SemanticVariable>,
+}
+
 pub struct Semanticer {
     pub buffer: NParsedBuffer,
     pub cursor: SemanticCursor,

@@ -94,7 +94,16 @@ impl Semanticer {
     }
 
     pub fn scan_commands(&self, source: &str, result: &mut SemanticedBuffer) {
-        for node in &self.buffer.nodes {
+        self.scan_nodes(source, self.buffer.nodes.iter(), result);
+    }
+    // AI-authored extraction for changed parser nodes.
+    pub(crate) fn scan_nodes<'node>(
+        &self,
+        source: &str,
+        nodes: impl Iterator<Item = &'node Spanned<NParsedNode>>,
+        result: &mut SemanticedBuffer,
+    ) {
+        for node in nodes {
             match &node.content {
                 NParsedNode::Error(error) => result.diagnostics.push(Spanned::new(
                     SemanticError::NParsedError(error.clone()),

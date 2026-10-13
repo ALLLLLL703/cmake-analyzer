@@ -9,11 +9,39 @@ impl<'a> Lexer<'a> {
     }
 
     pub fn parse(&mut self) -> LexedBuffer {
+        let state = super::model::LexState {
+            position: self.buffer.current_byte_to_span(),
+            ..Default::default()
+        };
+        self.parse_until(state, |_| false)
+    }
+
+    // AI-authored resumable scan. Stop only between whole tokens/comments, before whitespace.
+    pub(super) fn parse_until(
+        &mut self,
+        state: super::model::LexState,
+        mut stop: impl FnMut(super::model::LexState) -> bool,
+    ) -> LexedBuffer {
         let mut result = LexedBuffer::default();
-        let mut left_parentheses_num: usize = 0;
-        let mut last_parentheses_loc: TextSpan = TextSpan::default();
-        let mut position = self.buffer.current_byte_to_span();
+        let mut left_parentheses_num = state.depth;
+        let mut last_parentheses_loc = state.last_opening;
+        let mut position = state.position;
+        let mut stopped = false;
         loop {
+            let state = super::model::LexState {
+                position,
+                depth: left_parentheses_num,
+                last_opening: last_parentheses_loc,
+            };
+            result.checkpoints.push(super::model::LexCheckpoint {
+                state,
+                tokens: result.lex.len(),
+                errors: result.errors.len(),
+            });
+            if stop(state) {
+                stopped = true;
+                break;
+            }
             if let Err(error) = self.skip_whitespace() {
                 result.add_error(error.content, error.span);
                 break;
@@ -117,7 +145,7 @@ impl<'a> Lexer<'a> {
             }
         }
 
-        if left_parentheses_num > 0 {
+        if !stopped && left_parentheses_num > 0 {
             result.add_error(LexError::UnclosedParentheses, last_parentheses_loc);
         }
         result

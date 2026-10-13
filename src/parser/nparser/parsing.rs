@@ -23,7 +23,15 @@ impl NParser {
         }
 
         // let mut left_parenths = Vec::<Spanned<LexContent>>::new();
-        while let Some(lex) = self.peek() {
+        while self.peek().is_some() {
+            self.parse_next(&mut result);
+        }
+        result
+    }
+
+    // AI-authored extraction: a closed command has no parser dependencies outside its tokens.
+    pub(super) fn parse_next(&mut self, result: &mut NParsedBuffer) {
+        if let Some(lex) = self.peek() {
             if let LexContent::Identifier = lex.content {
                 self.cursor.offset += 1;
                 let args_result = self.consume_function_args();
@@ -134,12 +142,10 @@ impl NParser {
                         result.add_node(NParsedNode::Error(NParsedError::UnArgBracket), lex.span);
                         self.cursor.offset += 1;
                     }
-                    _ => continue,
+                    _ => {}
                 }
             }
         }
-
-        result
     }
 
     pub fn peek(&self) -> Option<Spanned<LexContent>> {

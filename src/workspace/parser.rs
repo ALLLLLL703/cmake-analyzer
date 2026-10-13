@@ -1,13 +1,8 @@
 // AI-generated implementation.
 // review over
-use super::model::{DocumentSnapshot, Workspace};
-use crate::parser::{
-    build_struct::model::{AnalysisKey, BuildStructAnalyzer},
-    lexer::model::{Lexer, RawBuffer},
-    nparser::model::NParser,
-    semanticer::model::{FileId, Semanticer},
-};
-use std::{collections::HashMap, io, path::Path, sync::Arc};
+use super::model::{DocumentAnalysis, DocumentSnapshot, Workspace};
+use crate::parser::build_struct::model::AnalysisKey;
+use std::{io, path::Path, sync::Arc};
 
 impl Workspace {
     /// create the document_snapshot(the parsed) ,or_else just return the existing one
@@ -22,6 +17,7 @@ impl Workspace {
                 Ok(text) => text.into(),
                 Err(error) => {
                     self.document(path)?.snapshot = None;
+                    self.document(path)?.analysis = None;
                     return Err(error);
                 }
             },
@@ -43,6 +39,7 @@ impl Workspace {
             file: document.id,
             revision: document.revision,
         };
+        let previous = document.analysis.take();
         let permit = self
             .workers
             .clone()
@@ -53,15 +50,21 @@ impl Workspace {
         // Parse on a worker thread. Use the existing runtime to wait for cmake --version.
         let result = tokio::task::spawn_blocking(move || {
             let _permit = permit;
-            let parsed = NParser::new(Lexer::new(RawBuffer::new(&text)).parse()).parse(&text);
-            let mut analyzer = Semanticer::new(parsed, HashMap::new());
-            let semantics = runtime.block_on(analyzer.parse(&text, FileId { id: key.file }));
-            let build = BuildStructAnalyzer::new(&semantics, key).analyze();
-            Arc::new(DocumentSnapshot {
+            let analysis = runtime.block_on(async {
+                if let Some(mut analysis) = previous {
+                    analysis.update(text.clone(), key).await;
+                    analysis
+                } else {
+                    DocumentAnalysis::new(text.clone(), key).await
+                }
+            });
+            let snapshot = Arc::new(DocumentSnapshot {
                 text,
-                semantics,
-                build,
-            })
+                semantics: analysis.semantics.buffer.clone(),
+                build: analysis.build.buffer.clone(),
+                work: analysis.work(),
+            });
+            (snapshot, analysis)
         })
         .await
         .map_err(io::Error::other)?;
@@ -69,8 +72,9 @@ impl Workspace {
         if document.revision != key.revision {
             return Err(io::Error::other("Obsolete analysis result"));
         }
-        document.snapshot = Some(result.clone());
-        Ok(result)
+        document.analysis = Some(result.1);
+        document.snapshot = Some(result.0.clone());
+        Ok(result.0)
     }
 
     /// Parse pending changes; rebuild this project's graph only when its inputs changed.
@@ -80,19 +84,25 @@ impl Workspace {
         let rebuild = dirty
             .iter()
             .any(|path| *path == self.root.file || self.dependencies.contains(path));
+        self.graph_rebuilt = false;
+        self.reused_invocations = 0;
         for path in &dirty {
-            if self
-                .documents
-                .get(path)
-                .is_some_and(|doc| doc.overlay.is_some())
-            {
+            if self.documents.contains_key(path) {
+                let overlay = self
+                    .documents
+                    .get(path)
+                    .is_some_and(|doc| doc.overlay.is_some());
                 if let Err(error) = self.ensure_snapshot(path).await {
-                    self.dirty.extend(dirty.iter().cloned());
-                    return Err(error);
+                    if overlay {
+                        self.dirty.extend(dirty.iter().cloned());
+                        return Err(error);
+                    }
+                    self.graph_invalidated = true;
                 }
             }
         }
-        if rebuild {
+        if rebuild && !self.refresh_graph_snapshots(&dirty) {
+            self.graph_rebuilt = true;
             let root = self.root.clone();
             let graph = self.build_graph(&root).await;
             // Replace the set: a removed include must stop triggering a rebuild.
@@ -105,11 +115,13 @@ impl Workspace {
                 self.dependencies.extend(edge.resolved.iter().cloned());
             }
             self.graph = Some(graph);
+            self.graph_invalidated = false;
         }
         self.release_unused_snapshots();
         Ok(())
     }
     pub fn refresh_root(&mut self) {
+        self.graph_invalidated = true;
         self.dirty.insert(self.root.file.clone());
     }
 }

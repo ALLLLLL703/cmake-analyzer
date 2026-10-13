@@ -17,10 +17,30 @@ pub struct Lexer<'a> {
     pub buffer: RawBuffer<'a>,
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct LexedBuffer {
     pub lex: Vec<Spanned<LexContent>>,
     pub errors: Vec<Spanned<LexError>>,
+    pub(super) checkpoints: Vec<LexCheckpoint>,
+}
+
+// AI-authored incremental state; checkpoints are outside complete lexical units.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(super) struct LexState {
+    pub position: TextSpan,
+    pub depth: usize,
+    pub last_opening: TextSpan,
+}
+#[derive(Clone, Copy, Debug)]
+pub(super) struct LexCheckpoint {
+    pub state: LexState,
+    pub tokens: usize,
+    pub errors: usize,
+}
+pub struct IncrementalLexer {
+    pub source: std::sync::Arc<str>,
+    pub buffer: LexedBuffer,
+    pub work: crate::model::incremental::IncrementalWork,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

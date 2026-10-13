@@ -42,6 +42,7 @@ impl Workspace {
                     revision: 0,
                     overlay: None,
                     snapshot: None,
+                    analysis: None,
                 },
             );
         }
@@ -150,6 +151,7 @@ impl Workspace {
                 && !self.dependencies.contains(path)
             {
                 document.snapshot = None;
+                document.analysis = None;
             }
         }
     }

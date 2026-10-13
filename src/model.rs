@@ -1,4 +1,6 @@
 mod span;
+// AI-authored incremental source mapping.
+pub mod incremental;
 pub mod trait1;
 
 /// Half-open UTF-8 byte range; row/column locate its start (zero-based).
