@@ -44,6 +44,10 @@ owo-colors = "4.4.0"
 tokio = { version = "1.53.1", features = ["full", "io-uring"] }
 
 [dependencies]
+lspally = { path = "crates/lspally" }
+serde_json.workspace = true
+# Reuse the URI parser/percent codec already used by lsp-types.
+fluent-uri = "0.1.4"
 clap.workspace = true
 owo-colors.workspace = true
 tokio.workspace = true

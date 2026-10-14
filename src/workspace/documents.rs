@@ -9,7 +9,7 @@ use std::{
 
 // Clean '.' and '..' without reading disk, so new editor files also work.
 // Different symlink paths remain different file IDs.
-pub(super) fn absolute(path: &Path) -> io::Result<PathBuf> {
+pub(crate) fn absolute(path: &Path) -> io::Result<PathBuf> {
     let path = if path.is_absolute() {
         path.to_owned()
     } else {

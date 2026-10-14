@@ -120,6 +120,28 @@ impl Workspace {
         self.release_unused_snapshots();
         Ok(())
     }
+    /// Analyze pending local documents without traversing a project dependency graph.
+    /// Intended for standalone file Workspaces; project callers should use flush().
+    pub async fn flush_documents(&mut self) -> io::Result<()> {
+        let dirty = std::mem::take(&mut self.dirty);
+        for path in &dirty {
+            if self.documents.contains_key(path) {
+                if let Err(error) = self.ensure_snapshot(path).await {
+                    self.dirty.extend(dirty.iter().cloned());
+                    return Err(error);
+                }
+            }
+        }
+        Ok(())
+    }
+    /// Load one overlay/disk snapshot without adding the file to the dependency graph.
+    pub async fn load_snapshot(
+        &mut self,
+        path: impl AsRef<Path>,
+    ) -> io::Result<Arc<DocumentSnapshot>> {
+        let path = super::absolute(path.as_ref())?;
+        self.ensure_snapshot(&path).await
+    }
     pub fn refresh_root(&mut self) {
         self.graph_invalidated = true;
         self.dirty.insert(self.root.file.clone());
