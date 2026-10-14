@@ -4,7 +4,7 @@ use cmake_analyzer::cli::{self, Args};
 use std::process::Stdio;
 
 #[test]
-fn transport_flags_and_toml_placeholder_are_parsed() {
+fn transport_flags_and_toml_path_are_parsed() {
     assert!(Args::try_parse_from(["cmake-analyzer", "--stdio", "--unix-socket", "x"]).is_err());
     let args = Args::try_parse_from([
         "cmake-analyzer",
@@ -20,12 +20,16 @@ fn transport_flags_and_toml_placeholder_are_parsed() {
     assert!(args.config.is_some());
 }
 #[tokio::test]
-async fn configuration_placeholder_fails_explicitly() {
-    let args = Args::try_parse_from(["cmake-analyzer", "--config", "test.toml"]).unwrap();
+async fn missing_explicit_configuration_fails() {
+    let directory = super::session::Project::new().await;
+    let path = directory.0.join("missing.toml");
+    let args =
+        Args::try_parse_from(["cmake-analyzer", "--config", path.to_str().unwrap()]).unwrap();
     assert_eq!(
         cli::run(args).await.unwrap_err().kind(),
-        std::io::ErrorKind::Unsupported
+        std::io::ErrorKind::NotFound
     );
+    directory.remove().await;
 }
 #[tokio::test]
 async fn stdio_eof_emits_no_banner() {

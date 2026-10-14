@@ -9,6 +9,7 @@ trait = source.split("pub trait ILanguageServer", 1)[1].split("#[derive(Debug)]"
 methods = re.findall(r"fn (\w+)\(\s*&self,\s*context: Context,\s*params: (.*?)\s*\) -> impl Future<Output = ServerResult<(.*?)>> \+ Send;", trait, re.S)
 handlers = {
     "initialize": "self.initialize_server(context, params).await",
+    "custom_request": "self.custom_server_request(context, params).await",
     "initialized": "let _ = params; self.start(context)",
     "shutdown": "let _ = (context, params); self.stop().await",
     "exit": "let _ = (context, params); self.stop().await",

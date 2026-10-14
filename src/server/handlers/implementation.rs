@@ -554,8 +554,7 @@ impl ILanguageServer for CmakeAnalyzer {
         context: Context,
         params: Extension,
     ) -> ServerResult<serde_json::Value> {
-        let _ = (context, params);
-        Err(ServerError::unsupported())
+        self.custom_server_request(context, params).await
     }
     async fn custom_notification(&self, context: Context, params: Extension) -> ServerResult<()> {
         let _ = (context, params);

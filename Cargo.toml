@@ -51,3 +51,6 @@ fluent-uri = "0.1.4"
 clap.workspace = true
 owo-colors.workspace = true
 tokio.workspace = true
+serde = { workspace = true, features = ["derive"] }
+toml = { version = "1.1.8", default-features = false, features = ["parse", "serde", "std"] }
+shell-words = "1.1.1"

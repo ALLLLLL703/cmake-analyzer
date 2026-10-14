@@ -48,11 +48,25 @@ impl CmakeAnalyzer {
             .and_then(|caps| caps.document_symbol)
             .and_then(|caps| caps.hierarchical_document_symbol_support)
             .unwrap_or(false);
+        let mut config = crate::config::ConfigStore::load(self.options.config.clone())
+            .await
+            .map_err(internal)?;
+        for entry in &entries {
+            config
+                .for_directory(entry.parent().unwrap_or(&self.options.start_directory))
+                .await
+                .map_err(internal)?;
+        }
+        config
+            .for_directory(&self.options.start_directory)
+            .await
+            .map_err(internal)?;
         let mut state = self
             .state
             .lock()
             .map_err(|_| ServerError::new(-32603, "Server state poisoned"))?;
         state.roots = entries;
+        state.config = Some(config);
         state.hierarchical = hierarchical;
         Ok(InitializeResult {
             capabilities: ServerCapabilities {

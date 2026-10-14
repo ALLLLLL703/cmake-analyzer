@@ -76,6 +76,8 @@ impl Service {
             ServiceCommand::Folders(event) => {
                 for folder in event.removed {
                     let path = uri::to_path(&folder.uri)?;
+                    self.roots
+                        .retain(|root| root.parent() != Some(path.as_path()));
                     self.projects.retain(|project| {
                         project.standalone
                             || project.workspace.root().file.parent() != Some(path.as_path())
@@ -84,7 +86,8 @@ impl Service {
                 for folder in event.added {
                     let path = uri::to_path(&folder.uri)?;
                     if let Some(root) = roots::find_project(&path).await.map_err(internal)? {
-                        self.add_project(root, false)?;
+                        self.add_project(root.clone(), false, None).await?;
+                        self.roots.insert(root);
                     }
                 }
                 let paths: Vec<_> = self.documents.keys().cloned().collect();
@@ -92,7 +95,7 @@ impl Service {
                     self.ensure_owners(&path).await?;
                 }
             }
-            ServiceCommand::Symbols { .. } => {
+            ServiceCommand::Symbols { .. } | ServiceCommand::ReloadConfig { .. } => {
                 return Err(ServerError::new(-32603, "Query reached edit handler"));
             }
         }

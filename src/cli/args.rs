@@ -19,8 +19,7 @@ pub struct Args {
     /// Explicit project directory or CMakeLists.txt;
     #[arg(long = "root", value_name = "PATH")]
     pub roots: Vec<PathBuf>,
-    /// Reserved TOML path; loading is not implemented. Future defaults:
-    /// ~/.config/cmake-analyzer/cmake-analyzer.toml and <root>/.cmake-analyzer.toml.
+    /// the config path
     #[arg(long, value_name = "TOML")]
     pub config: Option<PathBuf>,
 }

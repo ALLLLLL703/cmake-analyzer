@@ -11,9 +11,23 @@ impl Service {
         let mut inputs = Vec::with_capacity(self.documents.len());
         for (path, document) in &self.documents {
             let owners = self.owners(path);
+            let enabled = owners
+                .iter()
+                .any(|owner| self.projects[*owner].settings.diagnostics.enable);
+            if !enabled
+                && self
+                    .published
+                    .get(path)
+                    .is_none_or(|previous| !previous.enabled)
+            {
+                continue;
+            }
             let mut snapshot = None;
             let mut extra = Vec::new();
             for owner in owners {
+                if !self.projects[owner].settings.diagnostics.enable {
+                    continue;
+                }
                 let workspace = &self.projects[owner].workspace;
                 if snapshot.is_none() {
                     snapshot = workspace.snapshot(path).map_err(internal)?;
@@ -50,6 +64,7 @@ impl Service {
             }
             let key = ReportKey {
                 version: document.version,
+                enabled,
                 snapshot: snapshot.as_ref().map(Arc::downgrade),
                 extra,
             };
@@ -104,6 +119,9 @@ impl Service {
         let owner = *owners
             .first()
             .ok_or_else(|| ServerError::new(-32603, "Document has no Workspace"))?;
+        if !self.projects[owner].settings.document_symbols.enable {
+            return Ok(None);
+        }
         let snapshot = self.projects[owner]
             .workspace
             .load_snapshot(&path)
@@ -127,7 +145,9 @@ fn convert_reports(
     inputs
         .into_iter()
         .map(|input| {
-            let mut items = if let Some(snapshot) = &input.snapshot {
+            let mut items = if !input.key.enabled {
+                Vec::new()
+            } else if let Some(snapshot) = &input.snapshot {
                 let mut items = diagnostics::snapshot_diagnostics(snapshot, encoding)?;
                 let index = TextIndex::new(&snapshot.text, encoding);
                 for (span, message) in &input.key.extra {

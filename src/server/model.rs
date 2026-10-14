@@ -1,5 +1,8 @@
 // AI-authored server and service models.
-use crate::workspace::model::{DocumentSnapshot, Workspace};
+use crate::{
+    config::{ConfigSources, ConfigStore, Settings},
+    workspace::model::{DocumentSnapshot, Workspace},
+};
 use lspally::server::model::*;
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -15,11 +18,13 @@ use tokio::{
 pub struct ServerOptions {
     pub roots: Vec<PathBuf>,
     pub start_directory: PathBuf,
+    pub config: ConfigSources,
 }
 impl ServerOptions {
     pub fn new(start_directory: PathBuf) -> Self {
         Self {
             roots: Vec::new(),
+            config: ConfigSources::new(start_directory.clone()),
             start_directory,
         }
     }
@@ -42,6 +47,7 @@ impl CmakeAnalyzer {
 pub(super) struct ServiceState {
     pub roots: Vec<PathBuf>,
     pub hierarchical: bool,
+    pub config: Option<ConfigStore>,
     pub service: Option<ServiceHandle>,
 }
 pub(super) struct ServiceHandle {
@@ -60,11 +66,16 @@ pub(super) enum ServiceCommand {
     Close(Uri),
     Save(DidSaveTextDocumentParams),
     Folders(WorkspaceFoldersChangeEvent),
+    ReloadConfig {
+        path: Option<PathBuf>,
+        reply: oneshot::Sender<ServerResult<usize>>,
+    },
     Symbols {
         uri: Uri,
         reply: oneshot::Sender<ServerResult<Option<DocumentSymbolResponse>>>,
     },
 }
+#[derive(Clone)]
 pub(super) struct OpenDocument {
     pub uri: Uri,
     pub version: i32,
@@ -72,12 +83,16 @@ pub(super) struct OpenDocument {
 }
 pub(super) struct Project {
     pub workspace: Workspace,
+    pub settings: Arc<Settings>,
+    pub bindings: BTreeSet<PathBuf>,
     pub standalone: bool,
     pub dirty: bool,
     pub members: BTreeSet<PathBuf>,
     pub overlays: BTreeMap<PathBuf, i32>,
 }
 pub(super) struct Service {
+    pub config: ConfigStore,
+    pub roots: BTreeSet<PathBuf>,
     pub projects: Vec<Project>,
     pub documents: BTreeMap<PathBuf, OpenDocument>,
     pub clears: Vec<Uri>,
@@ -88,6 +103,7 @@ pub(super) struct Service {
 }
 pub(super) struct ReportKey {
     pub version: i32,
+    pub enabled: bool,
     // Weak identity does not retain obsolete snapshots just for publication caching.
     pub snapshot: Option<std::sync::Weak<DocumentSnapshot>>,
     pub extra: Vec<(crate::model::TextSpan, String)>,
@@ -95,6 +111,7 @@ pub(super) struct ReportKey {
 impl ReportKey {
     pub fn same(&self, other: &Self) -> bool {
         self.version == other.version
+            && self.enabled == other.enabled
             && self.extra == other.extra
             && match (&self.snapshot, &other.snapshot) {
                 (Some(a), Some(b)) => a.ptr_eq(b),

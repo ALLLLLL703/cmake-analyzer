@@ -6,12 +6,15 @@ use tokio::sync::mpsc;
 
 pub(super) async fn run(
     roots: Vec<std::path::PathBuf>,
+    config: crate::config::ConfigStore,
     context: Context,
     hierarchical: bool,
     mut receiver: mpsc::Receiver<ServiceCommand>,
     stop: Cancellation,
 ) {
     let mut service = Service {
+        roots: roots.iter().cloned().collect(),
+        config,
         projects: Vec::new(),
         documents: BTreeMap::new(),
         clears: Vec::new(),
@@ -21,7 +24,7 @@ pub(super) async fn run(
         hierarchical,
     };
     for root in roots {
-        if let Err(error) = service.add_project(root, false) {
+        if let Err(error) = service.add_project(root, false, None).await {
             eprintln!("{error}");
         }
     }
@@ -45,7 +48,10 @@ pub(super) async fn run(
             let Some(current) = command.take() else {
                 break;
             };
-            if matches!(current, ServiceCommand::Symbols { .. }) {
+            if matches!(
+                current,
+                ServiceCommand::Symbols { .. } | ServiceCommand::ReloadConfig { .. }
+            ) {
                 query = Some(current);
                 break;
             }
@@ -66,11 +72,16 @@ pub(super) async fn run(
         if stop.is_cancelled() {
             return;
         }
-        if let Some(ServiceCommand::Symbols { uri, reply }) = query {
-            if !reply.is_closed() {
+        match query {
+            Some(ServiceCommand::Symbols { uri, reply }) if !reply.is_closed() => {
                 let result = service.symbols(uri).await;
                 let _ = reply.send(result);
             }
+            Some(ServiceCommand::ReloadConfig { path, reply }) if !reply.is_closed() => {
+                let result = service.reload_config(path).await;
+                let _ = reply.send(result);
+            }
+            _ => {}
         }
         if pending.is_none() {
             pending = receiver.try_recv().ok();

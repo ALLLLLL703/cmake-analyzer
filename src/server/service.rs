@@ -1,4 +1,5 @@
 // AI-authored bounded Workspace service.
+mod configuration;
 mod documents;
 mod projects;
 mod reports;
@@ -62,8 +63,13 @@ impl CmakeAnalyzer {
         let stop = Cancellation::default();
         let roots = std::mem::take(&mut state.roots);
         let hierarchical = state.hierarchical;
+        let config = state
+            .config
+            .take()
+            .ok_or_else(|| ServerError::new(-32002, "Server is not initialized"))?;
         let task = tokio::spawn(runtime::run(
             roots,
+            config,
             context,
             hierarchical,
             receiver,

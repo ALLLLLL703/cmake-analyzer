@@ -11,19 +11,49 @@ use std::{
 };
 
 impl Service {
-    pub(super) fn add_project(&mut self, entry: PathBuf, standalone: bool) -> ServerResult<usize> {
+    pub(super) async fn add_project(
+        &mut self,
+        entry: PathBuf,
+        standalone: bool,
+        binary: Option<PathBuf>,
+    ) -> ServerResult<usize> {
         if let Some(index) = self.projects.iter().position(|project| {
-            project.workspace.root().file == entry && project.standalone == standalone
+            project.workspace.root().file == entry
+                && project.standalone == standalone
+                && project.workspace.root().binary_directory == binary
         }) {
             return Ok(index);
         }
         if self.projects.len() >= 32 {
             return Err(ServerError::new(-32000, "Workspace limit (32) reached"));
         }
-        let workspace = Workspace::new(&entry, None).map_err(internal)?;
+        let directory = entry
+            .parent()
+            .unwrap_or(&self.config.sources.cwd)
+            .to_owned();
+        let settings = self
+            .config
+            .for_directory(&directory)
+            .await
+            .map_err(internal)?;
+        let mut workspace = Workspace::new(&entry, binary).map_err(internal)?;
+        workspace.set_module_paths(if settings.modules.enable {
+            settings.modules.search_paths.clone()
+        } else {
+            Vec::new()
+        });
+        workspace
+            .set_builtin_module_directory(if settings.modules.enable {
+                settings.modules.builtin_directory.clone()
+            } else {
+                None
+            })
+            .map_err(internal)?;
         let index = self.projects.len();
         self.projects.push(Project {
             workspace,
+            settings,
+            bindings: BTreeSet::new(),
             standalone,
             dirty: !standalone,
             members: BTreeSet::from([entry]),
@@ -32,6 +62,16 @@ impl Service {
         Ok(index)
     }
     pub(super) fn owners(&self, path: &Path) -> Vec<usize> {
+        let bound: Vec<_> = self
+            .projects
+            .iter()
+            .enumerate()
+            .filter(|(_, project)| project.bindings.contains(path))
+            .map(|(index, _)| index)
+            .collect();
+        if !bound.is_empty() {
+            return bound;
+        }
         let dependencies: Vec<_> = self
             .projects
             .iter()
@@ -48,6 +88,11 @@ impl Service {
             .enumerate()
             .filter(|(_, p)| {
                 !p.standalone
+                    && p.workspace
+                        .root()
+                        .file
+                        .file_name()
+                        .is_some_and(|name| name == "CMakeLists.txt")
                     && p.workspace
                         .root()
                         .file
@@ -68,14 +113,47 @@ impl Service {
     }
     pub(super) async fn ensure_owners(&mut self, path: &Path) -> ServerResult<Vec<usize>> {
         let owners = self.owners(path);
+        if owners
+            .iter()
+            .any(|owner| self.projects[*owner].bindings.contains(path))
+        {
+            return Ok(owners);
+        }
+        let discovered = if let Some(owner) = owners.first() {
+            Some(self.projects[*owner].workspace.root().file.clone())
+        } else {
+            roots::find_project(path).await.map_err(internal)?
+        };
+        let directory = discovered
+            .as_deref()
+            .and_then(Path::parent)
+            .or_else(|| path.parent())
+            .unwrap_or(&self.config.sources.cwd)
+            .to_owned();
+        let settings = self
+            .config
+            .for_directory(&directory)
+            .await
+            .map_err(internal)?;
+        if let Some(services) = settings.interpreter_commands.get(path) {
+            let index = self
+                .add_project(services.entry(), false, services.binary_directory())
+                .await?;
+            self.projects[index].bindings.insert(path.to_owned());
+            return Ok(vec![index]);
+        }
         if !owners.is_empty() {
             return Ok(owners);
         }
-        let (root, standalone) = match roots::find_project(path).await.map_err(internal)? {
+        let (root, standalone) = match discovered {
             Some(root) => (root, false),
             None => (path.to_owned(), true),
         };
-        Ok(vec![self.add_project(root, standalone)?])
+        let index = self.add_project(root.clone(), standalone, None).await?;
+        if !standalone {
+            self.roots.insert(root);
+        }
+        Ok(vec![index])
     }
     pub(super) fn sync_overlays(&mut self) -> ServerResult<()> {
         let ownership: BTreeMap<_, _> = self

@@ -49,7 +49,9 @@ pub struct Session {
 }
 impl Session {
     pub async fn start(start: &Path, folders: Vec<Value>, nested: bool) -> Self {
-        let server = CmakeAnalyzer::new(ServerOptions::new(start.to_owned()));
+        let mut options = ServerOptions::new(start.to_owned());
+        options.config.user_file = None;
+        let server = CmakeAnalyzer::new(options);
         let (client, stream) = tokio::io::duplex(65536);
         let (reader, writer) = tokio::io::split(stream);
         let task = tokio::spawn(async move {
