@@ -883,6 +883,7 @@ fn variable(name: &str) -> SemanticVariable {
     SemanticVariable {
         name: name.to_owned(),
         init_value: String::new(),
+        first_write: None,
         scope: None,
         changing: Vec::new(),
     }

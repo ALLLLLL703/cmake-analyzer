@@ -218,6 +218,7 @@ impl Semanticer {
             .map(|name| SemanticVariable {
                 name,
                 init_value: String::new(),
+                first_write: None,
                 scope: None,
                 changing: Vec::new(),
             })

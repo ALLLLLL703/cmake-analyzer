@@ -61,7 +61,7 @@ All semantic arena models are defined in `src/parser/semanticer/model.rs`:
 - `SemanticCommandRepresent`: command/name ranges, original argument forms, closure state, block/scope IDs, and an optional shared `Arc<CommandSchema>`.
 - `SemanticBlock`: kind, direct command IDs including its own opening/closing commands, child block IDs, parent ID, closure state, and full range. Descendant commands are not duplicated in ancestor membership lists.
 - `SemanticScope`: independent scope record associated with a block by `BlockId`, with an optional parent `ScopeId`.
-- `SemanticVariable`: name, initial-value placeholder, optional scope ID, and command IDs recording possible writes. Global variables use `None`; scoped variables are distinguished by `(scope, name)`.
+- `SemanticVariable`: name, initial-value placeholder, optional scope ID, and optional `first_write` range for the earliest possible source write. `VariableChanging` stores both command ID and raw Out-argument span; distinct output arguments in one command retain distinct locations. Spans belong to the owning SemanticedBuffer file/snapshot and include quote/bracket delimiters. Unwritten builtin/specialized descriptors have no source location. These are possible writes, not proven runtime initialization. Global scopes use `None`; scoped variables are distinguished by `(scope, name)`.
 - `SemanticSymbol`: a range and an ID reference to a top-level block or command. It does not duplicate commands, blocks, or their children.
 
 IDs are indices into one analysis snapshot, not persistent identities across parses.
@@ -76,7 +76,7 @@ IDs are indices into one analysis snapshot, not persistent identities across par
 4. `scan_blocks` in `parsing/block.rs`: recognize `if`, `while`, `foreach`, `function`, `macro`, and `block` pairs using builtin keyword commands. Diagnose missing or unexpected ends, invalid branch placement, repeated `else`, and `elseif` after `else`. An ancestor end can recover past unfinished inner blocks; those inner blocks remain unclosed and receive diagnostics.
 5. `scan_scopes` in `parsing/scope.rs`: establish function scopes and statically identified variable scopes from `block()`. Plain `block()` creates a variable scope; `SCOPE_FOR POLICIES` alone does not. Macro and control-flow blocks inherit their surrounding variable scope. Opening declarations belong to the surrounding scope; their bodies belong to the newly established scope.
 6. `detect_specialized_variables` in `parsing/templates.rs`: generate concrete builtin descriptors from literal triggers, remove unresolved templates from the result, and merge names without duplicates. The public method returns `Vec<SemanticVariable>` and remains usable after parsing.
-7. `track_variable_changes` in `parsing/outputs.rs`: traverse semantic commands only, locate schema `Out` arguments, and record writes in the owning scope. It does not revisit nparser nodes or source text.
+7. `track_variable_changes` in `parsing/outputs.rs`: traverse semantic commands only, locate schema `Out` arguments, and record first/per-argument write spans in the owning scope. Incremental updates rebuild these locations from remapped arguments, including reused commands. It does not revisit nparser nodes or source text.
 8. `collect_symbols` in `parsing/symbols.rs`: assemble root block/command references in source order. Nested members remain accessible through the block arena.
 
 ## Schema and output matching

@@ -99,6 +99,7 @@ impl Semanticer {
                         result.variables.push(SemanticVariable {
                             name: name.to_owned(),
                             init_value: String::new(),
+                            first_write: None,
                             scope: command.scope,
                             changing: Vec::new(),
                         });
@@ -106,13 +107,16 @@ impl Semanticer {
                         id
                     }
                 };
-                if !result.variables[variable]
+                let variable = &mut result.variables[variable];
+                variable.first_write.get_or_insert(argument.span);
+                if !variable
                     .changing
                     .iter()
-                    .any(|change| change.command.id == command.id.id)
+                    .any(|change| change.command == command.id && change.span == argument.span)
                 {
-                    result.variables[variable].changing.push(VariableChanging {
-                        command: command.id.clone(),
+                    variable.changing.push(VariableChanging {
+                        command: command.id,
+                        span: argument.span,
                     });
                 }
                 if let Some(arg) = command.args.get_mut(index) {

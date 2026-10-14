@@ -4,6 +4,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
+/// absolute the path
 pub(super) fn normalize(path: &Path) -> io::Result<PathBuf> {
     crate::workspace::absolute(path)
 }

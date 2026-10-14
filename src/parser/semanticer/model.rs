@@ -76,6 +76,9 @@ pub struct SemanticVariable {
     // AI-generated addition.
     pub name: String,
     pub init_value: String,
+    /// First possible source write, not proof of runtime initialization.
+    /// Raw variable-name argument range in the owning SemanticedBuffer; absent for unwritten builtins.
+    pub first_write: Option<TextSpan>,
     // AI-generated change.
     pub scope: Option<ScopeId>,
     pub changing: Vec<VariableChanging>,
@@ -84,6 +87,8 @@ pub struct SemanticVariable {
 #[derive(Clone, Debug)]
 pub struct VariableChanging {
     pub command: CommandId,
+    /// Raw Out argument range, including any quote/bracket delimiters.
+    pub span: TextSpan,
 }
 #[derive(Clone, Debug)]
 pub struct SemanticCommandRepresent {
