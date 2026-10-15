@@ -113,6 +113,7 @@ fn build_layer(
     }
     let mut values = Vec::new();
     let mut event_values = Vec::with_capacity(trace.events.len());
+    let mut source_commands = Vec::with_capacity(trace.events.len());
     let mut resolved_calls: BTreeMap<_, Vec<_>> = BTreeMap::new();
     let mut functions: Vec<RuntimeFunction> = Vec::new();
     let mut active = HashMap::new();
@@ -133,6 +134,7 @@ fn build_layer(
                 .filter(|ids| ids.len() == 1)
                 .map(|ids| &document.semantics.commands[ids[0].id as usize])
         });
+        source_commands.push(command.map(|command| command.id));
         let location = command
             .zip(document)
             .map(|(command, document)| ReferenceLocation {
@@ -140,6 +142,7 @@ fn build_layer(
                 command: command.id,
                 span: command.span,
                 kind: ReferenceKind::Write,
+                possible_value: None,
             });
         if !active.contains_key(&event.command)
             && matches!(event.command.as_str(), "function" | "macro")
@@ -262,7 +265,13 @@ fn build_layer(
         }
         event_values.push(value_start..values.len());
     }
+    for value in &mut values {
+        if let Some(location) = &mut value.location {
+            location.possible_value = value.possible_value.clone();
+        }
+    }
     Ok(RuntimeLayer {
+        source_commands,
         event_values,
         resolved_calls,
         trace,

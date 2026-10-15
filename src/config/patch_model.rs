@@ -28,6 +28,7 @@ pub(super) struct LimitsPatch {
 #[derive(Default, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub(super) struct RuntimePatch {
+    pub mode: Option<RuntimeModePatch>,
     pub enable: Option<bool>,
     pub executable: Option<PathBuf>,
     pub build_directory: Option<PathBuf>,
@@ -35,6 +36,12 @@ pub(super) struct RuntimePatch {
     pub timeout_seconds: Option<std::num::NonZeroU64>,
     pub max_output_bytes: Option<NonZeroUsize>,
     pub max_view_bytes: Option<NonZeroUsize>,
+}
+#[derive(Clone, Copy, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub(super) enum RuntimeModePatch {
+    Action,
+    OnSave,
 }
 #[derive(Default, Deserialize)]
 #[serde(default, deny_unknown_fields)]

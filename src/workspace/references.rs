@@ -72,6 +72,9 @@ fn analyze(graph: &RootGraph) -> (ReferenceIndex, Vec<VariableValueAt>) {
         }
     }
     let mut index = collector.finish();
+    for value in &mut values.observations {
+        value.location.possible_value = value.possible_value.clone();
+    }
     let mut possible: HashMap<_, Option<crate::parser::semanticer::model::PossibleValue>> =
         HashMap::new();
     for value in &values.observations {
@@ -80,6 +83,7 @@ fn analyze(graph: &RootGraph) -> (ReferenceIndex, Vec<VariableValueAt>) {
                 value.location.file,
                 value.location.command,
                 value.name.as_str(),
+                value.location.kind == crate::parser::semanticer::model::ReferenceKind::Read,
             ))
             .and_modify(|previous| {
                 if *previous != value.possible_value {
@@ -89,8 +93,24 @@ fn analyze(graph: &RootGraph) -> (ReferenceIndex, Vec<VariableValueAt>) {
             .or_insert_with(|| value.possible_value.clone());
     }
     for variable in &mut index.variables {
+        for reference in &mut variable.references {
+            reference.possible_value = possible
+                .get(&(
+                    reference.file,
+                    reference.command,
+                    variable.name.as_str(),
+                    reference.kind == crate::parser::semanticer::model::ReferenceKind::Read,
+                ))
+                .cloned()
+                .flatten();
+        }
         let mut candidates = variable.references.iter().filter_map(|location| {
-            possible.get(&(location.file, location.command, variable.name.as_str()))
+            possible.get(&(
+                location.file,
+                location.command,
+                variable.name.as_str(),
+                location.kind == crate::parser::semanticer::model::ReferenceKind::Read,
+            ))
         });
         if let Some(first) = candidates.next() {
             if candidates.all(|value| value == first) {

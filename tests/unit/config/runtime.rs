@@ -55,3 +55,121 @@ async fn runtime_settings_layer_paths_and_reject_execution_mode_overrides() {
     }
     tokio::fs::remove_dir_all(root).await.unwrap();
 }
+#[tokio::test]
+async fn save_execution_requires_global_authority_and_project_settings_can_opt_out() {
+    use cmake_analyzer::config::RuntimeMode;
+    let root = std::env::temp_dir().join(format!(
+        "cmake-save-config-{}-{}",
+        std::process::id(),
+        super::NEXT.fetch_add(1, Ordering::Relaxed)
+    ));
+    tokio::fs::create_dir_all(&root).await.unwrap();
+    let project = root.join(".cmake-analyzer.toml");
+    let user = root.join("user.toml");
+    let mut sources = ConfigSources {
+        cwd: root.clone(),
+        user_file: Some(user.clone()),
+        explicit_file: None,
+    };
+    tokio::fs::write(&user, "[modules]\nenable=false\n")
+        .await
+        .unwrap();
+    tokio::fs::write(&project, "[runtime]\nmode='on_save'\n")
+        .await
+        .unwrap();
+    assert!(
+        ConfigStore::load(sources.clone())
+            .await
+            .unwrap()
+            .for_directory(&root)
+            .await
+            .unwrap_err()
+            .to_string()
+            .contains("requires user configuration")
+    );
+    tokio::fs::write(
+        &user,
+        "[modules]\nenable=false\n[runtime]\nmode='on_save'\n",
+    )
+    .await
+    .unwrap();
+    tokio::fs::write(&project, "").await.unwrap();
+    assert_eq!(
+        ConfigStore::load(sources.clone())
+            .await
+            .unwrap()
+            .for_directory(&root)
+            .await
+            .unwrap()
+            .runtime
+            .mode,
+        RuntimeMode::OnSave
+    );
+    tokio::fs::write(&project, "[runtime]\nmode='action'\n")
+        .await
+        .unwrap();
+    assert_eq!(
+        ConfigStore::load(sources.clone())
+            .await
+            .unwrap()
+            .for_directory(&root)
+            .await
+            .unwrap()
+            .runtime
+            .mode,
+        RuntimeMode::Action
+    );
+    tokio::fs::write(&project, "[runtime]\nenable=false\n")
+        .await
+        .unwrap();
+    assert!(
+        !ConfigStore::load(sources.clone())
+            .await
+            .unwrap()
+            .for_directory(&root)
+            .await
+            .unwrap()
+            .runtime
+            .enable
+    );
+    tokio::fs::write(
+        &user,
+        "[modules]\nenable=false\n[runtime]\nenable=false\nmode='on_save'\n",
+    )
+    .await
+    .unwrap();
+    tokio::fs::write(&project, "[runtime]\nenable=true\n")
+        .await
+        .unwrap();
+    assert_eq!(
+        ConfigStore::load(sources.clone())
+            .await
+            .unwrap()
+            .for_directory(&root)
+            .await
+            .unwrap()
+            .runtime
+            .mode,
+        RuntimeMode::Action
+    );
+    sources.user_file = None;
+    sources.explicit_file = Some(project.clone());
+    tokio::fs::write(
+        &project,
+        "[modules]\nenable=false\n[runtime]\nmode='on_save'\n",
+    )
+    .await
+    .unwrap();
+    assert_eq!(
+        ConfigStore::load(sources)
+            .await
+            .unwrap()
+            .for_directory(&root)
+            .await
+            .unwrap()
+            .runtime
+            .mode,
+        RuntimeMode::OnSave
+    );
+    tokio::fs::remove_dir_all(root).await.unwrap();
+}

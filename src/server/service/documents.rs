@@ -7,14 +7,19 @@ use lspally::server::model::*;
 
 impl Service {
     pub(super) async fn apply(&mut self, command: ServiceCommand) -> ServerResult<()> {
-        if matches!(
-            &command,
-            ServiceCommand::Change(_)
-                | ServiceCommand::Save(_)
-                | ServiceCommand::Close(_)
-                | ServiceCommand::Folders(_)
-        ) {
+        let affected = match &command {
+            ServiceCommand::Change(params) => Some(&params.text_document.uri),
+            ServiceCommand::Save(params) => Some(&params.text_document.uri),
+            ServiceCommand::Close(uri) => Some(uri),
+            _ => None,
+        };
+        if let Some(uri) = affected {
+            let path = uri::to_path(uri)?;
+            self.invalidate_runtime_file(&path);
+        }
+        if matches!(&command, ServiceCommand::Folders(_)) {
             self.invalidate_runtime();
+            self.saved_runs.clear();
         }
         match command {
             ServiceCommand::RuntimeRefresh => {}
@@ -63,6 +68,7 @@ impl Service {
             }
             ServiceCommand::Close(uri) => {
                 let path = uri::to_path(&uri)?;
+                self.saved_runs.retain(|_, saved| saved.file != path);
                 if let Some(document) = self.documents.remove(&path) {
                     for project in &mut self.projects {
                         if project.overlays.remove(&path).is_some() {
@@ -77,6 +83,25 @@ impl Service {
             }
             ServiceCommand::Save(params) => {
                 let path = uri::to_path(&params.text_document.uri)?;
+                if self.documents.contains_key(&path) {
+                    for owner in self.owners(&path) {
+                        let project = &self.projects[owner];
+                        if project.settings.runtime.enable
+                            && project.settings.runtime.mode == crate::config::RuntimeMode::OnSave
+                            && project.execution.is_some()
+                        {
+                            if let Some(mode) = &project.execution {
+                                self.saved_runs.insert(
+                                    project.workspace.root().file.clone(),
+                                    SavedRun {
+                                        file: path.clone(),
+                                        mode: mode.clone(),
+                                    },
+                                );
+                            }
+                        }
+                    }
+                }
                 // didChange is authoritative; clients were not asked to include save text.
                 for owner in self.owners(&path) {
                     self.projects[owner]
@@ -109,6 +134,7 @@ impl Service {
                 }
             }
             ServiceCommand::Symbols { .. }
+            | ServiceCommand::Hover { .. }
             | ServiceCommand::ReloadConfig { .. }
             | ServiceCommand::Actions { .. }
             | ServiceCommand::RunAction { .. } => {

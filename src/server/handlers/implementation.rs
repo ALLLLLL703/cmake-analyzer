@@ -34,8 +34,7 @@ impl ILanguageServer for CmakeAnalyzer {
         context: Context,
         params: HoverParams,
     ) -> ServerResult<Option<Hover>> {
-        let _ = (context, params);
-        Err(ServerError::unsupported())
+        self.hover_variable(context, params).await
     }
     async fn signature_help_request(
         &self,

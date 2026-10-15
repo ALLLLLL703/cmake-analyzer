@@ -2,9 +2,10 @@
 use super::{ArgSchema, ArgSchemaKind, CommandSchema, CommandSchemaFrom};
 use crate::parser::semanticer::model::{BuiltinCommand, CommandKind};
 use ArgSchemaKind::{
-    Action, BindValue, Boolean, Command, Condition, Expression, Integer, Language, List, Number,
-    Out, PackageName, Path, Property, String as Text, Target, TargetExe, TargetLib, TestName,
-    Unmodeled, Unset, Url, Value, Variable, Version,
+    Action, BindValue, Boolean, Command, Condition, Expression, InputDirectory, InputFile,
+    InputPath, Integer, Language, List, ModulePath, Number, Out, OutputPath, PackageName, Path,
+    Property, String as Text, Target, TargetExe, TargetLib, TestName, Unmodeled, Unset, Url, Value,
+    Variable, Version,
 };
 use std::{collections::HashMap, sync::LazyLock};
 
@@ -36,7 +37,7 @@ pub static BASE_SCHEMAS: LazyLock<Vec<CommandSchema>> = LazyLock::new(|| {
         (
             "add_custom_command",
             vec![choice(vec![
-                vec![k("OUTPUT"), some(Path), Unmodeled],
+                vec![k("OUTPUT"), some(OutputPath), Unmodeled],
                 vec![
                     k("TARGET"),
                     Target,
@@ -53,8 +54,8 @@ pub static BASE_SCHEMAS: LazyLock<Vec<CommandSchema>> = LazyLock::new(|| {
         (
             "add_subdirectory",
             vec![
-                Path,
-                optional(vec![Path]),
+                InputDirectory,
+                optional(vec![OutputPath]),
                 optional(vec![k("EXCLUDE_FROM_ALL")]),
             ],
         ),
@@ -72,7 +73,7 @@ pub static BASE_SCHEMAS: LazyLock<Vec<CommandSchema>> = LazyLock::new(|| {
                 ],
             ])],
         ),
-        ("aux_source_directory", vec![Path, Out]),
+        ("aux_source_directory", vec![InputDirectory, Out]),
         ("break", vec![]),
         ("build_command", vec![Out, Unmodeled]),
         ("build_name", vec![Out]),
@@ -93,8 +94,8 @@ pub static BASE_SCHEMAS: LazyLock<Vec<CommandSchema>> = LazyLock::new(|| {
         (
             "configure_file",
             vec![
-                Path,
-                Path,
+                InputFile,
+                OutputPath,
                 options(vec![
                     vec![k("COPYONLY")],
                     vec![k("ESCAPE_QUOTES")],
@@ -108,17 +109,17 @@ pub static BASE_SCHEMAS: LazyLock<Vec<CommandSchema>> = LazyLock::new(|| {
         ),
         (
             "create_test_sourcelist",
-            vec![Out, Path, some(Path), Unmodeled],
+            vec![Out, OutputPath, some(InputFile), Unmodeled],
         ),
         ("ctest_build", vec![Unmodeled]),
         ("ctest_configure", vec![Unmodeled]),
         ("ctest_coverage", vec![Unmodeled]),
         ("ctest_empty_binary_directory", vec![Path]),
         ("ctest_memcheck", vec![Unmodeled]),
-        ("ctest_read_custom_files", vec![some(Path)]),
+        ("ctest_read_custom_files", vec![some(InputDirectory)]),
         (
             "ctest_run_script",
-            vec![optional(vec![k("NEW_PROCESS")]), some(Path)],
+            vec![optional(vec![k("NEW_PROCESS")]), some(InputFile)],
         ),
         (
             "ctest_sleep",
@@ -134,7 +135,7 @@ pub static BASE_SCHEMAS: LazyLock<Vec<CommandSchema>> = LazyLock::new(|| {
         ("ctest_submit", vec![Unmodeled]),
         ("ctest_test", vec![Unmodeled]),
         ("ctest_update", vec![Unmodeled]),
-        ("ctest_upload", vec![k("FILES"), some(Path), Unmodeled]),
+        ("ctest_upload", vec![k("FILES"), some(InputFile), Unmodeled]),
         (
             "define_property",
             vec![
@@ -180,7 +181,7 @@ pub static BASE_SCHEMAS: LazyLock<Vec<CommandSchema>> = LazyLock::new(|| {
         ),
         ("find_path", vec![Out, Unmodeled]),
         ("find_program", vec![Out, Unmodeled]),
-        ("fltk_wrap_ui", vec![Target, some(Path)]),
+        ("fltk_wrap_ui", vec![Target, some(InputFile)]),
         (
             "foreach",
             vec![
@@ -247,7 +248,7 @@ pub static BASE_SCHEMAS: LazyLock<Vec<CommandSchema>> = LazyLock::new(|| {
         (
             "include",
             vec![
-                Path,
+                ModulePath,
                 options(vec![
                     vec![k("OPTIONAL")],
                     vec![k("RESULT_VARIABLE"), Out],
@@ -260,10 +261,13 @@ pub static BASE_SCHEMAS: LazyLock<Vec<CommandSchema>> = LazyLock::new(|| {
             vec![
                 optional(vec![one_of(&["AFTER", "BEFORE"])]),
                 optional(vec![k("SYSTEM")]),
-                many(Path),
+                many(InputDirectory),
             ],
         ),
-        ("include_external_msproject", vec![Target, Path, Unmodeled]),
+        (
+            "include_external_msproject",
+            vec![Target, InputFile, Unmodeled],
+        ),
         (
             "include_regular_expression",
             vec![Expression, optional(vec![Expression])],
@@ -281,10 +285,10 @@ pub static BASE_SCHEMAS: LazyLock<Vec<CommandSchema>> = LazyLock::new(|| {
             ]))],
         ),
         ("list", list_args(0)),
-        ("load_cache", vec![Path, Unmodeled]),
+        ("load_cache", vec![InputDirectory, Unmodeled]),
         ("load_command", vec![Command, some(Path)]),
         ("macro", vec![Command, many(Variable)]),
-        ("make_directory", vec![Path]),
+        ("make_directory", vec![OutputPath]),
         (
             "mark_as_advanced",
             vec![optional(vec![one_of(&["CLEAR", "FORCE"])]), some(Variable)],
@@ -314,10 +318,10 @@ pub static BASE_SCHEMAS: LazyLock<Vec<CommandSchema>> = LazyLock::new(|| {
                 ])]),
             ],
         ),
-        ("output_required_files", vec![Path, Path]),
+        ("output_required_files", vec![InputFile, OutputPath]),
         ("project", vec![Text, Unmodeled]),
-        ("qt_wrap_cpp", vec![Target, Out, some(Path)]),
-        ("qt_wrap_ui", vec![Target, Out, Out, some(Path)]),
+        ("qt_wrap_cpp", vec![Target, Out, some(InputFile)]),
+        ("qt_wrap_ui", vec![Target, Out, Out, some(InputFile)]),
         ("remove", vec![Variable, some(Value)]),
         ("remove_definitions", vec![many(Text)]),
         ("return", vec![]),
@@ -349,7 +353,7 @@ pub static BASE_SCHEMAS: LazyLock<Vec<CommandSchema>> = LazyLock::new(|| {
         ("set_property", vec![Unmodeled]),
         (
             "set_source_files_properties",
-            vec![some(Path), k("PROPERTIES"), pairs()],
+            vec![some(InputFile), k("PROPERTIES"), pairs()],
         ),
         (
             "set_target_properties",
@@ -368,7 +372,7 @@ pub static BASE_SCHEMAS: LazyLock<Vec<CommandSchema>> = LazyLock::new(|| {
                     vec![Expression],
                     vec![options(vec![
                         vec![k("REGULAR_EXPRESSION"), Expression],
-                        vec![k("FILES"), some(Path)],
+                        vec![k("FILES"), some(InputFile)],
                     ])],
                 ]),
             ],
@@ -388,7 +392,7 @@ pub static BASE_SCHEMAS: LazyLock<Vec<CommandSchema>> = LazyLock::new(|| {
                     optional(vec![k("SYSTEM")]),
                     optional(vec![one_of(&["AFTER", "BEFORE"])]),
                 ],
-                Path,
+                InputDirectory,
             ),
         ),
         ("target_link_libraries", vec![Target, Unmodeled]),
@@ -403,7 +407,10 @@ pub static BASE_SCHEMAS: LazyLock<Vec<CommandSchema>> = LazyLock::new(|| {
         ("variable_requires", vec![Variable, Out, some(Variable)]),
         ("variable_watch", vec![Variable, optional(vec![Command])]),
         ("while", vec![some(Condition)]),
-        ("write_file", vec![Path, Text, optional(vec![k("APPEND")])]),
+        (
+            "write_file",
+            vec![OutputPath, Text, optional(vec![k("APPEND")])],
+        ),
     ]
     .into_iter()
     .map(|(name, args)| make_schema(name, args))
@@ -413,7 +420,7 @@ pub static BASE_SCHEMAS: LazyLock<Vec<CommandSchema>> = LazyLock::new(|| {
 pub static CMAKE_3_ADDITIONS: LazyLock<Vec<(u32, CommandSchema)>> = LazyLock::new(|| {
     vec![
         (1, "target_compile_features", target_sections(vec![], Text)),
-        (1, "target_sources", target_sections(vec![], Path)),
+        (1, "target_sources", target_sections(vec![], InputFile)),
         (1, "string", string_args((3, 1))),
         (2, "continue", vec![]),
         (4, "string", string_args((3, 4))),
@@ -618,7 +625,11 @@ fn target_sections(prefix: Vec<ArgSchemaKind>, operand: ArgSchemaKind) -> Vec<Ar
     args
 }
 fn executable_args(modern: bool) -> Vec<ArgSchemaKind> {
-    let sources = if modern { many(Path) } else { some(Path) };
+    let sources = if modern {
+        many(InputFile)
+    } else {
+        some(InputFile)
+    };
     let mut signatures = vec![
         vec![
             flags(&["WIN32", "MACOSX_BUNDLE", "EXCLUDE_FROM_ALL"]),
@@ -633,9 +644,9 @@ fn executable_args(modern: bool) -> Vec<ArgSchemaKind> {
 }
 fn library_args(empty_sources: bool, interface_sources: bool) -> Vec<ArgSchemaKind> {
     let sources = if empty_sources {
-        many(Path)
+        many(InputFile)
     } else {
-        some(Path)
+        some(InputFile)
     };
     let imported = if empty_sources {
         one_of(&[
@@ -653,7 +664,7 @@ fn library_args(empty_sources: bool, interface_sources: bool) -> Vec<ArgSchemaKi
         vec![
             k("INTERFACE"),
             optional(vec![k("EXCLUDE_FROM_ALL")]),
-            many(Path),
+            many(InputFile),
         ]
     } else {
         vec![k("INTERFACE")]
@@ -686,7 +697,7 @@ fn file_args() -> Vec<ArgSchemaKind> {
     vec![choice(vec![
         vec![
             k("READ"),
-            Path,
+            InputFile,
             Out,
             options(vec![
                 vec![k("OFFSET"), Integer],
@@ -694,31 +705,38 @@ fn file_args() -> Vec<ArgSchemaKind> {
                 vec![k("HEX")],
             ]),
         ],
-        vec![one_of(&["WRITE", "APPEND"]), Path, many(Text)],
+        vec![one_of(&["WRITE", "APPEND"]), OutputPath, many(Text)],
         vec![
             one_of(&["MD5", "SHA1", "SHA224", "SHA256", "SHA384", "SHA512"]),
-            Path,
+            InputFile,
             Out,
         ],
-        vec![k("STRINGS"), Path, Out, Unmodeled],
+        vec![k("STRINGS"), InputFile, Out, Unmodeled],
         vec![one_of(&["GLOB", "GLOB_RECURSE"]), Out, Unmodeled],
         vec![
             one_of(&["REMOVE", "REMOVE_RECURSE", "MAKE_DIRECTORY"]),
             many(Path),
         ],
-        vec![one_of(&["RENAME"]), Path, Path],
+        vec![one_of(&["RENAME"]), InputPath, OutputPath],
         vec![
             one_of(&["COPY", "INSTALL"]),
-            some(Path),
+            some(InputPath),
             k("DESTINATION"),
-            Path,
+            OutputPath,
             Unmodeled,
         ],
         vec![k("RELATIVE_PATH"), Out, Path, Path],
         vec![one_of(&["TO_CMAKE_PATH", "TO_NATIVE_PATH"]), Path, Out],
-        vec![k("DOWNLOAD"), Url, Path, Unmodeled],
-        vec![k("UPLOAD"), Path, Url, Unmodeled],
-        vec![one_of(&["TIMESTAMP", "GENERATE"]), Unmodeled],
+        vec![k("DOWNLOAD"), Url, OutputPath, Unmodeled],
+        vec![k("UPLOAD"), InputFile, Url, Unmodeled],
+        vec![
+            k("GENERATE"),
+            k("OUTPUT"),
+            OutputPath,
+            choice(vec![vec![k("INPUT"), InputFile], vec![k("CONTENT"), Text]]),
+            Unmodeled,
+        ],
+        vec![k("TIMESTAMP"), Unmodeled],
         vec![Action, Unmodeled],
     ])]
 }

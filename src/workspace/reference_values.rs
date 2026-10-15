@@ -97,6 +97,7 @@ impl ValueReplay {
                         command: command.id,
                         span: arg.span,
                         kind: ReferenceKind::Write,
+                        possible_value: values.get(name, Some(dirs)),
                     },
                     scope: command.scope,
                     invocation: Some(invocation),

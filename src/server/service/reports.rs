@@ -39,6 +39,14 @@ impl Service {
                         resolved_calls.extend(calls);
                     }
                 }
+                let paths = &self.projects[owner].path_state;
+                for warning in paths
+                    .warnings
+                    .iter()
+                    .filter(|warning| warning.file == *path)
+                {
+                    extra.push((warning.span, 2, warning.message.clone()));
+                }
                 if let Some(graph) = workspace.root_graph() {
                     if let Some(visit) = graph.invocations.iter().find(|visit| visit.file == *path)
                     {
@@ -66,6 +74,11 @@ impl Service {
                         );
                     }
                     for diagnostic in &graph.diagnostics {
+                        let read_failure = diagnostic.kind
+                            == crate::workspace::model::WorkspaceDiagnosticKind::ReadFailure;
+                        if read_failure && paths.is_generated(&diagnostic.file) {
+                            continue;
+                        }
                         // Failed child reads carry the parent's source range, not a range in the missing child.
                         let origin = diagnostic
                             .source
@@ -84,7 +97,11 @@ impl Service {
                                     .source
                                     .as_ref()
                                     .map_or_default(|source| source.span),
-                                1,
+                                if read_failure && diagnostic.source.is_some() {
+                                    2
+                                } else {
+                                    1
+                                },
                                 if origin != &diagnostic.file {
                                     format!("{}: {}", diagnostic.file.display(), diagnostic.message)
                                 } else {

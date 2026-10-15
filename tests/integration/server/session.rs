@@ -51,6 +51,9 @@ impl Session {
     pub async fn start(start: &Path, folders: Vec<Value>, nested: bool) -> Self {
         let mut options = ServerOptions::new(start.to_owned());
         options.config.user_file = None;
+        Self::start_options(options, folders, nested).await
+    }
+    pub async fn start_options(options: ServerOptions, folders: Vec<Value>, nested: bool) -> Self {
         let server = CmakeAnalyzer::new(options);
         let (client, stream) = tokio::io::duplex(65536);
         let (reader, writer) = tokio::io::split(stream);

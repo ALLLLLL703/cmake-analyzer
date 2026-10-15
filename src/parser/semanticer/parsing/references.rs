@@ -5,10 +5,7 @@ use crate::{
     parser::{lexer::model::LexContent, semanticer::model::*},
 };
 
-pub(in crate::parser::semanticer) fn argument_name_span(
-    source: &str,
-    arg: &SemanticArg,
-) -> TextSpan {
+pub(crate) fn argument_name_span(source: &str, arg: &SemanticArg) -> TextSpan {
     let content = match arg.form {
         SemanticArgForm::Quoted => LexContent::StringLiteral,
         SemanticArgForm::Bracket => LexContent::BracketArgument,
@@ -20,6 +17,7 @@ pub(in crate::parser::semanticer) fn argument_name_span(
 }
 pub(super) fn scan_command(source: &str, file: FileId, command: &mut SemanticCommandRepresent) {
     command.variable_references.clear();
+    command.paths = super::outputs::path_arguments(command);
     for (argument, arg) in command.args.iter_mut().enumerate() {
         arg.kind
             .retain(|kind| !matches!(kind, ArgKind::ReferencingVar));
@@ -63,6 +61,7 @@ pub(super) fn scan_command(source: &str, file: FileId, command: &mut SemanticCom
                                 command: command.id,
                                 span,
                                 kind: ReferenceKind::Read,
+                                possible_value: None,
                             },
                         });
                         cursor = end + 1;
@@ -107,6 +106,7 @@ pub(super) fn scan_command(source: &str, file: FileId, command: &mut SemanticCom
                 command: command.id,
                 span: argument_name_span(source, arg),
                 kind: ReferenceKind::Read,
+                possible_value: None,
             },
         });
         if !arg

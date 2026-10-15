@@ -1,6 +1,6 @@
 // AI-authored runtime observations, distinct from static snapshots.
 use crate::parser::build_struct::model::DependencyKind;
-use std::{path::PathBuf, time::Duration};
+use std::{path::PathBuf, sync::Arc, time::Duration};
 #[repr(transparent)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct RunId(u64);
@@ -36,6 +36,7 @@ impl RuntimeFrame {
 }
 #[derive(Clone, Debug)]
 pub struct TraceEvent {
+    pub source_directory: Arc<PathBuf>,
     pub id: EventId,
     pub file: PathBuf,
     pub line: u32,

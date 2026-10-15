@@ -25,6 +25,7 @@ pub(super) async fn run(
         jobs: tokio::task::JoinSet::new(),
         running: BTreeMap::new(),
         run_counter: 0,
+        saved_runs: Default::default(),
     };
     for root in roots {
         if let Err(error) = service.add_project(root, false, None).await {
@@ -64,6 +65,7 @@ async fn drive(
             if matches!(
                 current,
                 ServiceCommand::Symbols { .. }
+                    | ServiceCommand::Hover { .. }
                     | ServiceCommand::ReloadConfig { .. }
                     | ServiceCommand::Actions { .. }
                     | ServiceCommand::RunAction { .. }
@@ -89,6 +91,14 @@ async fn drive(
             return;
         }
         match query {
+            Some(ServiceCommand::Hover {
+                uri,
+                position,
+                reply,
+            }) if !reply.is_closed() => {
+                let result = service.variable_hover(uri, position).await;
+                let _ = reply.send(result);
+            }
             Some(ServiceCommand::Symbols { uri, reply }) if !reply.is_closed() => {
                 let result = service.symbols(uri).await;
                 let _ = reply.send(result);
@@ -112,6 +122,7 @@ async fn drive(
         if pending.is_some() {
             continue;
         }
+        service.start_saved_runs().await;
         let reports = match service.reports().await {
             Ok(reports) => reports,
             Err(error) => {

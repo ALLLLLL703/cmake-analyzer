@@ -23,6 +23,7 @@ impl Semanticer {
                 command: command.id,
                 span: argument_name_span(source, arg),
                 kind: ReferenceKind::Definition,
+                possible_value: None,
             };
             let definition = location(arg);
             let parameters = command

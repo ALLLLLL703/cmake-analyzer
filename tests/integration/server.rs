@@ -1,16 +1,22 @@
 // AI-generated LSP integration tests.
 #[path = "server/actions.rs"]
 mod actions;
+#[path = "server/automatic.rs"]
+mod automatic;
 #[path = "server/cli.rs"]
 mod cli;
 #[path = "server/configuration.rs"]
 mod configuration;
 #[path = "server/discovery.rs"]
 mod discovery;
+#[path = "server/hovers.rs"]
+mod hovers;
 #[path = "server/lifecycle.rs"]
 mod lifecycle;
 #[path = "server/limits.rs"]
 mod limits;
+#[path = "server/paths.rs"]
+mod paths;
 #[path = "server/projects.rs"]
 mod projects;
 #[path = "server/references.rs"]

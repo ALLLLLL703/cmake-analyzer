@@ -38,7 +38,7 @@ impl<'a> TextIndex<'a> {
         let count = self.wide.partition_point(|entry| entry.0 < byte);
         byte - count.checked_sub(1).map_or(0, |i| self.wide[i].2)
     }
-    fn byte(&self, position: &Position) -> ServerResult<usize> {
+    pub fn byte(&self, position: &Position) -> ServerResult<usize> {
         let start = *self
             .lines
             .get(position.line as usize)

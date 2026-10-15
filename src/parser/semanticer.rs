@@ -6,6 +6,7 @@ pub(crate) mod values;
 // AI-authored incremental implementation.
 mod incremental;
 pub mod parsing;
+mod path_model;
 pub mod schema;
 pub mod variables;
 // AI-generated display wiring.

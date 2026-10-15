@@ -256,8 +256,6 @@ impl Display for SemanticDisplay<'_> {
             self.paint(f, VARIABLE, format_args!("{:?}", variable.name))?;
             write!(f, " scope=")?;
             self.scope(f, variable.scope)?;
-            write!(f, " initial=")?;
-            self.paint(f, STRING, format_args!("{:?}", variable.init_value))?;
             write!(f, " writes=")?;
             self.commands(f, variable.changing.iter().map(|change| change.command))?;
             writeln!(f)?;
@@ -268,6 +266,8 @@ impl Display for SemanticDisplay<'_> {
                     reference.kind, reference.file.id, reference.command.id
                 )?;
                 self.span(f, reference.span)?;
+                write!(f, " possible=")?;
+                self.paint(f, STRING, format_args!("{:?}", reference.possible_value))?;
                 writeln!(f)?;
             }
         }

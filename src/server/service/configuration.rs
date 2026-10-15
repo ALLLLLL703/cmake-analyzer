@@ -32,6 +32,7 @@ impl Service {
             jobs: tokio::task::JoinSet::new(),
             running: BTreeMap::new(),
             run_counter: self.run_counter,
+            saved_runs: Default::default(),
         };
         let cwd = staged.config.sources.cwd.clone();
         staged.config.for_directory(&cwd).await.map_err(internal)?;
@@ -44,6 +45,7 @@ impl Service {
         }
         staged.flush().await?;
         self.invalidate_runtime();
+        self.saved_runs.clear();
         self.config = staged.config;
         self.roots = staged.roots;
         self.projects = staged.projects;

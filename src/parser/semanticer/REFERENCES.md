@@ -4,7 +4,7 @@
 
 `reference_model.rs` defines the shared records, reexported through `semanticer::model`:
 
-- `ReferenceLocation`: FileId, CommandId, name span, and Definition/Read/Write/Call kind.
+- `ReferenceLocation`: FileId, CommandId, name span, Definition/Read/Write/Call kind, and optional PossibleValue at that reference.
 - `ArgumentReference`: variable name, argument index, and location; stored on each SemanticCommandRepresent before binding.
 - `SemanticVariable.references`: local definitions, reads, and writes. `builtin` distinguishes catalogue descriptors from source variables; `first_write` remains the existing possible Out-write range, not proof of initialization.
 - `SemanticFunction`: function/macro name and kind, block/scope, formal parameters, definition, and references including the definition.
@@ -29,9 +29,11 @@ Function/macro bodies are indexed in isolated deferred environments, not execute
 
 `value_model.rs` defines PossibleValue::Static/Observed with shared text and
 VariableValueAt with file/command/scope/invocation-qualified observations. None means
-unknown, not an empty string. SemanticVariable and IndexedVariable expose
-optional summaries; sparse command observations are authoritative for a
-particular position. Value-write spans cover raw output arguments; runtime
+unknown, not an empty string. SemanticVariable has no initial/final-value field;
+its references carry position-specific values. IndexedVariable retains only a
+conservative common-value summary. Sparse command/visit observations preserve
+values for repeated executions of the same reference; ambiguous aggregate
+reference values remain None. Value-write spans cover raw output arguments; runtime
 write observations can cover a whole command rather than a name.
 
 `values.rs` handles literals/simple ${NAME} concatenation and conservative

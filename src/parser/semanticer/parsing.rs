@@ -1,7 +1,7 @@
 // AI-generated implementation.
 pub mod block;
 mod functions;
-mod outputs;
+pub(super) mod outputs;
 pub(crate) mod references;
 pub mod scope;
 pub mod symbols;
@@ -148,6 +148,7 @@ impl Semanticer {
                         block: None,
                         scope: None,
                         variable_references: Vec::new(),
+                        paths: Vec::new(),
                         args: command
                             .args
                             .iter()

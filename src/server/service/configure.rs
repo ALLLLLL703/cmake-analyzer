@@ -210,6 +210,7 @@ impl Service {
         }
         for project in &mut self.projects {
             project.workspace.clear_runtime();
+            project.paths_dirty = true;
         }
     }
     pub(super) async fn stop_configures(&mut self) {
@@ -269,6 +270,7 @@ impl Service {
                 .await
                 .map_err(internal)?;
             let project = &mut self.projects[owner];
+            project.paths_dirty = true;
             if let Some(layer) = project.workspace.runtime() {
                 project.members.extend(layer.documents.keys().cloned());
             }

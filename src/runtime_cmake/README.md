@@ -15,7 +15,8 @@ file and source_directory as cwd, ignoring build_directory. Both enable
 - `trace.rs`: blocking JSON decoding, declaration-aware command classification,
   and execution-order dependency discovery.
 - `../workspace/runtime/`: immutable execution-derived Workspace data.
-- `../server/action/`: one manual action entry function per action file.
+- `../server/action/`: shared configure/script action entrypoints.
+- `../server/service/automatic.rs`: optional, user/explicit-authorized on-save scheduling; default execution remains manual.
 
 CMake receives no shell interpolation. It uses the source directory as cwd,
 null stdin/stdout, and captured stderr. The stderr limit includes JSON trace,
@@ -45,4 +46,6 @@ Successful required empty-file includes/subdirectories can also use their
 expanded file paths and directory context. Empty optional/module-name includes
 without trace evidence remain unresolved. Missing temporary sources retain raw
 trace events without invented source locations. Ambiguous same-line command
-matches also have no source `CommandId`.
+matches also have no source `CommandId`. Events retain shared source-directory
+context, and RuntimeLayer.source_commands maps event IDs to optional source
+commands for path checks without repeated source scans.

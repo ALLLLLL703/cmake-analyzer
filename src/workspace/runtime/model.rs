@@ -42,6 +42,8 @@ pub struct RuntimeFunction {
 }
 #[derive(Clone, Debug)]
 pub struct RuntimeLayer {
+    /// EventId indexes this map; ambiguous/missing source commands remain None.
+    pub source_commands: Vec<Option<crate::parser::semanticer::model::CommandId>>,
     pub trace: Trace,
     pub documents: BTreeMap<PathBuf, Arc<DocumentSnapshot>>,
     pub values: Vec<RuntimeValueAt>,

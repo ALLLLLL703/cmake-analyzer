@@ -261,9 +261,16 @@ async fn interpreter_script_mode_traverses_dependencies_and_reload_can_remove_it
         reload(&mut client, 30, json!({})).await["result"]["reloaded"],
         true
     );
-    assert_eq!(
-        client.diagnostics(&script, 1).await["params"]["diagnostics"],
-        json!([])
+    // Path checks remain available without an execution profile.
+    let diagnostics = client.diagnostics(&script, 1).await;
+    assert!(
+        diagnostics["params"]["diagnostics"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|item| item["severity"] == 2
+                && item["message"].as_str().unwrap().contains("missing.cmake")),
+        "{diagnostics}"
     );
     client.finish().await;
     project.remove().await;

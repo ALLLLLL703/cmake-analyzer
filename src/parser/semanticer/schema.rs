@@ -18,6 +18,11 @@ pub struct ArgSchema {
 #[derive(Clone, Debug)]
 pub enum ArgSchemaKind {
     Path,
+    InputFile,
+    InputDirectory,
+    InputPath,
+    ModulePath,
+    OutputPath,
     TargetExe,
     TargetLib,
     CustomTarget(String),

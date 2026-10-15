@@ -4,6 +4,7 @@ use crate::parser::build_struct::model::DependencyKind;
 use std::{
     io,
     path::{Path, PathBuf},
+    sync::Arc,
 };
 pub(super) fn parse(
     run: RunId,
@@ -12,6 +13,7 @@ pub(super) fn parse(
     build: Option<&Path>,
     cancel: &lspally::server::model::Cancellation,
 ) -> io::Result<Trace> {
+    let initial_directory = Arc::new(cwd.to_owned());
     let mut events = Vec::new();
     let mut declared = std::collections::HashSet::new();
     for line in bytes.split(|byte| *byte == b'\n') {
@@ -63,6 +65,7 @@ pub(super) fn parse(
             }
         }
         events.push(TraceEvent {
+            source_directory: initial_directory.clone(),
             id: EventId::new(events.len()),
             file,
             line,
@@ -79,14 +82,19 @@ pub(super) fn parse(
         ));
     }
     let mut dependencies = Vec::new();
-    let mut source_directories = vec![(RuntimeFrame::new(0), cwd.to_owned())];
-    for (index, event) in events.iter().enumerate() {
+    let mut source_directories = vec![(RuntimeFrame::new(0), initial_directory.clone())];
+    for index in 0..events.len() {
+        let frame = events[index].frame;
         while source_directories
             .last()
-            .is_some_and(|(frame, _)| frame.depth() > event.frame.depth())
+            .is_some_and(|(previous, _)| previous.depth() > frame.depth())
         {
             source_directories.pop();
         }
+        events[index].source_directory = source_directories
+            .last()
+            .map_or_else(|| initial_directory.clone(), |(_, path)| path.clone());
+        let event = &events[index];
         if !event.builtin {
             continue;
         }
@@ -139,7 +147,7 @@ pub(super) fn parse(
                     .filter(|next| next.frame.depth() > event.frame.depth()),
             ) {
                 if let Some(directory) = file.parent() {
-                    source_directories.push((next.frame, directory.to_owned()));
+                    source_directories.push((next.frame, Arc::new(directory.to_owned())));
                 }
             }
         }

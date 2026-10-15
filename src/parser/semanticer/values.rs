@@ -230,6 +230,7 @@ impl Semanticer {
                             command: command.id,
                             span: arg.span,
                             kind: ReferenceKind::Write,
+                            possible_value: values.get(name, None),
                         },
                         scope,
                         invocation: None,
@@ -238,10 +239,52 @@ impl Semanticer {
                 }
             }
         }
+        for value in &mut buffer.values {
+            value.location.possible_value = value.possible_value.clone();
+        }
+        let known: HashMap<_, _> = buffer
+            .values
+            .iter()
+            .map(|value| {
+                (
+                    (
+                        value.location.command,
+                        value.name.as_str(),
+                        value.location.kind == ReferenceKind::Read,
+                    ),
+                    value.possible_value.clone(),
+                )
+            })
+            .collect();
+        for command in &mut buffer.commands {
+            for reference in &mut command.variable_references {
+                reference.location.possible_value = known
+                    .get(&(reference.location.command, reference.name.as_str(), true))
+                    .cloned()
+                    .flatten();
+            }
+        }
+        for reference in &mut buffer.unresolved_references {
+            reference.location.possible_value = known
+                .get(&(
+                    reference.location.command,
+                    reference.name.as_str(),
+                    reference.location.kind == ReferenceKind::Read,
+                ))
+                .cloned()
+                .flatten();
+        }
         for variable in &mut buffer.variables {
-            variable.possible_value = scopes
-                .get(&variable.scope)
-                .and_then(|values| values.get(&variable.name, None));
+            for reference in &mut variable.references {
+                reference.possible_value = known
+                    .get(&(
+                        reference.command,
+                        variable.name.as_str(),
+                        reference.kind == ReferenceKind::Read,
+                    ))
+                    .cloned()
+                    .flatten();
+            }
         }
     }
 }

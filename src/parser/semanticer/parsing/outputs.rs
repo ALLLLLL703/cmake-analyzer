@@ -100,8 +100,6 @@ impl Semanticer {
                         result.variables.push(SemanticVariable {
                             name: name.to_owned(),
                             builtin: false,
-                            init_value: String::new(),
-                            possible_value: None,
                             first_write: None,
                             scope: command.scope,
                             changing: Vec::new(),
@@ -146,8 +144,71 @@ fn contains_out(kind: &ArgSchemaKind) -> bool {
 enum MatchRole {
     Out,
     Variable,
+    Path(crate::parser::semanticer::model::PathKind),
 }
-
+pub(crate) fn path_arguments(
+    command: &crate::parser::semanticer::model::SemanticCommandRepresent,
+) -> Vec<crate::parser::semanticer::model::PathArgument> {
+    use crate::parser::semanticer::model::{PathArgument, PathKind};
+    let Some(schema) = &command.schema else {
+        return Vec::new();
+    };
+    let arguments: Vec<_> = command
+        .args
+        .iter()
+        .map(|arg| arg.content.as_str())
+        .collect();
+    let roots: Vec<_> = schema.args.iter().map(|arg| &arg.kind).collect();
+    let mut result = Vec::new();
+    for kind in [
+        PathKind::File,
+        PathKind::Directory,
+        PathKind::Input,
+        PathKind::Module,
+        PathKind::Output,
+    ] {
+        let role = MatchRole::Path(kind);
+        if !roots.iter().any(|root| contains_role(root, role)) {
+            continue;
+        }
+        if let Some(state) = sequence(
+            &roots,
+            vec![OutputMatch {
+                position: 0,
+                indices: Vec::new(),
+                keywords: 0,
+            }],
+            &arguments,
+            role,
+        )
+        .into_iter()
+        .find(|state| state.position == arguments.len())
+        {
+            result.extend(
+                state
+                    .indices
+                    .into_iter()
+                    .map(|argument| PathArgument { argument, kind }),
+            );
+        }
+    }
+    result
+}
+fn contains_role(kind: &ArgSchemaKind, role: MatchRole) -> bool {
+    if matches_role(kind, role) {
+        return true;
+    }
+    match kind {
+        ArgSchemaKind::Optional(args)
+        | ArgSchemaKind::AllOf(args)
+        | ArgSchemaKind::Repeat { args, .. } => args.iter().any(|kind| contains_role(kind, role)),
+        ArgSchemaKind::Choice(choices) => choices
+            .iter()
+            .flatten()
+            .any(|kind| contains_role(kind, role)),
+        _ => false,
+    }
+}
 pub(super) fn variable_arguments(
     command: &crate::parser::semanticer::model::SemanticCommandRepresent,
 ) -> Vec<usize> {
@@ -195,6 +256,17 @@ fn contains_variable(kind: &ArgSchemaKind) -> bool {
     }
 }
 fn matches_role(kind: &ArgSchemaKind, role: MatchRole) -> bool {
+    use crate::parser::semanticer::model::PathKind;
+    if let MatchRole::Path(path) = role {
+        return matches!(
+            (kind, path),
+            (ArgSchemaKind::InputFile, PathKind::File)
+                | (ArgSchemaKind::InputDirectory, PathKind::Directory)
+                | (ArgSchemaKind::InputPath, PathKind::Input)
+                | (ArgSchemaKind::ModulePath, PathKind::Module)
+                | (ArgSchemaKind::OutputPath, PathKind::Output)
+        );
+    }
     matches!(
         (kind, role),
         (ArgSchemaKind::Out, MatchRole::Out) | (ArgSchemaKind::Variable, MatchRole::Variable)
@@ -298,6 +370,7 @@ fn step(
             if kinds.iter().any(|kind| match role {
                 MatchRole::Out => contains_out(kind),
                 MatchRole::Variable => contains_variable(kind),
+                MatchRole::Path(_) => contains_role(kind, role),
             }) {
                 next.indices.push(next.position);
             }

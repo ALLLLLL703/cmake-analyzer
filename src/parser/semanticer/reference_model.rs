@@ -38,6 +38,7 @@ pub enum ReferenceKind {
 /// IDs and spans refer to the owning immutable analysis snapshot.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ReferenceLocation {
+    pub possible_value: Option<super::model::PossibleValue>,
     pub file: FileId,
     pub command: CommandId,
     pub span: TextSpan,

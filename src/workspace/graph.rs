@@ -134,6 +134,7 @@ impl Workspace {
                         || (!loaded.contains_key(&file) && loaded.len() >= self.limits.files)
                     {
                         graph.diagnostics.push(WorkspaceDiagnostic {
+                            kind: super::model::WorkspaceDiagnosticKind::Traversal,
                             file,
                             source: edge.map(|i| graph.edges[i].source.clone()),
                             message: "Dependency cycle or workspace traversal limit".into(),
@@ -154,6 +155,7 @@ impl Workspace {
                                     continue;
                                 }
                                 graph.diagnostics.push(WorkspaceDiagnostic {
+                                    kind: super::model::WorkspaceDiagnosticKind::ReadFailure,
                                     file,
                                     source: edge.map(|i| graph.edges[i].source.clone()),
                                     message: error.to_string(),
@@ -331,6 +333,7 @@ impl Workspace {
                                 continue;
                             } else if dependency.path.literal && !dependency.optional {
                                 graph.diagnostics.push(WorkspaceDiagnostic {
+                                    kind: super::model::WorkspaceDiagnosticKind::ReadFailure,
                                     file: graph.invocations[caller].file.clone(),
                                     source: Some(fact.source),
                                     message: format!(

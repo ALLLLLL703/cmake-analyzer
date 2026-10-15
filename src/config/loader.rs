@@ -58,12 +58,27 @@ impl ConfigStore {
                 ),
             ));
         }
+        if !global_source
+            && local.patch.runtime.mode == Some(super::patch_model::RuntimeModePatch::OnSave)
+        {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "runtime.mode = on_save requires user configuration or an explicit override; project settings may only select action or disable execution",
+            ));
+        }
+        let mut authority = Settings::default();
+        apply(&mut authority, &self.user);
+        apply(&mut authority, &self.explicit);
         let mut settings = Settings::default();
         for path in &mut settings.modules.search_paths {
             *path = resolve_path(&directory, path)?;
         }
         for layer in [&self.user, &local, &self.explicit] {
             apply(&mut settings, layer);
+        }
+        if !authority.runtime.enable || authority.runtime.mode != super::model::RuntimeMode::OnSave
+        {
+            settings.runtime.mode = super::model::RuntimeMode::Action;
         }
         if settings.modules.enable && settings.modules.builtin_directory.is_none() {
             settings.modules.builtin_directory = self
@@ -159,6 +174,12 @@ fn apply(settings: &mut Settings, layer: &Layer) {
     }
     if let Some(path) = &layer.patch.modules.builtin_directory {
         settings.modules.builtin_directory = Some(path.clone());
+    }
+    if let Some(mode) = layer.patch.runtime.mode {
+        settings.runtime.mode = match mode {
+            super::patch_model::RuntimeModePatch::Action => super::model::RuntimeMode::Action,
+            super::patch_model::RuntimeModePatch::OnSave => super::model::RuntimeMode::OnSave,
+        };
     }
     if let Some(value) = layer.patch.runtime.enable {
         settings.runtime.enable = value;

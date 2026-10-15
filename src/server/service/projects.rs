@@ -123,6 +123,8 @@ impl Service {
             .map_err(internal)?;
         let index = self.projects.len();
         self.projects.push(Project {
+            path_state: Default::default(),
+            paths_dirty: true,
             workspace,
             settings,
             bindings: BTreeSet::new(),
@@ -287,6 +289,7 @@ impl Service {
                     continue;
                 }
                 project.dirty = false;
+                project.paths_dirty = true;
                 let result = if project.standalone {
                     project.workspace.flush_documents().await
                 } else {
@@ -343,6 +346,11 @@ impl Service {
                 || (self.documents.contains_key(&project.workspace.root().file)
                     && !redundant.contains(&project.workspace.root().file))
         });
+        for owner in 0..self.projects.len() {
+            if self.projects[owner].paths_dirty {
+                self.refresh_paths(owner).await;
+            }
+        }
         Ok(())
     }
 }

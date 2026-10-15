@@ -60,11 +60,12 @@ Joined options such as `-Ssource` are accepted. Other options, mixed modes, repe
 
 Explicit file mappings take precedence over ordinary Workspace ownership. Files without mappings retain dependency-first project discovery and standalone-file fallback. No execution is introduced by interpreter mappings. Simple known variable-expanded paths can resolve statically; unknown values and conditional/deferred dependencies remain limited.
 
-## Manual runtime analysis
+## Runtime analysis
 
 ```toml
 [runtime]
 enable = true
+mode = "action" # Default; explicit manual action.
 executable = "cmake"
 # Omit to use <project-source>/.cmake-analyzer/build.
 # build_directory = "analysis-build"
@@ -74,11 +75,31 @@ max_output_bytes = 67108864
 max_view_bytes = 65536
 ```
 
-These settings only configure manual actions. Loading project settings, opening,
-editing, or saving files never authorizes configure. Select **Run CMake for …
-(executes project code)** to execute it; `enable = false` hides runtime actions.
-Automatic Code Action requests return none. Unmapped standalone files cannot
-run; configured script entries use the separate script action. See [actions](../server/README.md#manual-code-actions).
+The default `mode = "action"` runs only after an explicit action. Select **Run
+CMake for … (executes project code)**; `enable = false` disables execution and
+hides runtime actions. Automatic Code Action requests return none. Unmapped
+standalone files cannot run; configured scripts use their script entry.
+See [actions](../server/README.md#manual-code-actions).
+
+To authorize automatic configure and mapped script execution, set this in
+**user configuration or an explicit `--config` file**, not a project file:
+
+```toml
+[runtime]
+enable = true
+mode = "on_save"
+```
+
+A project may disable execution or select `mode = "action"`; a project-local
+`on_save` is rejected unless that file was explicitly selected as a global
+configuration source. Project settings cannot grant automatic execution when
+the effective user/explicit runtime settings disable it. Normal explicit-layer
+precedence still applies. Loading/reloading configuration, opening files, and
+unsaved edits do not start a run. A subsequent didSave of an open related file
+schedules its owning entries. Related files must all be saved; otherwise the
+run is skipped and logged. Repeated queued saves coalesce per entry/profile;
+a save cancels an affected active run before its replacement starts. Jobs share
+max_workspaces, cancellation, timeout, and saved-input checks with manual actions.
 
 Relative executable paths containing directory components and explicit build
 directories use the defining configuration file's directory. Bare executable
@@ -89,7 +110,7 @@ concurrently used build directories are rejected. A dedicated directory is
 
 Timeout is positive seconds per run. max_output_bytes is a positive per-run
 stderr/trace byte limit; max_view_bytes bounds formatted views and failure
-details in bytes. Defaults are named in model.rs. Successful reload applies
+details and variable hover output in bytes (including static hover). Defaults are named in model.rs. Successful reload applies
 new settings, cancels active runs, and clears runtime results; failed reload
 preserves live settings/results.
 
@@ -97,7 +118,7 @@ Arguments allow -D/-U cache settings, -G/-A/-T generator settings, -W warnings,
 --toolchain, --fresh, and --no-warn-unused-cli. Source/build, trace redirection,
 script/build/install modes, presets, positional arguments, and other flags are
 rejected. Values are passed directly, without a shell. Configure requires JSON
-trace v1 minor 2 global_frame support. No automatic execution mode is provided.
+trace v1 minor 2 global_frame support.
 
 ## Configured script execution
 
@@ -129,7 +150,7 @@ Configure-only options such as -G and --fresh are rejected before launching.
 CMake's own non-scriptable command restrictions still apply. Cancellation,
 time/output limits, dynamic include/value/function observations, and edit/reload
 invalidation are shared with configure. Configuration discovery never executes
-the script automatically.
+the script. Authorized `on_save` applies to mapped scripts as well as configure.
 
 ## Dynamic reload
 

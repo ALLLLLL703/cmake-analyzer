@@ -1,4 +1,5 @@
 // AI-generated import change.
+pub use super::path_model::*;
 pub use super::reference_model::*;
 pub use super::value_model::*;
 use std::{collections::HashMap, sync::Arc};
@@ -82,8 +83,6 @@ pub struct SemanticVariable {
     // AI-generated addition.
     pub name: String,
     pub builtin: bool,
-    pub init_value: String,
-    pub possible_value: Option<PossibleValue>,
     /// First possible source write, not proof of runtime initialization.
     /// Raw variable-name argument range in the owning SemanticedBuffer; absent for unwritten builtins.
     pub first_write: Option<TextSpan>,
@@ -106,6 +105,7 @@ pub struct SemanticCommandRepresent {
     pub span: TextSpan,
     pub args: Vec<SemanticArg>,
     pub variable_references: Vec<ArgumentReference>,
+    pub paths: Vec<PathArgument>,
     // AI-generated additions.
     pub name: String,
     pub closed: bool,
@@ -327,6 +327,7 @@ impl SemanticedBuffer {
             },
             args: Vec::new(),
             variable_references: Vec::new(),
+            paths: Vec::new(),
             kind,
             span,
             // AI-generated additions.

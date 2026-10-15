@@ -145,6 +145,10 @@ impl Service {
                 .running
                 .get(root)
                 .is_some_and(|job| project.execution.as_ref() == Some(&job.mode))
+                || self
+                    .saved_runs
+                    .get(root)
+                    .is_some_and(|saved| project.execution.as_ref() == Some(&saved.mode))
             {
                 entries.push((ActionKind::CancelConfigure, "Cancel CMake run".into()));
             }

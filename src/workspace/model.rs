@@ -98,9 +98,15 @@ pub struct DependencyEdge {
 }
 #[derive(Clone, Debug)]
 pub struct WorkspaceDiagnostic {
+    pub kind: WorkspaceDiagnosticKind,
     pub file: PathBuf,
     pub source: Option<SourceRef>,
     pub message: String,
+}
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum WorkspaceDiagnosticKind {
+    ReadFailure,
+    Traversal,
 }
 #[derive(Clone, Debug, Default)]
 pub struct RootGraph {

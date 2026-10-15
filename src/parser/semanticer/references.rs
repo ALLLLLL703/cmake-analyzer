@@ -297,6 +297,7 @@ impl ReferenceCollector {
                     command: command.id,
                     span: command.span,
                     kind: ReferenceKind::Call,
+                    possible_value: None,
                 };
                 if !functions.is_empty() {
                     // User calls may change caller-visible values; do not evaluate their bodies.
@@ -485,6 +486,7 @@ impl ReferenceCollector {
                         command: command.id,
                         span: argument_name_span(source, arg),
                         kind: ReferenceKind::Write,
+                        possible_value: None,
                     },
                 });
                 continue;
@@ -498,6 +500,7 @@ impl ReferenceCollector {
                 command: command.id,
                 span: argument_name_span(source, arg),
                 kind: ReferenceKind::Write,
+                possible_value: None,
             };
             let variable = if let Some(binding) = existing {
                 binding.variable
@@ -643,8 +646,6 @@ impl Semanticer {
                     result.variables.push(SemanticVariable {
                         name: variable.name,
                         builtin: false,
-                        init_value: String::new(),
-                        possible_value: None,
                         first_write: None,
                         scope: variable.local_scope,
                         changing: Vec::new(),

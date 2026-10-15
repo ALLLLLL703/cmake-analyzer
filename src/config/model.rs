@@ -72,8 +72,14 @@ impl Default for Modules {
         }
     }
 }
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum RuntimeMode {
+    Action,
+    OnSave,
+}
 #[derive(Clone, Debug)]
 pub struct Runtime {
+    pub mode: RuntimeMode,
     pub enable: bool,
     pub executable: PathBuf,
     pub build_directory: Option<PathBuf>,
@@ -89,6 +95,7 @@ impl Default for Runtime {
     fn default() -> Self {
         Self {
             enable: true,
+            mode: RuntimeMode::Action,
             executable: PathBuf::from("cmake"),
             build_directory: None,
             arguments: Vec::new(),

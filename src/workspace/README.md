@@ -137,7 +137,8 @@ let project_links = workspace.root_graph();
 
 ## Values and runtime observations
 
-Semantic variables and indexed variables expose Option<PossibleValue>. Static
+Variable references expose Option<PossibleValue> at each source position;
+indexed-variable summaries are conservative across references. Static
 file observations live in SemanticedBuffer.values; contextual observations live
 in RootGraph.values and carry file/command/scope/invocation locations. Summaries are not
 an all-command value matrix. Consult the observations for a particular command.
@@ -156,8 +157,9 @@ cooperative source/index cancellation. Neither method launches CMake. runtime()
 returns the independent immutable layer. It retains repeated events, parsed
 runtime sources, value observations, and function/macro calls/declarations.
 clear_runtime, editor changes, and disk invalidation retire it without mutating
-previously retained snapshots/layers. The server executes only a manual action;
-see [runtime analysis](../runtime_cmake/README.md).
+previously retained snapshots/layers. The server defaults to manual actions;
+user/explicit configuration may authorize on-save runs through those same
+entrypoints. See [runtime settings](../config/README.md#runtime-analysis).
 
 ## Current limits
 

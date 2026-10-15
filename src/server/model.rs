@@ -80,6 +80,11 @@ pub(super) enum ServiceCommand {
         request: super::action::model::ActionRequest,
         reply: oneshot::Sender<ServerResult<Option<Data>>>,
     },
+    Hover {
+        uri: Uri,
+        position: Position,
+        reply: oneshot::Sender<ServerResult<Option<Hover>>>,
+    },
     Symbols {
         uri: Uri,
         reply: oneshot::Sender<ServerResult<Option<DocumentSymbolResponse>>>,
@@ -92,6 +97,8 @@ pub(super) struct OpenDocument {
     pub text: Arc<str>,
 }
 pub(super) struct Project {
+    pub path_state: super::paths::model::PathState,
+    pub paths_dirty: bool,
     pub workspace: Workspace,
     pub settings: Arc<Settings>,
     pub bindings: BTreeSet<PathBuf>,
@@ -114,6 +121,11 @@ pub(super) struct Service {
     pub jobs: tokio::task::JoinSet<RuntimeCompletion>,
     pub running: BTreeMap<PathBuf, RunningConfigure>,
     pub run_counter: u64,
+    pub saved_runs: BTreeMap<PathBuf, SavedRun>,
+}
+pub(super) struct SavedRun {
+    pub file: PathBuf,
+    pub mode: crate::runtime_cmake::model::ExecutionMode,
 }
 pub(super) struct RunningConfigure {
     pub mode: crate::runtime_cmake::model::ExecutionMode,
