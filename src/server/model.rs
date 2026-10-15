@@ -106,13 +106,17 @@ pub(super) struct ReportKey {
     pub enabled: bool,
     // Weak identity does not retain obsolete snapshots just for publication caching.
     pub snapshot: Option<std::sync::Weak<DocumentSnapshot>>,
-    pub extra: Vec<(crate::model::TextSpan, String)>,
+    pub extra: Vec<(crate::model::TextSpan, u8, String)>,
+    pub contextual: bool,
+    pub resolved_calls: Vec<crate::parser::semanticer::model::CommandId>,
 }
 impl ReportKey {
     pub fn same(&self, other: &Self) -> bool {
         self.version == other.version
             && self.enabled == other.enabled
             && self.extra == other.extra
+            && self.contextual == other.contextual
+            && self.resolved_calls == other.resolved_calls
             && match (&self.snapshot, &other.snapshot) {
                 (Some(a), Some(b)) => a.ptr_eq(b),
                 (None, None) => true,

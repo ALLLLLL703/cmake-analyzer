@@ -13,10 +13,13 @@ impl Service {
                 if self.documents.contains_key(&path) {
                     return Err(ServerError::invalid("Document already open"));
                 }
-                if self.documents.len() >= 256 {
+                if self.documents.len() >= self.config.limits.max_open_documents {
                     return Err(ServerError::new(
                         -32000,
-                        "Open document limit (256) reached",
+                        format!(
+                            "Open document limit ({}) reached",
+                            self.config.limits.max_open_documents
+                        ),
                     ));
                 }
                 self.ensure_owners(&path).await?;

@@ -139,6 +139,7 @@ pub struct BuildDisplay<'a> {
     pub(super) buffer: &'a BuildStruct,
     pub(super) colored: bool,
     pub(super) semantic_diagnostics: &'a [Spanned<SemanticError>],
+    pub(super) semantic_warnings: &'a [Spanned<crate::parser::semanticer::model::SemanticWarn>],
 }
 
 // AI-authored per-command effect cache. Ranges point into the previous owned output.

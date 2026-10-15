@@ -39,9 +39,6 @@ impl CmakeAnalyzer {
         }
         entries.sort();
         entries.dedup();
-        if entries.len() > 32 {
-            return Err(ServerError::invalid("Workspace limit (32) exceeded"));
-        }
         let hierarchical = params
             .capabilities
             .text_document
@@ -51,6 +48,12 @@ impl CmakeAnalyzer {
         let mut config = crate::config::ConfigStore::load(self.options.config.clone())
             .await
             .map_err(internal)?;
+        if entries.len() > config.limits.max_workspaces {
+            return Err(ServerError::invalid(format!(
+                "Workspace limit ({}) exceeded",
+                config.limits.max_workspaces
+            )));
+        }
         for entry in &entries {
             config
                 .for_directory(entry.parent().unwrap_or(&self.options.start_directory))

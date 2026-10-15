@@ -2,7 +2,7 @@
 use super::model::{Argument, BuildDisplay, BuildEffect, BuildFact, BuildStruct};
 use crate::{
     model::{Spanned, TextSpan},
-    parser::semanticer::model::SemanticError,
+    parser::semanticer::model::{SemanticError, SemanticWarn},
 };
 use owo_colors::{OwoColorize, Style};
 use std::fmt::{self, Display, Formatter};
@@ -26,6 +26,7 @@ impl BuildStruct {
             buffer: self,
             colored,
             semantic_diagnostics: &[],
+            semantic_warnings: &[],
         }
     }
 }
@@ -33,6 +34,10 @@ impl<'a> BuildDisplay<'a> {
     /// Include errors from earlier passes without copying them.
     pub fn with_semantic_diagnostics(mut self, diagnostics: &'a [Spanned<SemanticError>]) -> Self {
         self.semantic_diagnostics = diagnostics;
+        self
+    }
+    pub fn with_semantic_warnings(mut self, warnings: &'a [Spanned<SemanticWarn>]) -> Self {
+        self.semantic_warnings = warnings;
         self
     }
     fn paint(&self, f: &mut Formatter<'_>, style: Style, text: impl Display) -> fmt::Result {
@@ -237,7 +242,9 @@ impl<'a> BuildDisplay<'a> {
             ID,
             format_args!(
                 "({})",
-                self.semantic_diagnostics.len() + self.buffer.diagnostics.len()
+                self.semantic_diagnostics.len()
+                    + self.buffer.diagnostics.len()
+                    + self.semantic_warnings.len()
             ),
         )?;
         writeln!(f)?;
@@ -259,7 +266,15 @@ impl<'a> BuildDisplay<'a> {
             self.paint(f, ERROR, format_args!("{:?}", diagnostic.message))?;
             writeln!(f)?;
         }
-        if self.semantic_diagnostics.is_empty() && self.buffer.diagnostics.is_empty() {
+        for warning in self.semantic_warnings {
+            self.paint(f, UNKNOWN, "  WARNING ")?;
+            self.span(f, warning.span)?;
+            writeln!(f, " {:?}", warning.content.message())?;
+        }
+        if self.semantic_diagnostics.is_empty()
+            && self.buffer.diagnostics.is_empty()
+            && self.semantic_warnings.is_empty()
+        {
             write!(f, "  ")?;
             self.paint(f, GOOD, "No diagnostics")?;
             writeln!(f)?;

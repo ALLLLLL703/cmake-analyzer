@@ -19,11 +19,24 @@ impl ConfigStore {
             .transpose()?;
         let user = read_layer(sources.user_file.as_deref(), false, &sources.cwd).await?;
         let explicit = read_layer(sources.explicit_file.as_deref(), true, &sources.cwd).await?;
+        let mut limits = Limits::default();
+        for layer in [&user, &explicit] {
+            if let Some(patch) = &layer.patch.limits {
+                if let Some(value) = patch.max_open_documents {
+                    limits.max_open_documents = value.get();
+                }
+                if let Some(value) = patch.max_workspaces {
+                    limits.max_workspaces = value.get();
+                }
+            }
+        }
         Ok(Self {
             sources,
+            limits,
             user,
             explicit,
             projects: BTreeMap::new(),
+            builtin_directory: tokio::sync::OnceCell::new(),
         })
     }
     /// Omitted fields inherit; arrays replace and interpreter mappings merge by normalized file path.
@@ -32,15 +45,32 @@ impl ConfigStore {
         if let Some(settings) = self.projects.get(&directory) {
             return Ok(settings.clone());
         }
-        let local = read_layer(
-            Some(&directory.join(PROJECT_CONFIG)),
-            false,
-            &self.sources.cwd,
-        )
-        .await?;
+        let project_file = directory.join(PROJECT_CONFIG);
+        let local = read_layer(Some(&project_file), false, &self.sources.cwd).await?;
+        let global_source = self.sources.explicit_file.as_ref() == Some(&project_file)
+            || self.sources.user_file.as_ref() == Some(&project_file);
+        if local.patch.limits.is_some() && !global_source {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                format!(
+                    "{}: limits are process-wide; use user configuration or an explicit override",
+                    directory.join(PROJECT_CONFIG).display()
+                ),
+            ));
+        }
         let mut settings = Settings::default();
+        for path in &mut settings.modules.search_paths {
+            *path = resolve_path(&directory, path)?;
+        }
         for layer in [&self.user, &local, &self.explicit] {
             apply(&mut settings, layer);
+        }
+        if settings.modules.enable && settings.modules.builtin_directory.is_none() {
+            settings.modules.builtin_directory = self
+                .builtin_directory
+                .get_or_init(|| super::defaults::builtin_directory(&self.sources.cwd))
+                .await
+                .clone();
         }
         let settings = Arc::new(settings);
         self.projects.insert(directory, settings.clone());

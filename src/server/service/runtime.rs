@@ -44,7 +44,7 @@ pub(super) async fn run(
         };
         let mut query = None;
         let mut command = Some(command);
-        for _ in 0..64 {
+        for _ in 0..super::EDIT_BATCH_SIZE {
             let Some(current) = command.take() else {
                 break;
             };

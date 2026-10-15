@@ -27,9 +27,27 @@ builtin_directory = "/usr/share/cmake/Modules"
 "cmake/helper.cmake" = "cmake -S . -B build"
 ```
 
-All feature switches default to enabled. Builtin and custom module directories default to empty. Relative module directories are based on the file defining them. Disabling `modules` disables these configured search directories; literal include paths and subdirectories are still analyzed. Builtin modules are not discovered automatically. Directories may be missing when configuration is loaded.
+All feature switches default to enabled. Default module search paths are `cmake`, `cmake/Modules`, and `cmake/modules`, relative to each analysis-entry directory. Explicit `search_paths` replaces this list; `search_paths = []` removes the project-directory defaults. Configured relative module directories remain based on the file defining them. Directories may be missing when configuration is loaded.
+
+When modules are enabled and `builtin_directory` is omitted, the server locates CMake on PATH, resolves its executable symlink, and queries `cmake --version`. It checks `<prefix>/share/cmake-<major>.<minor>/Modules`, then `<prefix>/share/cmake/Modules`. This is best-effort discovery for standard installation layouts; missing CMake, failed detection, or nonstandard layouts leave the builtin directory unset. An explicit `builtin_directory` always wins. No configure, system-information probe, or project script is run.
+
+Discovery results, including failures, are cached once per ConfigStore and retried after explicit configuration reload. Explicit builtin overrides and disabled modules skip discovery. Disabling `modules` disables both custom/default search directories and builtin lookup; literal include paths and subdirectories are still analyzed.
 
 Disabling diagnostics clears previously published reports and suppresses new ones. Disabling document symbols returns null; capability advertisement remains stable for multiple projects and later reloads. Shared files receive diagnostics from enabled owners.
+
+## Process limits
+
+Set these in user configuration or an explicit override file:
+
+```toml
+[limits]
+max_open_documents = 256
+max_workspaces = 32
+```
+
+Both values are positive counts, shared by the entire server process. Project-local settings cannot override them; a file explicitly selected as a global source may contain them. User values inherit named defaults, and explicit values override user values field by field.
+
+Limits are enforced at initialization, document admission, and Workspace creation. Reload applies new limits atomically; values below current open-document or Workspace counts are rejected without evicting anything. Close documents/remove Workspaces before lowering their limits. Internal queue capacity and edit batch size remain named static policies, not configuration fields. Workspace traversal/worker limits are unchanged.
 
 ## Interpreter commands
 

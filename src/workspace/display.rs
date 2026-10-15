@@ -201,6 +201,18 @@ impl DependencyGraphDisplay<'_> {
             .iter()
             .map(|visit| (visit.analysis, visit.file.as_path()))
             .collect();
+        let resolved: HashSet<_> = graph
+            .references
+            .resolved_calls
+            .iter()
+            .map(|location| {
+                (
+                    location.file.id,
+                    location.span.start_byte,
+                    location.span.end_byte,
+                )
+            })
+            .collect();
         let mut count = 0;
         for diagnostic in &graph.diagnostics {
             count += 1;
@@ -241,6 +253,16 @@ impl DependencyGraphDisplay<'_> {
                 continue;
             }
             for diagnostic in &visit.snapshot.semantics.diagnostics {
+                if matches!(
+                    diagnostic.content,
+                    crate::parser::semanticer::model::SemanticError::CommandNotFound(_)
+                ) && resolved.contains(&(
+                    visit.snapshot.semantics.id.id,
+                    diagnostic.span.start_byte,
+                    diagnostic.span.end_byte,
+                )) {
+                    continue;
+                }
                 count += 1;
                 write!(f, "  ")?;
                 paint(f, self.colored, ERROR, "SEMANTIC")?;
@@ -292,6 +314,21 @@ impl DependencyGraphDisplay<'_> {
                 )?;
                 writeln!(f)?;
             }
+        }
+        for warning in &graph.references.warnings {
+            count += 1;
+            write!(f, "  WARNING ")?;
+            if let Some(visit) = graph.invocations.get(warning.invocation.index()) {
+                self.path(f, &visit.file, FILE)?;
+            }
+            writeln!(
+                f,
+                " @ {}:{} C{} {:?}",
+                warning.warning.span.row + 1,
+                warning.warning.span.column + 1,
+                warning.location.command.id,
+                warning.warning.content.message()
+            )?;
         }
         if count == 0 {
             paint(f, self.colored, INCLUDE, "  No diagnostics")?;

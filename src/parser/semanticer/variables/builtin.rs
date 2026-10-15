@@ -882,9 +882,11 @@ pub fn template_names_for_version(major: u32, minor: u32) -> impl Iterator<Item 
 fn variable(name: &str) -> SemanticVariable {
     SemanticVariable {
         name: name.to_owned(),
+        builtin: true,
         init_value: String::new(),
         first_write: None,
         scope: None,
         changing: Vec::new(),
+        references: Vec::new(),
     }
 }

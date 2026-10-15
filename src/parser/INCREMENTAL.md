@@ -25,6 +25,8 @@ Change `set(A one)` to `set(A two)` between other commands:
 4. BuildStruct extracts that command's effects again. Reused effects receive the new revision, command ID, span, block, and scope references.
 5. The graph's declared write names are unchanged. Workspace keeps visits/scopes and updates snapshot and edge references instead of resolving dependencies again.
 
+Reference spans stored on reused commands are remapped with their command IDs. Function inventories and local reference/warning binding are rebuilt after command reuse; Workspace rebuilds its contextual reference index on a bounded blocking worker even when graph visits are reused. These aggregate passes can remain linear. See [References](semanticer/REFERENCES.md).
+
 `DocumentSnapshot.work` reports recomputed/reused units at each layer. Lexer counts emitted tokens, nparser counts parsing units, and semantic/build caches count commands. Workspace exposes `graph_rebuilt` and `reused_invocations` for the latest flush. These are work counters, not elapsed-time measurements.
 
 ## Invalidation

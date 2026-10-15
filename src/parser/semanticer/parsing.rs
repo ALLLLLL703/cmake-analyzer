@@ -1,6 +1,8 @@
 // AI-generated implementation.
 pub mod block;
+mod functions;
 mod outputs;
+pub(crate) mod references;
 pub mod scope;
 pub mod symbols;
 mod version;
@@ -72,6 +74,7 @@ impl Semanticer {
         self.scan_commands(source, &mut result);
         self.scan_blocks(&mut result);
         self.scan_scopes(&mut result);
+        self.scan_functions(source, &mut result);
         // AI-generated template specialization.
         let specialized = self.detect_specialized_variables(&result);
         result
@@ -88,6 +91,7 @@ impl Semanticer {
                 .filter(|variable| names.insert(variable.name.clone())),
         );
         self.track_variable_changes(&mut result);
+        self.collect_references(&mut result, source);
         self.collect_symbols(&mut result);
         self.cursor.offset = self.buffer.nodes.len();
         result
@@ -142,6 +146,7 @@ impl Semanticer {
                         full_span: node.span,
                         block: None,
                         scope: None,
+                        variable_references: Vec::new(),
                         args: command
                             .args
                             .iter()
@@ -159,6 +164,9 @@ impl Semanticer {
                             })
                             .collect(),
                     });
+                    if let Some(command) = result.commands.last_mut() {
+                        references::scan_command(source, result.id, command);
+                    }
                 }
             }
         }

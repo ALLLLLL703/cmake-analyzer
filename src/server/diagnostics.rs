@@ -8,12 +8,31 @@ use lspally::server::model::*;
 pub(super) fn snapshot_diagnostics(
     snapshot: &DocumentSnapshot,
     encoding: CoordinateEncoding,
+    contextual: bool,
+    resolved_calls: &[crate::parser::semanticer::model::CommandId],
 ) -> ServerResult<Vec<Diagnostic>> {
     let index = TextIndex::new(&snapshot.text, encoding);
     let mut diagnostics =
         Vec::with_capacity(snapshot.semantics.diagnostics.len() + snapshot.build.diagnostics.len());
+    let resolved: std::collections::HashSet<_> = resolved_calls
+        .iter()
+        .filter_map(|id| snapshot.semantics.commands.get(id.id as usize))
+        .map(|command| (command.span.start_byte, command.span.end_byte))
+        .collect();
     for error in &snapshot.semantics.diagnostics {
+        if matches!(error.content, SemanticError::CommandNotFound(_))
+            && resolved.contains(&(error.span.start_byte, error.span.end_byte))
+        {
+            continue;
+        }
         diagnostics.push(diagnostic(&index, error.span, message(&error.content))?);
+    }
+    if !contextual {
+        for warning in &snapshot.semantics.warnings {
+            let mut item = diagnostic(&index, warning.span, warning.content.message())?;
+            item.severity = Some(DiagnosticSeverity(2));
+            diagnostics.push(item);
+        }
     }
     for error in &snapshot.build.diagnostics {
         diagnostics.push(diagnostic(

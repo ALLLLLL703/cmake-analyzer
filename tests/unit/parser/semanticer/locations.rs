@@ -101,7 +101,7 @@ async fn incremental_locations_follow_reused_commands_and_deleted_first_writes()
     workspace.set_overlay(&file, edited.clone()).unwrap();
     workspace.flush().await.unwrap();
     let snapshot = workspace.snapshot(&file).unwrap().unwrap();
-    let full = analyze(&edited).await;
+    let full = super::analyze_file(&edited, snapshot.semantics.id).await;
     assert_eq!(
         format!("{:?}", snapshot.semantics.variables),
         format!("{:?}", full.variables)

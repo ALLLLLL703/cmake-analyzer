@@ -7,7 +7,11 @@ mod configuration;
 mod discovery;
 #[path = "server/lifecycle.rs"]
 mod lifecycle;
+#[path = "server/limits.rs"]
+mod limits;
 #[path = "server/projects.rs"]
 mod projects;
+#[path = "server/references.rs"]
+mod references;
 #[path = "server/session.rs"]
 mod session;

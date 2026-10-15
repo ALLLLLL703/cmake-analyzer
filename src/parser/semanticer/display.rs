@@ -229,7 +229,11 @@ impl Display for SemanticDisplay<'_> {
         let visible = buffer
             .variables
             .iter()
-            .filter(|variable| self.all_variables || !variable.changing.is_empty())
+            .filter(|variable| {
+                self.all_variables
+                    || !variable.changing.is_empty()
+                    || !variable.references.is_empty()
+            })
             .count();
         self.heading(f, "VARIABLES", visible)?;
         if !self.all_variables {
@@ -244,7 +248,8 @@ impl Display for SemanticDisplay<'_> {
             writeln!(f)?;
         }
         for variable in &buffer.variables {
-            if !self.all_variables && variable.changing.is_empty() {
+            if !self.all_variables && variable.changing.is_empty() && variable.references.is_empty()
+            {
                 continue;
             }
             write!(f, "  ")?;
@@ -256,12 +261,50 @@ impl Display for SemanticDisplay<'_> {
             write!(f, " writes=")?;
             self.commands(f, variable.changing.iter().map(|change| change.command))?;
             writeln!(f)?;
+            for reference in &variable.references {
+                write!(
+                    f,
+                    "    {:?} F{} C{} ",
+                    reference.kind, reference.file.id, reference.command.id
+                )?;
+                self.span(f, reference.span)?;
+                writeln!(f)?;
+            }
         }
 
+        self.heading(f, "FUNCTIONS", buffer.functions.len())?;
+        for function in &buffer.functions {
+            write!(f, "  {:?} ", function.kind)?;
+            self.paint(f, COMMAND, format_args!("{:?}", function.name))?;
+            writeln!(f)?;
+            for reference in &function.references {
+                write!(
+                    f,
+                    "    {:?} F{} C{} ",
+                    reference.kind, reference.file.id, reference.command.id
+                )?;
+                self.span(f, reference.span)?;
+                writeln!(f)?;
+            }
+        }
+        self.heading(f, "WARNINGS", buffer.warnings.len())?;
+        for warning in &buffer.warnings {
+            self.paint(f, OUTPUT, "  WARNING ")?;
+            self.span(f, warning.span)?;
+            writeln!(f, " {:?}", warning.content.message())?;
+        }
         self.heading(f, "DIAGNOSTICS", buffer.diagnostics.len())?;
         if buffer.diagnostics.is_empty() {
             write!(f, "  ")?;
-            self.paint(f, SUCCESS, "No diagnostics")?;
+            self.paint(
+                f,
+                SUCCESS,
+                if buffer.warnings.is_empty() {
+                    "No diagnostics"
+                } else {
+                    "No errors"
+                },
+            )?;
             writeln!(f)?;
         }
         for diagnostic in &buffer.diagnostics {

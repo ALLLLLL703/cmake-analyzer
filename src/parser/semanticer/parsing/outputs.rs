@@ -64,6 +64,7 @@ impl Semanticer {
                         keywords: 0,
                     }],
                     &arguments,
+                    MatchRole::Out,
                 )
                 .into_iter()
                 .find(|state| state.position == arguments.len())
@@ -98,10 +99,12 @@ impl Semanticer {
                         let id = result.variables.len();
                         result.variables.push(SemanticVariable {
                             name: name.to_owned(),
+                            builtin: false,
                             init_value: String::new(),
                             first_write: None,
                             scope: command.scope,
                             changing: Vec::new(),
+                            references: Vec::new(),
                         });
                         variables.insert(name.to_owned(), id);
                         id
@@ -138,16 +141,75 @@ fn contains_out(kind: &ArgSchemaKind) -> bool {
         _ => false,
     }
 }
+#[derive(Clone, Copy)]
+enum MatchRole {
+    Out,
+    Variable,
+}
+
+pub(super) fn variable_arguments(
+    command: &crate::parser::semanticer::model::SemanticCommandRepresent,
+) -> Vec<usize> {
+    let Some(schema) = &command.schema else {
+        return Vec::new();
+    };
+    if !schema.args.iter().any(|arg| contains_variable(&arg.kind)) {
+        return Vec::new();
+    }
+    let arguments: Vec<_> = command
+        .args
+        .iter()
+        .map(|arg| arg.content.as_str())
+        .collect();
+    let roots: Vec<_> = schema.args.iter().map(|arg| &arg.kind).collect();
+    let matched = |role| {
+        sequence(
+            &roots,
+            vec![OutputMatch {
+                position: 0,
+                indices: Vec::new(),
+                keywords: 0,
+            }],
+            &arguments,
+            role,
+        )
+        .into_iter()
+        .find(|state| state.position == arguments.len())
+        .map_or_else(Vec::new, |state| state.indices)
+    };
+    let outputs = matched(MatchRole::Out);
+    matched(MatchRole::Variable)
+        .into_iter()
+        .filter(|index| !outputs.contains(index))
+        .collect()
+}
+fn contains_variable(kind: &ArgSchemaKind) -> bool {
+    match kind {
+        ArgSchemaKind::Variable => true,
+        ArgSchemaKind::Optional(args)
+        | ArgSchemaKind::AllOf(args)
+        | ArgSchemaKind::Repeat { args, .. } => args.iter().any(contains_variable),
+        ArgSchemaKind::Choice(choices) => choices.iter().flatten().any(contains_variable),
+        _ => false,
+    }
+}
+fn matches_role(kind: &ArgSchemaKind, role: MatchRole) -> bool {
+    matches!(
+        (kind, role),
+        (ArgSchemaKind::Out, MatchRole::Out) | (ArgSchemaKind::Variable, MatchRole::Variable)
+    )
+}
 fn sequence(
     kinds: &[&ArgSchemaKind],
     mut states: Vec<OutputMatch>,
     arguments: &[&str],
+    role: MatchRole,
 ) -> Vec<OutputMatch> {
     for kind in kinds {
         states = merge(
             states
                 .into_iter()
-                .flat_map(|state| step(kind, state, arguments))
+                .flat_map(|state| step(kind, state, arguments, role))
                 .collect(),
         );
         if states.is_empty() {
@@ -156,20 +218,35 @@ fn sequence(
     }
     states
 }
-fn group(kinds: &[ArgSchemaKind], state: OutputMatch, arguments: &[&str]) -> Vec<OutputMatch> {
-    sequence(&kinds.iter().collect::<Vec<_>>(), vec![state], arguments)
+fn group(
+    kinds: &[ArgSchemaKind],
+    state: OutputMatch,
+    arguments: &[&str],
+    role: MatchRole,
+) -> Vec<OutputMatch> {
+    sequence(
+        &kinds.iter().collect::<Vec<_>>(),
+        vec![state],
+        arguments,
+        role,
+    )
 }
-fn step(kind: &ArgSchemaKind, state: OutputMatch, arguments: &[&str]) -> Vec<OutputMatch> {
+fn step(
+    kind: &ArgSchemaKind,
+    state: OutputMatch,
+    arguments: &[&str],
+    role: MatchRole,
+) -> Vec<OutputMatch> {
     match kind {
         ArgSchemaKind::Optional(args) => {
-            let mut states = group(args, state.clone(), arguments);
+            let mut states = group(args, state.clone(), arguments, role);
             states.push(state);
             merge(states)
         }
         ArgSchemaKind::Choice(choices) => merge(
             choices
                 .iter()
-                .flat_map(|choice| group(choice, state.clone(), arguments))
+                .flat_map(|choice| group(choice, state.clone(), arguments, role))
                 .collect(),
         ),
         ArgSchemaKind::Repeat { args, min } => {
@@ -183,7 +260,7 @@ fn step(kind: &ArgSchemaKind, state: OutputMatch, arguments: &[&str]) -> Vec<Out
                     .into_iter()
                     .flat_map(|state| {
                         let position = state.position;
-                        group(args, state, arguments)
+                        group(args, state, arguments, role)
                             .into_iter()
                             .filter(move |next| next.position > position)
                     })
@@ -217,7 +294,10 @@ fn step(kind: &ArgSchemaKind, state: OutputMatch, arguments: &[&str]) -> Vec<Out
             }
             if kinds.iter().any(|kind|matches!(kind,ArgSchemaKind::Keyword(word) if arguments[state.position]!=word)){return Vec::new()}
             let mut next = state;
-            if kinds.iter().any(contains_out) {
+            if kinds.iter().any(|kind| match role {
+                MatchRole::Out => contains_out(kind),
+                MatchRole::Variable => contains_variable(kind),
+            }) {
                 next.indices.push(next.position);
             }
             next.position += 1;
@@ -228,7 +308,7 @@ fn step(kind: &ArgSchemaKind, state: OutputMatch, arguments: &[&str]) -> Vec<Out
                 return Vec::new();
             }
             let mut next = state;
-            if matches!(kind, ArgSchemaKind::Out) {
+            if matches_role(kind, role) {
                 next.indices.push(next.position);
             }
             next.position += 1;

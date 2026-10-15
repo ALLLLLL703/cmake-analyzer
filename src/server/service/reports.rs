@@ -24,6 +24,8 @@ impl Service {
             }
             let mut snapshot = None;
             let mut extra = Vec::new();
+            let mut contextual = false;
+            let mut resolved_calls = Vec::new();
             for owner in owners {
                 if !self.projects[owner].settings.diagnostics.enable {
                     continue;
@@ -33,6 +35,31 @@ impl Service {
                     snapshot = workspace.snapshot(path).map_err(internal)?;
                 }
                 if let Some(graph) = workspace.root_graph() {
+                    if let Some(visit) = graph.invocations.iter().find(|visit| visit.file == *path)
+                    {
+                        contextual = true;
+                        let file = visit.snapshot.semantics.id;
+                        for warning in graph
+                            .references
+                            .warnings
+                            .iter()
+                            .filter(|warning| warning.location.file == file)
+                        {
+                            extra.push((
+                                warning.warning.span,
+                                2,
+                                warning.warning.content.message(),
+                            ));
+                        }
+                        resolved_calls.extend(
+                            graph
+                                .references
+                                .resolved_calls
+                                .iter()
+                                .filter(|location| location.file == file)
+                                .map(|location| location.command),
+                        );
+                    }
                     for diagnostic in &graph.diagnostics {
                         // Failed child reads carry the parent's source range, not a range in the missing child.
                         let origin = diagnostic
@@ -52,6 +79,7 @@ impl Service {
                                     .source
                                     .as_ref()
                                     .map_or_default(|source| source.span),
+                                1,
                                 if origin != &diagnostic.file {
                                     format!("{}: {}", diagnostic.file.display(), diagnostic.message)
                                 } else {
@@ -62,11 +90,15 @@ impl Service {
                     }
                 }
             }
+            resolved_calls.sort_by_key(|id| id.id);
+            resolved_calls.dedup();
             let key = ReportKey {
                 version: document.version,
                 enabled,
                 snapshot: snapshot.as_ref().map(Arc::downgrade),
                 extra,
+                contextual,
+                resolved_calls,
             };
             if self
                 .published
@@ -148,10 +180,17 @@ fn convert_reports(
             let mut items = if !input.key.enabled {
                 Vec::new()
             } else if let Some(snapshot) = &input.snapshot {
-                let mut items = diagnostics::snapshot_diagnostics(snapshot, encoding)?;
+                let mut items = diagnostics::snapshot_diagnostics(
+                    snapshot,
+                    encoding,
+                    input.key.contextual,
+                    &input.key.resolved_calls,
+                )?;
                 let index = TextIndex::new(&snapshot.text, encoding);
-                for (span, message) in &input.key.extra {
-                    items.push(diagnostics::diagnostic(&index, *span, message.clone())?);
+                for (span, severity, message) in &input.key.extra {
+                    let mut item = diagnostics::diagnostic(&index, *span, message.clone())?;
+                    item.severity = Some(DiagnosticSeverity(i32::from(*severity)));
+                    items.push(item);
                 }
                 items
             } else {

@@ -217,10 +217,12 @@ impl Semanticer {
             .into_iter()
             .map(|name| SemanticVariable {
                 name,
+                builtin: true,
                 init_value: String::new(),
                 first_write: None,
                 scope: None,
                 changing: Vec::new(),
+                references: Vec::new(),
             })
             .collect()
     }

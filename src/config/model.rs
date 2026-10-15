@@ -22,6 +22,20 @@ impl ConfigSources {
         }
     }
 }
+#[derive(Clone, Copy, Debug)]
+pub struct Limits {
+    pub max_open_documents: usize,
+    pub max_workspaces: usize,
+}
+static DEFAULT_LIMITS: Limits = Limits {
+    max_open_documents: 256,
+    max_workspaces: 32,
+};
+impl Default for Limits {
+    fn default() -> Self {
+        DEFAULT_LIMITS
+    }
+}
 #[derive(Clone, Debug)]
 pub struct Diagnostics {
     pub enable: bool,
@@ -50,7 +64,10 @@ impl Default for Modules {
     fn default() -> Self {
         Self {
             enable: true,
-            search_paths: Vec::new(),
+            search_paths: super::defaults::PROJECT_SEARCH_PATHS
+                .iter()
+                .map(PathBuf::from)
+                .collect(),
             builtin_directory: None,
         }
     }
@@ -69,7 +86,9 @@ pub(super) struct Layer {
 }
 pub struct ConfigStore {
     pub sources: ConfigSources,
+    pub limits: Limits,
     pub(super) user: Layer,
     pub(super) explicit: Layer,
     pub(super) projects: BTreeMap<PathBuf, Arc<Settings>>,
+    pub(super) builtin_directory: tokio::sync::OnceCell<Option<PathBuf>>,
 }

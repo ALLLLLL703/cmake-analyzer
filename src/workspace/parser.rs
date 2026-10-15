@@ -117,6 +117,9 @@ impl Workspace {
             self.graph = Some(graph);
             self.graph_invalidated = false;
         }
+        if rebuild {
+            self.refresh_references().await?;
+        }
         self.release_unused_snapshots();
         Ok(())
     }

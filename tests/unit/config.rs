@@ -1,4 +1,6 @@
 // AI-generated configuration and interpreter tests.
+mod limits;
+mod module_defaults;
 use cmake_analyzer::{
     config::{ConfigSources, ConfigStore},
     parser::interpreter_commands::{InterpreterServices, parse},

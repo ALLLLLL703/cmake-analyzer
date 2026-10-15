@@ -8,6 +8,9 @@ use super::model::*;
 use lspally::server::model::*;
 use tokio::sync::{mpsc, oneshot};
 
+static SERVICE_QUEUE_CAPACITY: usize = 64;
+static EDIT_BATCH_SIZE: usize = 64;
+
 impl CmakeAnalyzer {
     pub(super) fn sender(&self) -> ServerResult<mpsc::Sender<ServiceCommand>> {
         self.state
@@ -59,7 +62,7 @@ impl CmakeAnalyzer {
         if state.service.is_some() {
             return Err(ServerError::invalid("Workspace service already started"));
         }
-        let (sender, receiver) = mpsc::channel(64);
+        let (sender, receiver) = mpsc::channel(SERVICE_QUEUE_CAPACITY);
         let stop = Cancellation::default();
         let roots = std::mem::take(&mut state.roots);
         let hierarchical = state.hierarchical;

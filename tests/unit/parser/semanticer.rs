@@ -1,5 +1,6 @@
 // AI-generated tests.
 mod locations;
+mod references;
 use cmake_analyzer::parser::{
     lexer::model::{Lexer, RawBuffer},
     nparser::model::NParser,
@@ -7,10 +8,13 @@ use cmake_analyzer::parser::{
 };
 
 pub(super) async fn analyze(source: &str) -> SemanticedBuffer {
+    analyze_file(source, FileId { id: 7 }).await
+}
+pub(super) async fn analyze_file(source: &str, file: FileId) -> SemanticedBuffer {
     let lexed = Lexer::new(RawBuffer::new(source)).parse();
     let parsed = NParser::new(lexed).parse(source);
     Semanticer::new(parsed, Default::default())
-        .parse(source, FileId { id: 7 })
+        .parse(source, file)
         .await
 }
 

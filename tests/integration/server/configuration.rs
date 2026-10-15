@@ -12,6 +12,33 @@ async fn reload(client: &mut Session, id: i32, params: serde_json::Value) -> ser
 }
 
 #[tokio::test]
+async fn default_project_module_directories_work_without_configuration() {
+    let project = Project::new().await;
+    let text = "cmake_minimum_required(VERSION 3.31)\ninclude(DirectDefault)\ninclude(UpperDefault)\ninclude(LowerDefault)\n";
+    let root = project.write("CMakeLists.txt", text).await;
+    for (path, name) in [
+        ("cmake/DirectDefault.cmake", "D"),
+        ("cmake/Modules/UpperDefault.cmake", "U"),
+        ("cmake/modules/LowerDefault.cmake", "L"),
+    ] {
+        project
+            .write(
+                path,
+                &format!("cmake_minimum_required(VERSION 3.31)\nset({name} value)\n"),
+            )
+            .await;
+    }
+    let mut client = Session::start(&project.0, vec![], true).await;
+    client.open(&root, text).await;
+    assert_eq!(
+        client.diagnostics(&root, 1).await["params"]["diagnostics"],
+        json!([])
+    );
+    client.finish().await;
+    project.remove().await;
+}
+
+#[tokio::test]
 async fn reload_search_paths_discovers_nested_modules_and_subdirectories() {
     let project = Project::new().await;
     let root = project

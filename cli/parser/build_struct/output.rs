@@ -34,6 +34,7 @@ pub(crate) fn inspect(
         build
             .display(colored)
             .with_semantic_diagnostics(&semantics.diagnostics)
+            .with_semantic_warnings(&semantics.warnings)
     )?;
     output.flush()?;
     Ok(!semantics.diagnostics.is_empty() || !build.diagnostics.is_empty())

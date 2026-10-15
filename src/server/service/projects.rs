@@ -24,8 +24,14 @@ impl Service {
         }) {
             return Ok(index);
         }
-        if self.projects.len() >= 32 {
-            return Err(ServerError::new(-32000, "Workspace limit (32) reached"));
+        if self.projects.len() >= self.config.limits.max_workspaces {
+            return Err(ServerError::new(
+                -32000,
+                format!(
+                    "Workspace limit ({}) reached",
+                    self.config.limits.max_workspaces
+                ),
+            ));
         }
         let directory = entry
             .parent()

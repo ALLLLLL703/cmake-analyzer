@@ -1,4 +1,5 @@
 // AI-generated import change.
+pub use super::reference_model::*;
 use std::{collections::HashMap, sync::Arc};
 
 use crate::{
@@ -41,6 +42,9 @@ pub struct SemanticedBuffer {
     pub id: FileId,
     pub commands: Vec<SemanticCommandRepresent>,
     pub variables: Vec<SemanticVariable>,
+    pub functions: Vec<SemanticFunction>,
+    pub warnings: Vec<Spanned<SemanticWarn>>,
+    pub unresolved_references: Vec<UnresolvedReference>,
     pub diagnostics: Vec<Spanned<SemanticError>>,
     // AI-generated addition.
     pub version: Option<CMakeVersion>,
@@ -75,6 +79,7 @@ pub enum SemanticError {
 pub struct SemanticVariable {
     // AI-generated addition.
     pub name: String,
+    pub builtin: bool,
     pub init_value: String,
     /// First possible source write, not proof of runtime initialization.
     /// Raw variable-name argument range in the owning SemanticedBuffer; absent for unwritten builtins.
@@ -82,6 +87,7 @@ pub struct SemanticVariable {
     // AI-generated change.
     pub scope: Option<ScopeId>,
     pub changing: Vec<VariableChanging>,
+    pub references: Vec<ReferenceLocation>,
 }
 
 #[derive(Clone, Debug)]
@@ -96,6 +102,7 @@ pub struct SemanticCommandRepresent {
     pub kind: CommandKind,
     pub span: TextSpan,
     pub args: Vec<SemanticArg>,
+    pub variable_references: Vec<ArgumentReference>,
     // AI-generated additions.
     pub name: String,
     pub closed: bool,
@@ -257,7 +264,7 @@ pub(super) struct OutputMatch {
     pub keywords: usize,
 }
 
-#[derive(Default, Clone, Debug)]
+#[derive(Default, Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct FileId {
     pub id: u32,
 }
@@ -316,6 +323,7 @@ impl SemanticedBuffer {
                 id: self.commands.len() as u32,
             },
             args: Vec::new(),
+            variable_references: Vec::new(),
             kind,
             span,
             // AI-generated additions.

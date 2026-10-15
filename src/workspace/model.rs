@@ -108,6 +108,7 @@ pub struct RootGraph {
     // Each pair selects a file visit, then a fact in that visit's saved BuildStruct.
     pub facts: Vec<(usize, usize)>,
     pub diagnostics: Vec<WorkspaceDiagnostic>,
+    pub references: crate::parser::semanticer::model::ReferenceIndex,
 }
 
 // AI-generated display models.

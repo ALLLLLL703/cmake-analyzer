@@ -11,6 +11,13 @@ impl Service {
             sources.explicit_file = Some(path);
         }
         let config = ConfigStore::load(sources).await.map_err(internal)?;
+        if self.documents.len() > config.limits.max_open_documents
+            || self.projects.len() > config.limits.max_workspaces
+        {
+            return Err(ServerError::invalid(
+                "Reload limits are below the current open document or Workspace count; close documents/remove Workspaces first",
+            ));
+        }
         // Stage configuration, ownership, and analysis before replacing the live state.
         let mut staged = Service {
             config,

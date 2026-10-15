@@ -1,6 +1,6 @@
 // AI-authored partial configuration models.
 use serde::Deserialize;
-use std::{collections::BTreeMap, path::PathBuf};
+use std::{collections::BTreeMap, num::NonZeroUsize, path::PathBuf};
 
 #[derive(Default, Deserialize)]
 #[serde(default, deny_unknown_fields)]
@@ -21,7 +21,14 @@ pub(super) struct ModulesPatch {
 }
 #[derive(Default, Deserialize)]
 #[serde(default, deny_unknown_fields)]
+pub(super) struct LimitsPatch {
+    pub max_open_documents: Option<NonZeroUsize>,
+    pub max_workspaces: Option<NonZeroUsize>,
+}
+#[derive(Default, Deserialize)]
+#[serde(default, deny_unknown_fields)]
 pub(super) struct SettingsPatch {
+    pub limits: Option<LimitsPatch>,
     pub diagnostics: DiagnosticsPatch,
     pub document_symbols: DocumentSymbolsPatch,
     pub modules: ModulesPatch,

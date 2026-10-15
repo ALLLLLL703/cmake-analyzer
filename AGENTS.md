@@ -37,6 +37,11 @@
 - Apply this to new and edited code.
 - Installed `.cmake` files under `/usr/lib/cmake` may be used as read-only test inputs.
 
+## Small Changes
+
+- For small, localized fixes, edit only the relevant files. Tests and updates to `agent-instructions/Architect.md` are not required unless explicitly requested.
+- This exception does not apply to architecture changes.
+
 ## Architecture Record
 
 - Maintain `agent-instructions/Architect.md` as the project architecture record, including relevant files, responsibilities, key functions, and implementation limits.

@@ -1,4 +1,5 @@
 // AI-generated tests.
+mod references;
 use cmake_analyzer::workspace::model::{Workspace, WorkspaceLimits};
 use std::{
     path::PathBuf,

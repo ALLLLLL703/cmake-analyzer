@@ -98,6 +98,12 @@ impl IncrementalSemanticer {
                             arg.span = span;
                         }
                     }
+                    for reference in &mut command.variable_references {
+                        reference.location.command = command.id;
+                        if let Some(span) = positions.remap(change, reference.location.span) {
+                            reference.location.span = span;
+                        }
+                    }
                     if command.schema.is_none() {
                         result.diagnostics.push(Spanned::new(
                             SemanticError::CommandNotFound(command.name.clone()),
@@ -154,6 +160,7 @@ impl IncrementalSemanticer {
                     }),
             );
         }
+        self.analyzer.scan_functions(&source, &mut result);
         self.templates_rebuilt = template_inputs(&self.buffer) != template_inputs(&result);
         if self.templates_rebuilt {
             self.variable_seed = seed(&self.analyzer, &result);
@@ -161,6 +168,7 @@ impl IncrementalSemanticer {
         result.variables = self.variable_seed.clone();
         self.analyzer
             .track_variable_changes_cached(&mut result, &reused);
+        self.analyzer.collect_references(&mut result, &source);
         self.analyzer.collect_symbols(&mut result);
         self.analyzer.buffer = parsed;
         self.source = source;
