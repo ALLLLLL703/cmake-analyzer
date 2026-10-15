@@ -72,11 +72,39 @@ impl Default for Modules {
         }
     }
 }
+#[derive(Clone, Debug)]
+pub struct Runtime {
+    pub enable: bool,
+    pub executable: PathBuf,
+    pub build_directory: Option<PathBuf>,
+    pub arguments: Vec<String>,
+    pub timeout_seconds: u64,
+    pub max_output_bytes: usize,
+    pub max_view_bytes: usize,
+}
+static DEFAULT_RUNTIME_TIMEOUT_SECONDS: u64 = 120;
+static DEFAULT_RUNTIME_OUTPUT_BYTES: usize = 64 * 1024 * 1024;
+static DEFAULT_RUNTIME_VIEW_BYTES: usize = 64 * 1024;
+impl Default for Runtime {
+    fn default() -> Self {
+        Self {
+            enable: true,
+            executable: PathBuf::from("cmake"),
+            build_directory: None,
+            arguments: Vec::new(),
+            timeout_seconds: DEFAULT_RUNTIME_TIMEOUT_SECONDS,
+            max_output_bytes: DEFAULT_RUNTIME_OUTPUT_BYTES,
+            max_view_bytes: DEFAULT_RUNTIME_VIEW_BYTES,
+        }
+    }
+}
+
 #[derive(Clone, Debug, Default)]
 pub struct Settings {
     pub diagnostics: Diagnostics,
     pub document_symbols: DocumentSymbols,
     pub modules: Modules,
+    pub runtime: Runtime,
     pub interpreter_commands: BTreeMap<PathBuf, InterpreterServices>,
 }
 #[derive(Default)]

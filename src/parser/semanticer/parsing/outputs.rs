@@ -101,6 +101,7 @@ impl Semanticer {
                             name: name.to_owned(),
                             builtin: false,
                             init_value: String::new(),
+                            possible_value: None,
                             first_write: None,
                             scope: command.scope,
                             changing: Vec::new(),

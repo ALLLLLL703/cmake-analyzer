@@ -1,5 +1,6 @@
 // AI-generated import change.
 pub use super::reference_model::*;
+pub use super::value_model::*;
 use std::{collections::HashMap, sync::Arc};
 
 use crate::{
@@ -43,6 +44,7 @@ pub struct SemanticedBuffer {
     pub commands: Vec<SemanticCommandRepresent>,
     pub variables: Vec<SemanticVariable>,
     pub functions: Vec<SemanticFunction>,
+    pub values: Vec<VariableValueAt>,
     pub warnings: Vec<Spanned<SemanticWarn>>,
     pub unresolved_references: Vec<UnresolvedReference>,
     pub diagnostics: Vec<Spanned<SemanticError>>,
@@ -81,6 +83,7 @@ pub struct SemanticVariable {
     pub name: String,
     pub builtin: bool,
     pub init_value: String,
+    pub possible_value: Option<PossibleValue>,
     /// First possible source write, not proof of runtime initialization.
     /// Raw variable-name argument range in the owning SemanticedBuffer; absent for unwritten builtins.
     pub first_write: Option<TextSpan>,

@@ -10,6 +10,12 @@ use model::{
 };
 pub(crate) use model::{FileContext, ReferenceCollector};
 impl ReferenceCollector {
+    pub fn owner(&self, environment: ReferenceEnvironmentId) -> ReferenceEnvironmentId {
+        self.environments[environment.index()].owner
+    }
+    pub fn parent(&self, environment: ReferenceEnvironmentId) -> Option<ReferenceEnvironmentId> {
+        self.environments[environment.index()].parent
+    }
     pub fn finish(mut self) -> ReferenceIndex {
         // Deferred bodies can call declarations reached later; these remain static candidates.
         let mut functions: HashMap<String, Vec<IndexedFunctionId>> = HashMap::new();
@@ -130,6 +136,7 @@ impl ReferenceCollector {
             name: name.to_owned(),
             scope: owner,
             local_scope: scope,
+            possible_value: None,
             definition,
             references: Vec::new(),
         });
@@ -637,6 +644,7 @@ impl Semanticer {
                         name: variable.name,
                         builtin: false,
                         init_value: String::new(),
+                        possible_value: None,
                         first_write: None,
                         scope: variable.local_scope,
                         changing: Vec::new(),

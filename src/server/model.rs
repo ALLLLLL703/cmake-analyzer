@@ -61,6 +61,7 @@ impl Drop for ServiceHandle {
     }
 }
 pub(super) enum ServiceCommand {
+    RuntimeRefresh,
     Open(TextDocumentItem),
     Change(DidChangeTextDocumentParams),
     Close(Uri),
@@ -69,6 +70,15 @@ pub(super) enum ServiceCommand {
     ReloadConfig {
         path: Option<PathBuf>,
         reply: oneshot::Sender<ServerResult<usize>>,
+    },
+    Actions {
+        uri: Uri,
+        line: u64,
+        reply: oneshot::Sender<ServerResult<Option<CodeActionResponse>>>,
+    },
+    RunAction {
+        request: super::action::model::ActionRequest,
+        reply: oneshot::Sender<ServerResult<Option<Data>>>,
     },
     Symbols {
         uri: Uri,
@@ -100,6 +110,19 @@ pub(super) struct Service {
     pub client: ClientHandle,
     pub encoding: CoordinateEncoding,
     pub hierarchical: bool,
+    pub jobs: tokio::task::JoinSet<RuntimeCompletion>,
+    pub running: BTreeMap<PathBuf, RunningConfigure>,
+    pub run_counter: u64,
+}
+pub(super) struct RunningConfigure {
+    pub run: crate::runtime_cmake::model::RunId,
+    pub cancel: Cancellation,
+    pub build_directory: PathBuf,
+}
+pub(super) struct RuntimeCompletion {
+    pub root: PathBuf,
+    pub run: crate::runtime_cmake::model::RunId,
+    pub result: std::io::Result<crate::runtime_cmake::model::Trace>,
 }
 pub(super) struct ReportKey {
     pub version: i32,

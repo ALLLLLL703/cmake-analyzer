@@ -1,6 +1,8 @@
 pub mod model;
 mod reference_model;
 pub(crate) mod references;
+mod value_model;
+pub(crate) mod values;
 // AI-authored incremental implementation.
 mod incremental;
 pub mod parsing;

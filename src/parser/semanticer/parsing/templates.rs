@@ -219,6 +219,7 @@ impl Semanticer {
                 name,
                 builtin: true,
                 init_value: String::new(),
+                possible_value: None,
                 first_write: None,
                 scope: None,
                 changing: Vec::new(),

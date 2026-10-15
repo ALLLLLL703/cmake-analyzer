@@ -7,6 +7,8 @@ mod graph;
 mod incremental;
 pub mod model;
 mod parser;
+mod reference_values;
 mod references;
 mod refresh;
+pub mod runtime;
 pub use model::{DependencyGraphDisplay, Workspace, WorkspaceDisplay, WorkspaceLimits};

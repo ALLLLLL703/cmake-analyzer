@@ -92,6 +92,7 @@ impl Semanticer {
         );
         self.track_variable_changes(&mut result);
         self.collect_references(&mut result, source);
+        self.collect_values(&mut result);
         self.collect_symbols(&mut result);
         self.cursor.offset = self.buffer.nodes.len();
         result

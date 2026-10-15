@@ -27,10 +27,22 @@ pub(super) struct LimitsPatch {
 }
 #[derive(Default, Deserialize)]
 #[serde(default, deny_unknown_fields)]
+pub(super) struct RuntimePatch {
+    pub enable: Option<bool>,
+    pub executable: Option<PathBuf>,
+    pub build_directory: Option<PathBuf>,
+    pub arguments: Option<Vec<String>>,
+    pub timeout_seconds: Option<std::num::NonZeroU64>,
+    pub max_output_bytes: Option<NonZeroUsize>,
+    pub max_view_bytes: Option<NonZeroUsize>,
+}
+#[derive(Default, Deserialize)]
+#[serde(default, deny_unknown_fields)]
 pub(super) struct SettingsPatch {
     pub limits: Option<LimitsPatch>,
     pub diagnostics: DiagnosticsPatch,
     pub document_symbols: DocumentSymbolsPatch,
     pub modules: ModulesPatch,
+    pub runtime: RuntimePatch,
     pub interpreter_commands: BTreeMap<String, String>,
 }

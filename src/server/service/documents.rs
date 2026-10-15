@@ -7,7 +7,17 @@ use lspally::server::model::*;
 
 impl Service {
     pub(super) async fn apply(&mut self, command: ServiceCommand) -> ServerResult<()> {
+        if matches!(
+            &command,
+            ServiceCommand::Change(_)
+                | ServiceCommand::Save(_)
+                | ServiceCommand::Close(_)
+                | ServiceCommand::Folders(_)
+        ) {
+            self.invalidate_runtime();
+        }
         match command {
+            ServiceCommand::RuntimeRefresh => {}
             ServiceCommand::Open(document) => {
                 let path = uri::to_path(&document.uri)?;
                 if self.documents.contains_key(&path) {
@@ -98,7 +108,10 @@ impl Service {
                     self.ensure_owners(&path).await?;
                 }
             }
-            ServiceCommand::Symbols { .. } | ServiceCommand::ReloadConfig { .. } => {
+            ServiceCommand::Symbols { .. }
+            | ServiceCommand::ReloadConfig { .. }
+            | ServiceCommand::Actions { .. }
+            | ServiceCommand::RunAction { .. } => {
                 return Err(ServerError::new(-32603, "Query reached edit handler"));
             }
         }

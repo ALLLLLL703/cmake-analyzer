@@ -1,4 +1,6 @@
 // AI-generated LSP integration tests.
+#[path = "server/actions.rs"]
+mod actions;
 #[path = "server/cli.rs"]
 mod cli;
 #[path = "server/configuration.rs"]

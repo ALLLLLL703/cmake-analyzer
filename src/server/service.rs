@@ -1,5 +1,6 @@
 // AI-authored bounded Workspace service.
 mod configuration;
+mod configure;
 mod documents;
 mod projects;
 mod reports;

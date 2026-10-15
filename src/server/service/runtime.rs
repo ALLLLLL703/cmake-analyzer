@@ -9,7 +9,7 @@ pub(super) async fn run(
     config: crate::config::ConfigStore,
     context: Context,
     hierarchical: bool,
-    mut receiver: mpsc::Receiver<ServiceCommand>,
+    receiver: mpsc::Receiver<ServiceCommand>,
     stop: Cancellation,
 ) {
     let mut service = Service {
@@ -22,6 +22,9 @@ pub(super) async fn run(
         client: context.client,
         encoding: context.encoding,
         hierarchical,
+        jobs: tokio::task::JoinSet::new(),
+        running: BTreeMap::new(),
+        run_counter: 0,
     };
     for root in roots {
         if let Err(error) = service.add_project(root, false, None).await {
@@ -31,6 +34,14 @@ pub(super) async fn run(
     if let Err(error) = service.flush().await {
         eprintln!("{error}");
     }
+    drive(&mut service, receiver, stop).await;
+    service.stop_configures().await;
+}
+async fn drive(
+    service: &mut Service,
+    mut receiver: mpsc::Receiver<ServiceCommand>,
+    stop: Cancellation,
+) {
     let mut pending = None;
     loop {
         if stop.is_cancelled() {
@@ -39,7 +50,9 @@ pub(super) async fn run(
         let command = match pending.take() {
             Some(command) => command,
             None => {
-                tokio::select! {_=stop.cancelled()=>return,command=receiver.recv()=>match command {Some(command)=>command,None=>return}}
+                tokio::select! {_=stop.cancelled()=>return,
+                completion=service.jobs.join_next(),if !service.jobs.is_empty()=>{if let Some(completion)=completion {service.configure_finished(completion).await;}ServiceCommand::RuntimeRefresh},
+                command=receiver.recv()=>match command {Some(command)=>command,None=>return}}
             }
         };
         let mut query = None;
@@ -50,7 +63,10 @@ pub(super) async fn run(
             };
             if matches!(
                 current,
-                ServiceCommand::Symbols { .. } | ServiceCommand::ReloadConfig { .. }
+                ServiceCommand::Symbols { .. }
+                    | ServiceCommand::ReloadConfig { .. }
+                    | ServiceCommand::Actions { .. }
+                    | ServiceCommand::RunAction { .. }
             ) {
                 query = Some(current);
                 break;
@@ -79,6 +95,13 @@ pub(super) async fn run(
             }
             Some(ServiceCommand::ReloadConfig { path, reply }) if !reply.is_closed() => {
                 let result = service.reload_config(path).await;
+                let _ = reply.send(result);
+            }
+            Some(ServiceCommand::Actions { uri, line, reply }) if !reply.is_closed() => {
+                let _ = reply.send(service.actions(uri, line));
+            }
+            Some(ServiceCommand::RunAction { request, reply }) if !reply.is_closed() => {
+                let result = service.run_action(request).await;
                 let _ = reply.send(result);
             }
             _ => {}

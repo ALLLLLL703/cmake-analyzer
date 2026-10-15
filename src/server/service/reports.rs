@@ -34,6 +34,11 @@ impl Service {
                 if snapshot.is_none() {
                     snapshot = workspace.snapshot(path).map_err(internal)?;
                 }
+                if let Some(layer) = workspace.runtime() {
+                    if let Some(calls) = layer.resolved_calls.get(path) {
+                        resolved_calls.extend(calls);
+                    }
+                }
                 if let Some(graph) = workspace.root_graph() {
                     if let Some(visit) = graph.invocations.iter().find(|visit| visit.file == *path)
                     {

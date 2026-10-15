@@ -66,12 +66,20 @@ impl Workspace {
             .revision
             .checked_add(1)
             .ok_or_else(|| io::Error::other("Revision space exhausted"))?;
+        let changed = document
+            .snapshot
+            .as_ref()
+            .is_none_or(|snapshot| snapshot.text != text);
         document.overlay = Some(text);
+        if changed {
+            self.clear_runtime();
+        }
         self.dirty.insert(path);
         Ok(())
     }
     /// Go back to disk text. Closing the editor does not remove the file from its project.
     pub fn close_overlay(&mut self, path: impl AsRef<Path>) -> io::Result<()> {
+        self.clear_runtime();
         let path = absolute(path.as_ref())?;
         if let Some(document) = self.documents.get_mut(&path) {
             if document.overlay.take().is_some() {
@@ -85,6 +93,7 @@ impl Workspace {
         Ok(())
     }
     pub fn invalidate_disk(&mut self, path: impl AsRef<Path>) -> io::Result<()> {
+        self.clear_runtime();
         self.dirty.insert(absolute(path.as_ref())?);
         Ok(())
     }

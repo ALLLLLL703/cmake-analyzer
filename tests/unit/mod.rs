@@ -3,4 +3,5 @@
 mod config;
 mod model;
 mod parser;
+mod runtime_cmake;
 mod workspace;

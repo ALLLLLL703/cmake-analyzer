@@ -73,6 +73,7 @@ pub struct VariableScope {
     // Share the names until one side changes; later parent writes must not reach the child.
     pub possible_writes: Arc<BTreeSet<String>>,
     pub project: Option<String>,
+    pub(super) values: crate::parser::semanticer::model::ValueBindings,
 }
 #[derive(Clone, Debug)]
 pub struct Invocation {
@@ -109,6 +110,8 @@ pub struct RootGraph {
     pub facts: Vec<(usize, usize)>,
     pub diagnostics: Vec<WorkspaceDiagnostic>,
     pub references: crate::parser::semanticer::model::ReferenceIndex,
+    pub values: Vec<crate::parser::semanticer::model::VariableValueAt>,
+    pub runtime: Option<Arc<super::runtime::RuntimeLayer>>,
 }
 
 // AI-generated display models.
@@ -142,6 +145,7 @@ pub struct Workspace {
     pub(super) next_file: u32,
     pub(super) module_paths: Vec<PathBuf>,
     pub(super) builtin_module_directory: Option<PathBuf>,
+    pub(super) runtime: Option<Arc<super::runtime::RuntimeLayer>>,
 }
 impl Workspace {
     pub(super) fn from_root(root: Root, limits: WorkspaceLimits) -> Self {
@@ -160,6 +164,7 @@ impl Workspace {
             next_file: 0,
             module_paths: Vec::new(),
             builtin_module_directory: None,
+            runtime: None,
         }
     }
 }

@@ -106,6 +106,7 @@ pub struct IndexedVariable {
     pub name: String,
     pub scope: ReferenceEnvironmentId,
     pub local_scope: Option<ScopeId>,
+    pub possible_value: Option<super::model::PossibleValue>,
     pub definition: Option<ReferenceLocation>,
     pub references: Vec<ReferenceLocation>,
 }

@@ -117,6 +117,18 @@ fn parse_layer(text: &str, path: &Path, cwd: &Path) -> io::Result<Layer> {
     if let Some(value) = &mut patch.modules.builtin_directory {
         *value = resolve_path(base, value)?;
     }
+    if let Some(path) = &mut patch.runtime.build_directory {
+        *path = resolve_path(base, path)?;
+    }
+    if let Some(path) = &mut patch.runtime.executable {
+        if path.components().count() > 1 {
+            *path = resolve_path(base, path)?;
+        }
+    }
+    if let Some(arguments) = &patch.runtime.arguments {
+        super::runtime::validate_arguments(arguments)
+            .map_err(|error| invalid(error.to_string()))?;
+    }
     let mut commands = BTreeMap::new();
     for (file, command) in std::mem::take(&mut patch.interpreter_commands) {
         let file = resolve_path(cwd, Path::new(&file))?;
@@ -147,6 +159,27 @@ fn apply(settings: &mut Settings, layer: &Layer) {
     }
     if let Some(path) = &layer.patch.modules.builtin_directory {
         settings.modules.builtin_directory = Some(path.clone());
+    }
+    if let Some(value) = layer.patch.runtime.enable {
+        settings.runtime.enable = value;
+    }
+    if let Some(value) = &layer.patch.runtime.executable {
+        settings.runtime.executable = value.clone();
+    }
+    if let Some(value) = &layer.patch.runtime.build_directory {
+        settings.runtime.build_directory = Some(value.clone());
+    }
+    if let Some(value) = &layer.patch.runtime.arguments {
+        settings.runtime.arguments = value.clone();
+    }
+    if let Some(value) = layer.patch.runtime.timeout_seconds {
+        settings.runtime.timeout_seconds = value.get();
+    }
+    if let Some(value) = layer.patch.runtime.max_output_bytes {
+        settings.runtime.max_output_bytes = value.get();
+    }
+    if let Some(value) = layer.patch.runtime.max_view_bytes {
+        settings.runtime.max_view_bytes = value.get();
     }
     settings.interpreter_commands.extend(layer.commands.clone());
 }

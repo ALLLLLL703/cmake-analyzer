@@ -169,6 +169,7 @@ impl IncrementalSemanticer {
         self.analyzer
             .track_variable_changes_cached(&mut result, &reused);
         self.analyzer.collect_references(&mut result, &source);
+        self.analyzer.collect_values(&mut result);
         self.analyzer.collect_symbols(&mut result);
         self.analyzer.buffer = parsed;
         self.source = source;

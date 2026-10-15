@@ -1,6 +1,8 @@
 // AI-generated implementation.
 // review over(except for the build_graph)
+mod values;
 use super::{documents::absolute, model::*};
+use crate::parser::semanticer::model::{PossibleValue, ValueBindings, ValueDirectories};
 use crate::parser::{
     build_struct::model::{BuildEffect, Dependency, DependencyKind},
     semanticer::model::SemanticedBuffer,
@@ -15,6 +17,8 @@ struct Frame {
     invocation: usize,
     snapshot: Arc<DocumentSnapshot>,
     next: usize,
+    next_command: usize,
+    directories: ValueDirectories,
     local_scopes: HashMap<u32, usize>,
     depth: usize,
 }
@@ -70,11 +74,25 @@ impl Workspace {
             parent: None,
             possible_writes: Default::default(),
             project: None,
+            values: ValueBindings::default(),
         });
         let directory = DirectoryContext {
             source: root.file.parent().unwrap_or(Path::new("/")).to_owned(),
             binary: root.binary_directory.clone(),
         };
+        if root
+            .file
+            .file_name()
+            .is_some_and(|name| name == "CMakeLists.txt")
+        {
+            graph.scopes[0].values.assign(
+                "PROJECT_SOURCE_DIR",
+                directory
+                    .source
+                    .to_str()
+                    .map(|path| PossibleValue::Static(path.into())),
+            );
+        }
         let mut tasks = vec![Task::Enter {
             file: root.file.clone(),
             parent: None,
@@ -156,6 +174,14 @@ impl Workspace {
                         invocation,
                         snapshot,
                         next: 0,
+                        next_command: 0,
+                        directories: ValueDirectories {
+                            source_root: root.file.parent().unwrap_or(Path::new("/")).to_owned(),
+                            source: graph.invocations[invocation].directory.source.clone(),
+                            binary_root: root.binary_directory.clone(),
+                            binary: graph.invocations[invocation].directory.binary.clone(),
+                            file: graph.invocations[invocation].file.clone(),
+                        },
                         local_scopes: HashMap::new(),
                         depth,
                     }));
@@ -163,8 +189,11 @@ impl Workspace {
                 //太长了不看(or later?)
                 Task::Resume(mut frame) => {
                     let Some(fact) = frame.snapshot.build.facts.get(frame.next).cloned() else {
+                        let last = frame.snapshot.semantics.commands.len().saturating_sub(1);
+                        values::advance(&mut frame, &mut graph, last);
                         continue;
                     };
+                    values::advance(&mut frame, &mut graph, fact.source.command.id as usize);
                     frame.next += 1;
                     let caller = frame.invocation;
                     graph.facts.push((caller, frame.next - 1));
@@ -198,7 +227,23 @@ impl Workspace {
                         BuildEffect::VariableWrites { names, local: true } => {
                             Arc::make_mut(&mut graph.scopes[scope].possible_writes).extend(names);
                         }
-                        BuildEffect::Dependency(dependency) => {
+                        BuildEffect::Dependency(mut dependency) => {
+                            if !dependency.path.literal {
+                                if let Some(arg) = frame.snapshot.semantics.commands
+                                    [fact.source.command.id as usize]
+                                    .args
+                                    .first()
+                                {
+                                    if let Some(value) = graph.scopes[scope]
+                                        .values
+                                        .expand(arg, Some(&frame.directories))
+                                        .filter(|value| !value.text().contains(';'))
+                                    {
+                                        dependency.path.text = value.text().to_owned();
+                                        dependency.path.literal = true;
+                                    }
+                                }
+                            }
                             let invocation = &graph.invocations[caller];
                             let (resolved, candidates) = self
                                 .resolve_dependency(
@@ -207,6 +252,9 @@ impl Workspace {
                                     &invocation.directory,
                                 )
                                 .await;
+                            if resolved.is_none() && dependency.kind == DependencyKind::Include {
+                                graph.scopes[scope].values.invalidate();
+                            }
                             let edge = graph.edges.len();
                             graph.edges.push(DependencyEdge {
                                 caller,

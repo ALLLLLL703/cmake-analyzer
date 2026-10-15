@@ -29,6 +29,9 @@ impl Service {
             client: self.client.clone(),
             encoding: self.encoding,
             hierarchical: self.hierarchical,
+            jobs: tokio::task::JoinSet::new(),
+            running: BTreeMap::new(),
+            run_counter: self.run_counter,
         };
         let cwd = staged.config.sources.cwd.clone();
         staged.config.for_directory(&cwd).await.map_err(internal)?;
@@ -40,6 +43,7 @@ impl Service {
             staged.ensure_owners(&path).await?;
         }
         staged.flush().await?;
+        self.invalidate_runtime();
         self.config = staged.config;
         self.roots = staged.roots;
         self.projects = staged.projects;

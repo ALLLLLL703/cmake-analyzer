@@ -121,8 +121,7 @@ impl ILanguageServer for CmakeAnalyzer {
         context: Context,
         params: ExecuteCommandParams,
     ) -> ServerResult<Option<Data>> {
-        let _ = (context, params);
-        Err(ServerError::unsupported())
+        self.execute_action(context, params).await
     }
     async fn will_save_wait_until(
         &self,
@@ -137,8 +136,7 @@ impl ILanguageServer for CmakeAnalyzer {
         context: Context,
         params: CodeActionParams,
     ) -> ServerResult<Option<CodeActionResponse>> {
-        let _ = (context, params);
-        Err(ServerError::unsupported())
+        self.code_actions(context, params).await
     }
     async fn code_action_resolve_request(
         &self,

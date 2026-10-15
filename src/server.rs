@@ -1,4 +1,5 @@
 // AI-authored analyzer LSP integration.
+mod action;
 mod configuration;
 mod diagnostics;
 mod handlers;

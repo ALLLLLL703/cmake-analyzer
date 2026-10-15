@@ -19,6 +19,8 @@ handlers = {
     "did_save_text_document": "let _ = context; self.send(ServiceCommand::Save(params)).await",
     "did_change_workspace_folders": "let _ = context; self.send(ServiceCommand::Folders(params.event)).await",
     "document_symbol_request": "self.query_symbols(context, params.text_document.uri).await",
+    "code_action_request": "self.code_actions(context, params).await",
+    "execute_command": "self.execute_action(context, params).await",
     "cancel": "let _ = (context, params); Ok(())",
     "set_trace": "let _ = (context, params); Ok(())",
     "work_done_progress_cancel": "let _ = (context, params); Ok(())",

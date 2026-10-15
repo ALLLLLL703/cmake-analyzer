@@ -3,7 +3,7 @@
 
 # Workspace
 
-One Workspace owns one root project, its file results, and one dependency graph. Multiple projects need separate Workspaces. It reads code; it does not configure or build the project.
+One Workspace owns one root project, its file results, and one dependency graph. Multiple projects need separate Workspaces. Its static pass reads code without configuring or building. An explicit server action can install a separate runtime layer.
 
 ## Terminal display
 
@@ -25,7 +25,9 @@ File, `-`/stdin, and `--text` work like the other inspection CLIs. Stdin/text us
 | `display.rs` | Workspace overview, colored ASCII dependency tree, scopes, diagnostics |
 | `documents.rs` | Editor text, disk fallback, paths, root-bound construction, queries |
 | `parser.rs` | Process pending changes; save results; refresh this project |
-| `graph.rs` | Follow includes/subdirectories and track their scopes |
+| `graph.rs`, `graph/values.rs` | Follow dependencies with scoped literal values |
+| `reference_values.rs` | Sparse contextual values alongside reference aggregation |
+| `runtime.rs`, `runtime/model.rs` | Independent observed events, values, functions, and source snapshots |
 
 `BuildStructAnalyzer` lives in `../parser/build_struct/`. It reads semantic results and returns ordered facts. Workspace decides which files to load and which facts to apply.
 
@@ -60,7 +62,7 @@ new(root_file) / set_overlay / invalidate_disk
 
 `DocumentSnapshot` holds text, `SemanticedBuffer`, and `BuildStruct`. Readers share it through `Arc`; later edits create a new result rather than changing the old one.
 
-An unchanged file reuses its saved result. A changed file reparses fully; this is not token-level incremental parsing. Source IDs include file/version because command IDs only identify entries in one result.
+An unchanged file reuses its saved result. Changed files use the incremental lexer/parser/semantic/build caches; aggregation and reference/value replay may remain linear. Source IDs include file/version because command IDs only identify entries in one result.
 
 A **visit** means reading a file at one point in a root's command sequence:
 
@@ -100,7 +102,7 @@ add_subdirectory(child)   # child starts with the names known here
 set(after yes)            # this later write does not reach the child
 ```
 
-Scopes track project names and **possible write names**, not variable values. Shared name sets are copied only when one side changes. Local scope IDs are mapped separately for every visit.
+Scopes track project names, **possible write names**, and conservative literal/simple-expansion values. Shared name sets are copied only when one side changes. Local scope IDs are mapped separately for every visit.
 
 Facts inside conditions, loops, functions, and macros are kept but not applied. Their dependency edges remain unresolved candidates. Cache/parent writes are also kept without guessing their destination.
 
@@ -133,6 +135,30 @@ let file_result = workspace.snapshot("demo/CMakeLists.txt")?;
 let project_links = workspace.root_graph();
 ```
 
+## Values and runtime observations
+
+Semantic variables and indexed variables expose Option<PossibleValue>. Static
+file observations live in SemanticedBuffer.values; contextual observations live
+in RootGraph.values and carry file/command/scope/invocation locations. Summaries are not
+an all-command value matrix. Consult the observations for a particular command.
+
+Workspace seeds CMAKE_SOURCE_DIR, CMAKE_CURRENT_SOURCE_DIR,
+CMAKE_CURRENT_LIST_DIR/FILE, and known binary-directory counterparts. project()
+seeds PROJECT_SOURCE_DIR, PROJECT_BINARY_DIR, PROJECT_NAME, and named project
+variants in its actual source context. Shared file snapshots are never given
+one arbitrary importing project's directories. Literals/simple ${NAME}
+concatenation can resolve dependency paths; unknown, conditional, deferred,
+cache/parent, and unmodeled side effects remain conservative. Variable-dependent
+graphs rebuild on visited text changes instead of reusing stale targets.
+
+install_runtime accepts an executed trace; install_runtime_cancellable supports
+cooperative source/index cancellation. Neither method launches CMake. runtime()
+returns the independent immutable layer. It retains repeated events, parsed
+runtime sources, value observations, and function/macro calls/declarations.
+clear_runtime, editor changes, and disk invalidation retire it without mutating
+previously retained snapshots/layers. The server executes only a manual action;
+see [runtime analysis](../runtime_cmake/README.md).
+
 ## Current limits
 
-No CMake execution beyond version detection, variable evaluation, policy execution, cross-file function calls, automatic root discovery, membership actions, or File API import. Version/schema selection still uses the standalone Semanticer rules. Global catalogs and concurrent editor scheduling are later work.
+No general static CMake evaluation, policy execution, static cross-file function execution, automatic root discovery inside Workspace, or File API import. Version/schema selection still uses the standalone Semanticer rules. Global catalogs and concurrent editor scheduling are later work.

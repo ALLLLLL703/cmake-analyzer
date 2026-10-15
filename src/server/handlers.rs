@@ -85,6 +85,20 @@ impl CmakeAnalyzer {
                     },
                 )),
                 document_symbol_provider: Some(OneOf::Left(true)),
+                code_action_provider: Some(CodeActionProviderCapability::Simple(true)),
+                execute_command_provider: Some(ExecuteCommandOptions {
+                    commands: [
+                        super::action::model::ActionKind::Configure,
+                        super::action::model::ActionKind::ExpandedArguments,
+                        super::action::model::ActionKind::CancelConfigure,
+                    ]
+                    .into_iter()
+                    .map(|kind| kind.command().to_owned())
+                    .collect(),
+                    work_done_progress_options: WorkDoneProgressOptions {
+                        work_done_progress: None,
+                    },
+                }),
                 workspace: Some(WorkspaceServerCapabilities {
                     workspace_folders: Some(WorkspaceFoldersServerCapabilities {
                         supported: Some(true),

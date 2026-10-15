@@ -16,6 +16,7 @@ impl Workspace {
         if !graph.diagnostics.is_empty() {
             return false;
         }
+        let value_dependent=graph.invocations.iter().any(|visit|visit.snapshot.build.facts.iter().any(|fact|matches!(&fact.effect,BuildEffect::Dependency(dependency) if !dependency.path.literal)));
         for path in dirty {
             if !self.dependencies.contains(path) && *path != self.root.file {
                 continue;
@@ -26,6 +27,9 @@ impl Workspace {
             let Some(new) = self.documents.get(path).and_then(|d| d.snapshot.as_ref()) else {
                 return false;
             };
+            if value_dependent && old.snapshot.text != new.text {
+                return false;
+            }
             if !same_graph_inputs(&old.snapshot, new) {
                 return false;
             }

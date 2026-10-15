@@ -67,7 +67,7 @@ impl Service {
         });
         Ok(index)
     }
-    pub(super) fn owners(&self, path: &Path) -> Vec<usize> {
+    pub(in crate::server) fn owners(&self, path: &Path) -> Vec<usize> {
         let bound: Vec<_> = self
             .projects
             .iter()
@@ -231,6 +231,9 @@ impl Service {
                                 .flat_map(|edge| edge.candidates.iter().cloned()),
                         )
                         .collect();
+                    if let Some(layer) = project.workspace.runtime() {
+                        project.members.extend(layer.documents.keys().cloned());
+                    }
                 }
             }
             let unbound: Vec<_> = self

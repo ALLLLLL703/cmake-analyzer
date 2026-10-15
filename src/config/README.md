@@ -58,7 +58,46 @@ Limits are enforced at initialization, document admission, and Workspace creatio
 
 Joined options such as `-Ssource` are accepted. Other options, mixed modes, repeated options, and other programs are rejected in this initial implementation. File keys and command paths are relative to the server's startup cwd, not the configuration file. Absolute paths are accepted. Analysis settings follow the selected entry directory.
 
-Explicit file mappings take precedence over ordinary Workspace ownership. Files without mappings retain dependency-first project discovery and standalone-file fallback. No general CMake evaluation is introduced: variable-expanded paths and conditional/deferred dependencies retain the existing static-analysis limits.
+Explicit file mappings take precedence over ordinary Workspace ownership. Files without mappings retain dependency-first project discovery and standalone-file fallback. No execution is introduced by interpreter mappings. Simple known variable-expanded paths can resolve statically; unknown values and conditional/deferred dependencies remain limited.
+
+## Manual runtime analysis
+
+```toml
+[runtime]
+enable = true
+executable = "cmake"
+# Omit to use <project-source>/.cmake-analyzer/build.
+# build_directory = "analysis-build"
+arguments = ["-DCMAKE_BUILD_TYPE=Debug"]
+timeout_seconds = 120
+max_output_bytes = 67108864
+max_view_bytes = 65536
+```
+
+These settings only configure manual actions. Loading project settings, opening,
+editing, or saving files never authorizes configure. Select **Run CMake for …
+(executes project code)** to execute it; `enable = false` hides runtime actions.
+Automatic Code Action requests return none. Script/standalone entries cannot
+configure. See [actions](../server/README.md#manual-code-actions).
+
+Relative executable paths containing directory components and explicit build
+directories use the defining configuration file's directory. Bare executable
+names use PATH. The omitted build directory is project-relative, not relative
+to the user configuration. A source-equivalent build directory and identical
+concurrently used build directories are rejected. A dedicated directory is
+**not a sandbox**: project code may spawn processes, download, or write elsewhere.
+
+Timeout is positive seconds per run. max_output_bytes is a positive per-run
+stderr/trace byte limit; max_view_bytes bounds formatted views and failure
+details in bytes. Defaults are named in model.rs. Successful reload applies
+new settings, cancels active runs, and clears runtime results; failed reload
+preserves live settings/results.
+
+Arguments allow -D/-U cache settings, -G/-A/-T generator settings, -W warnings,
+--toolchain, --fresh, and --no-warn-unused-cli. Source/build, trace redirection,
+script/build/install modes, presets, positional arguments, and other flags are
+rejected. Values are passed directly, without a shell. Configure requires JSON
+trace v1 minor 2 global_frame support. No automatic execution mode is provided.
 
 ## Dynamic reload
 

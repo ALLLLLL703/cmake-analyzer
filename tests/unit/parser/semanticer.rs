@@ -1,6 +1,7 @@
 // AI-generated tests.
 mod locations;
 mod references;
+mod values;
 use cmake_analyzer::parser::{
     lexer::model::{Lexer, RawBuffer},
     nparser::model::NParser,

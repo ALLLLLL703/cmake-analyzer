@@ -1,14 +1,15 @@
 // AI-authored source-order reference aggregation over resolved dependency visits.
 use super::model::*;
 use crate::parser::semanticer::{
-    model::{ReferenceIndex, ReferenceInvocationId},
+    model::{ReferenceIndex, ReferenceInvocationId, VariableValueAt},
     references::ReferenceCollector,
 };
 use std::collections::HashMap;
 
-fn analyze(graph: &RootGraph) -> ReferenceIndex {
+fn analyze(graph: &RootGraph) -> (ReferenceIndex, Vec<VariableValueAt>) {
     let mut collector = ReferenceCollector::default();
     let root = collector.root();
+    let mut values = super::reference_values::ValueReplay::new(root, graph);
     let mut children: HashMap<_, Vec<_>> = HashMap::new();
     for edge in &graph.edges {
         if let Some(child) = edge.invocation {
@@ -20,7 +21,7 @@ fn analyze(graph: &RootGraph) -> ReferenceIndex {
     }
     let mut contexts = HashMap::new();
     let Some(first) = graph.invocations.first() else {
-        return ReferenceIndex::default();
+        return (ReferenceIndex::default(), Vec::new());
     };
     let root_visit = ReferenceInvocationId::new(0);
     contexts.insert(root_visit, collector.file(&first.snapshot.semantics, root));
@@ -40,12 +41,22 @@ fn analyze(graph: &RootGraph) -> ReferenceIndex {
             command,
             invocation,
         );
+        values.command(
+            &collector,
+            environment,
+            visit,
+            command,
+            invocation,
+            children.contains_key(&(invocation, command.id)),
+        );
         stack.push((invocation, next + 1));
         if let Some(children) = children.get(&(invocation, command.id)) {
             for &(child, kind) in children.iter().rev() {
                 let environment =
                     if kind == crate::parser::build_struct::model::DependencyKind::Subdirectory {
-                        collector.fork(environment, false)
+                        let child = collector.fork(environment, false);
+                        values.fork(child, collector.owner(environment));
+                        child
                     } else {
                         environment
                     };
@@ -60,7 +71,34 @@ fn analyze(graph: &RootGraph) -> ReferenceIndex {
             }
         }
     }
-    collector.finish()
+    let mut index = collector.finish();
+    let mut possible: HashMap<_, Option<crate::parser::semanticer::model::PossibleValue>> =
+        HashMap::new();
+    for value in &values.observations {
+        possible
+            .entry((
+                value.location.file,
+                value.location.command,
+                value.name.as_str(),
+            ))
+            .and_modify(|previous| {
+                if *previous != value.possible_value {
+                    *previous = None
+                }
+            })
+            .or_insert_with(|| value.possible_value.clone());
+    }
+    for variable in &mut index.variables {
+        let mut candidates = variable.references.iter().filter_map(|location| {
+            possible.get(&(location.file, location.command, variable.name.as_str()))
+        });
+        if let Some(first) = candidates.next() {
+            if candidates.all(|value| value == first) {
+                variable.possible_value = first.clone();
+            }
+        }
+    }
+    (index, values.observations)
 }
 impl Workspace {
     pub(super) async fn refresh_references(&mut self) -> std::io::Result<()> {
@@ -75,7 +113,9 @@ impl Workspace {
             .map_err(std::io::Error::other)?;
         let result = tokio::task::spawn_blocking(move || {
             let _permit = permit;
-            graph.references = analyze(&graph);
+            let (references, values) = analyze(&graph);
+            graph.references = references;
+            graph.values = values;
             graph
         })
         .await;
