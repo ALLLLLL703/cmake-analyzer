@@ -62,6 +62,7 @@ pub struct FunctionParameter {
 }
 #[derive(Clone, Debug)]
 pub struct SemanticFunction {
+    pub documentation: Option<std::sync::Arc<super::model::Documentation>>,
     pub name: String,
     pub kind: FunctionKind,
     pub block: BlockId,

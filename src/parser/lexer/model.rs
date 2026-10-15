@@ -19,6 +19,8 @@ pub struct Lexer<'a> {
 
 #[derive(Debug, Default, Clone)]
 pub struct LexedBuffer {
+    /// Full line/block comment ranges, kept outside the parser token stream.
+    pub comments: Vec<TextSpan>,
     pub lex: Vec<Spanned<LexContent>>,
     pub errors: Vec<Spanned<LexError>>,
     pub(super) checkpoints: Vec<LexCheckpoint>,
@@ -36,6 +38,7 @@ pub(super) struct LexCheckpoint {
     pub state: LexState,
     pub tokens: usize,
     pub errors: usize,
+    pub comments: usize,
 }
 pub struct IncrementalLexer {
     pub source: std::sync::Arc<str>,

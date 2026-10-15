@@ -37,6 +37,7 @@ impl<'a> Lexer<'a> {
                 state,
                 tokens: result.lex.len(),
                 errors: result.errors.len(),
+                comments: result.comments.len(),
             });
             if stop(state) {
                 stopped = true;
@@ -70,11 +71,15 @@ impl<'a> Lexer<'a> {
                         }
                     }
                 }
-                // AI-generated comment handling: quoted/bracket payloads never reach this branch.
+                // AI-authored comment handling; quoted/bracket argument payloads never reach this branch.
                 Ok('#') => {
                     self.buffer.cursor.offset += 1;
                     if let Some(opening_len) = self.bracket_opening_len() {
                         if let Err(mut error) = self.advance_bracket_argument(opening_len, span) {
+                            result.comments.push(TextSpan {
+                                end_byte: self.buffer.cursor.offset,
+                                ..span
+                            });
                             error.content = LexError::UnclosedBracketComment;
                             result.add_error(error.content, error.span);
                             break;
@@ -85,6 +90,10 @@ impl<'a> Lexer<'a> {
                             .take_while(|byte| *byte != b'\n')
                             .count();
                     }
+                    result.comments.push(TextSpan {
+                        end_byte: self.buffer.cursor.offset,
+                        ..span
+                    });
                     None
                 }
                 Ok('[') => {

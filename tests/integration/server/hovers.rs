@@ -40,7 +40,13 @@ async fn values_follow_each_reference_and_edits_instead_of_final_assignment() {
             .unwrap()
             .contains("Unknown")
     );
-    assert!(hover(&mut client, &root, 4, 0, 15).await["result"].is_null());
+    let command = hover(&mut client, &root, 4, 0, 15).await;
+    assert!(
+        command["result"]["contents"]["value"]
+            .as_str()
+            .unwrap()
+            .contains("CMake 4.4.4")
+    );
     client.send(json!({"jsonrpc":"2.0","method":"textDocument/didChange","params":{"textDocument":{"uri":uri(&root),"version":2},"contentChanges":[{"range":{"start":{"line":3,"character":6},"end":{"line":3,"character":9}},"text":"three"}]}})).await;
     let changed = hover(&mut client, &root, 4, 11, 16).await;
     assert!(

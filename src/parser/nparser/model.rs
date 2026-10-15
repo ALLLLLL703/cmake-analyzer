@@ -28,6 +28,8 @@ pub struct NParseCursor {
 
 #[derive(Default, Debug, Clone)]
 pub struct NParsedBuffer {
+    /// Comment ranges are forwarded unchanged, not parsed as commands or arguments.
+    pub comments: Vec<TextSpan>,
     pub nodes: Vec<Spanned<NParsedNode>>,
 }
 

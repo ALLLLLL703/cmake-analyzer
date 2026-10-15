@@ -20,6 +20,7 @@ impl Service {
         }
         // Stage configuration, ownership, and analysis before replacing the live state.
         let mut staged = Service {
+            hover_markdown: self.hover_markdown,
             config,
             roots: self.roots.clone(),
             projects: Vec::new(),

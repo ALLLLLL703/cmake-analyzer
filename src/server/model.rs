@@ -45,6 +45,7 @@ impl CmakeAnalyzer {
 }
 #[derive(Default)]
 pub(super) struct ServiceState {
+    pub hover_markdown: bool,
     pub roots: Vec<PathBuf>,
     pub hierarchical: bool,
     pub config: Option<ConfigStore>,
@@ -109,6 +110,7 @@ pub(super) struct Project {
     pub overlays: BTreeMap<PathBuf, i32>,
 }
 pub(super) struct Service {
+    pub hover_markdown: bool,
     pub config: ConfigStore,
     pub roots: BTreeSet<PathBuf>,
     pub projects: Vec<Project>,

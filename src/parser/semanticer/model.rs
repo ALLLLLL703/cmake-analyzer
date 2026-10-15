@@ -92,14 +92,21 @@ pub struct SemanticVariable {
     pub references: Vec<ReferenceLocation>,
 }
 
+/// Comment ranges belong to the same immutable source snapshot as their declaration.
+#[derive(Clone, Debug)]
+pub struct Documentation {
+    pub spans: Vec<TextSpan>,
+}
 #[derive(Clone, Debug)]
 pub struct VariableChanging {
+    pub documentation: Option<Arc<Documentation>>,
     pub command: CommandId,
     /// Raw Out argument range, including any quote/bracket delimiters.
     pub span: TextSpan,
 }
 #[derive(Clone, Debug)]
 pub struct SemanticCommandRepresent {
+    pub documentation: Option<Arc<Documentation>>,
     pub id: CommandId,
     pub kind: CommandKind,
     pub span: TextSpan,
@@ -322,6 +329,7 @@ impl SemanticedBuffer {
         kind: CommandKind,
     ) -> &'cmd mut SemanticCommandRepresent {
         let result = SemanticCommandRepresent {
+            documentation: None,
             id: CommandId {
                 id: self.commands.len() as u32,
             },

@@ -117,6 +117,7 @@ impl Semanticer {
                     .any(|change| change.command == command.id && change.span == argument.span)
                 {
                     variable.changing.push(VariableChanging {
+                        documentation: command.documentation.clone(),
                         command: command.id,
                         span: argument.span,
                     });

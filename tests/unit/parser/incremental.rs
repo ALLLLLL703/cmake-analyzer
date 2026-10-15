@@ -27,6 +27,7 @@ async fn compare(
         "lexer errors for {}",
         lexer.source
     );
+    assert_eq!(lexer.buffer.comments, full.comments);
     let parsed = NParser::new(full).parse(&lexer.source);
     assert_eq!(
         format!("{:?}", parser.buffer),
@@ -115,6 +116,8 @@ async fn syntax_errors_unicode_and_global_triggers_match_full_analysis() {
         "function(f P)\nmessage(\"${P} ${A}\")\nendfunction()\nf(x)\nset(A \"\")\nmessage(\"${A}\")",
         "# 🌟\nfunction(f P)\nmessage(\"${P} ${A}\")\nendfunction()\nf(x)\nset(A \"\")\nmessage(\"${A}\")",
         "# 🌟\nfunction(g P)\nmessage(\"${P} ${A}\")\nendfunction()\nf(x)\nset(A value)\nmessage(\"${A}\")",
+        "# Changed documentation 🌟\nfunction(g P)\nmessage(\"${P} ${A}\")\nendfunction()\nf(x)\n# Set documentation\nset(A value)\nmessage(\"${A}\")",
+        "#[=[Block documentation\nmore lines]=]\nfunction(g P)\nmessage(\"${P} ${A}\")\nendfunction()\nf(x)\n# Edited set documentation\nset(A value)\nmessage(\"${A}\")",
         "project(Demo LANGUAGES CXX)\nset(CMAKE_BUILD_TYPE Debug)",
         "project(Other LANGUAGES C)\nset(CMAKE_BUILD_TYPE Release)",
         "set(A one)\nmessage(x)",

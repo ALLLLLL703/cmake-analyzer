@@ -39,6 +39,14 @@ impl CmakeAnalyzer {
         }
         entries.sort();
         entries.dedup();
+        let hover_markdown = params
+            .capabilities
+            .text_document
+            .as_ref()
+            .and_then(|caps| caps.hover.as_ref())
+            .and_then(|caps| caps.content_format.as_ref())
+            .and_then(|formats| formats.first())
+            .is_some_and(|format| matches!(format, MarkupKind::Markdown));
         let hierarchical = params
             .capabilities
             .text_document
@@ -71,6 +79,7 @@ impl CmakeAnalyzer {
         state.roots = entries;
         state.config = Some(config);
         state.hierarchical = hierarchical;
+        state.hover_markdown = hover_markdown;
         Ok(InitializeResult {
             capabilities: ServerCapabilities {
                 // UTF-16 is mandatory LSP fallback; TextIndex also supports other encodings.

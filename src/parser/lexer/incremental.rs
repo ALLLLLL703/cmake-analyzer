@@ -40,6 +40,7 @@ impl IncrementalLexer {
                 state: LexState::default(),
                 tokens: 0,
                 errors: 0,
+                comments: 0,
             });
         let suffix: HashMap<_, _> = self
             .buffer
@@ -82,6 +83,8 @@ impl IncrementalLexer {
                     self.buffer.lex.len() - self.buffer.checkpoints[i].tokens
                 }),
         };
+        let mut comments = self.buffer.comments[..start.comments].to_vec();
+        comments.extend(chunk.comments);
         let mut lex = self.buffer.lex[..start.tokens].to_vec();
         lex.extend(chunk.lex);
         let mut errors = self.buffer.errors[..start.errors].to_vec();
@@ -96,12 +99,19 @@ impl IncrementalLexer {
         checkpoints.extend(chunk.checkpoints.into_iter().map(|mut c| {
             c.tokens += start.tokens;
             c.errors += start.errors;
+            c.comments += start.comments;
             c
         }));
         if let Some(index) = aligned {
             let old = self.buffer.checkpoints[index];
             let token_base = lex.len();
             let error_base = errors.len();
+            let comment_base = comments.len();
+            comments.extend(
+                self.buffer.comments[old.comments..]
+                    .iter()
+                    .filter_map(|span| positions.remap(&change, *span)),
+            );
             lex.extend(self.buffer.lex[old.tokens..].iter().filter_map(|token| {
                 positions
                     .remap(&change, token.span)
@@ -136,11 +146,13 @@ impl IncrementalLexer {
                     },
                     tokens: token_base + c.tokens - old.tokens,
                     errors: error_base + c.errors - old.errors,
+                    comments: comment_base + c.comments - old.comments,
                 });
             }
         }
         self.source = source;
         self.buffer = LexedBuffer {
+            comments,
             lex,
             errors,
             checkpoints,

@@ -1,6 +1,7 @@
 // AI-generated configured script execution and precedence regression tests.
 use super::{
     actions::{actions, execute},
+    hovers::hover,
     session::{Project, Session},
 };
 use serde_json::json;
@@ -11,7 +12,7 @@ async fn configured_nested_script_reloads_from_startup_settings_and_observes_dyn
     let root = p.write("tools/check.cmake", text).await;
     p.write(
         "modules/observed.cmake",
-        "function(script_fn)\nendfunction()\n",
+        "# Runtime-only function documentation.\nfunction(script_fn)\nendfunction()\n",
     )
     .await;
     let mut client = Session::start(&p.0, vec![], true).await;
@@ -47,6 +48,15 @@ async fn configured_nested_script_reloads_from_startup_settings_and_observes_dyn
         .await;
     assert_eq!(completed["params"]["type"], 3, "{completed}");
     assert!(p.0.join("script-ran").exists());
+    let function_line = text.lines().position(|line| line == "script_fn()").unwrap() + 1;
+    let function_hover = hover(&mut client, &root, function_line, 0, 30).await;
+    assert!(
+        function_hover["result"]["contents"]["value"]
+            .as_str()
+            .unwrap()
+            .contains("Runtime-only function documentation."),
+        "{function_hover}"
+    );
     assert!(!p.0.join("unused-build").exists());
     assert!(!p.0.join("CMakeCache.txt").exists());
     for (offset, needle, expected) in [

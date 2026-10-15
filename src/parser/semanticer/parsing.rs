@@ -72,6 +72,7 @@ impl Semanticer {
             .and_then(|v| variables::builtin::variables_for_version(v.major, v.minor))
             .unwrap_or_else(|| variables::builtin::BASE_VARIABLES.clone());
         self.scan_commands(source, &mut result);
+        self.bind_documentation(source, &self.buffer.comments, &mut result);
         self.scan_blocks(&mut result);
         self.scan_scopes(&mut result);
         self.scan_functions(source, &mut result);
@@ -136,6 +137,7 @@ impl Semanticer {
                         ));
                     }
                     result.commands.push(SemanticCommandRepresent {
+                        documentation: None,
                         id: CommandId {
                             id: result.commands.len() as u32,
                         },

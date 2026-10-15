@@ -16,7 +16,10 @@ type FunctionArgs = Vec<FunctionArg>;
 
 impl NParser {
     pub fn parse<'src>(&mut self, source: &'src str) -> NParsedBuffer {
-        let mut result = NParsedBuffer::default();
+        let mut result = NParsedBuffer {
+            comments: self.buffer.comments.clone(),
+            ..Default::default()
+        };
         self.inherit_error(&mut result);
         if self.cursor.max_length == 0 {
             return result;

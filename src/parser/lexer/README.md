@@ -20,6 +20,15 @@ The stored token span remains a half-open UTF-8 byte range covering its entire l
 
 `advance_identifier()` and `advance_string_literal()` now return `LexResult<()>`: they consume source but do not allocate result strings. `RawBuffer::span_to_text()` returns a borrowed `Option<&str>`.
 
+## Comment Ranges
+
+`LexedBuffer.comments` preserves full line and bracket comment TextSpans, including
+`#`, bracket delimiters, and unterminated bracket comments. Comments stay outside
+the token stream; quoted, bracket-argument, and escaped `#` remain payload text.
+Incremental lexing remaps retained comments and checkpoint counts, and nparser
+forwards the ranges separately. Semantic leading-comment binding uses them for
+function, macro, and set documentation; see [hover rules](../../server/hovers/README.md).
+
 ## TextSpan Iteration
 
 - `span.range()` returns `start_byte..end_byte`.

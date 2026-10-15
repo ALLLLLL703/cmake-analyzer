@@ -160,6 +160,8 @@ impl IncrementalSemanticer {
                     }),
             );
         }
+        self.analyzer
+            .bind_documentation(&source, &parsed.comments, &mut result);
         self.analyzer.scan_functions(&source, &mut result);
         self.templates_rebuilt = template_inputs(&self.buffer) != template_inputs(&result);
         if self.templates_rebuilt {

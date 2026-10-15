@@ -77,6 +77,7 @@ impl CmakeAnalyzer {
             config,
             context,
             hierarchical,
+            state.hover_markdown,
             receiver,
             stop.clone(),
         ));

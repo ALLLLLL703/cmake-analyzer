@@ -38,7 +38,10 @@ impl IncrementalNParser {
         tokens.lex = lexed.lex.clone();
         tokens.errors = lexed.errors.clone();
         let mut parser = NParser::new(tokens);
-        let mut result = NParsedBuffer::default();
+        let mut result = NParsedBuffer {
+            comments: lexed.comments.clone(),
+            ..Default::default()
+        };
         parser.inherit_error(&mut result);
         let mut units = Vec::new();
         let mut work = IncrementalWork::default();

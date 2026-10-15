@@ -9,6 +9,8 @@ mod cli;
 mod configuration;
 #[path = "server/discovery.rs"]
 mod discovery;
+#[path = "server/documentation.rs"]
+mod documentation;
 #[path = "server/hovers.rs"]
 mod hovers;
 #[path = "server/lifecycle.rs"]

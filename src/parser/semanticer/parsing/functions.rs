@@ -40,6 +40,7 @@ impl Semanticer {
                 })
                 .collect();
             result.functions.push(SemanticFunction {
+                documentation: command.documentation.clone(),
                 name: name.to_owned(),
                 kind,
                 block: block.id,

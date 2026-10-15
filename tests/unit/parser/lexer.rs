@@ -4,6 +4,7 @@
 pub mod advance;
 #[cfg(test)]
 mod bracket;
+mod comments;
 #[cfg(test)]
 mod errors;
 #[cfg(test)]

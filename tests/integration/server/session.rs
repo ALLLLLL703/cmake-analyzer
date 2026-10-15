@@ -54,6 +54,14 @@ impl Session {
         Self::start_options(options, folders, nested).await
     }
     pub async fn start_options(options: ServerOptions, folders: Vec<Value>, nested: bool) -> Self {
+        Self::start_hover_format(options, folders, nested, false).await
+    }
+    pub async fn start_hover_format(
+        options: ServerOptions,
+        folders: Vec<Value>,
+        nested: bool,
+        markdown: bool,
+    ) -> Self {
         let server = CmakeAnalyzer::new(options);
         let (client, stream) = tokio::io::duplex(65536);
         let (reader, writer) = tokio::io::split(stream);
@@ -72,7 +80,7 @@ impl Session {
             task,
             pending: VecDeque::new(),
         };
-        session.send(json!({"jsonrpc":"2.0","id":1,"method":"initialize","params":{"workspaceFolders":folders,"capabilities":{"textDocument":{"documentSymbol":{"hierarchicalDocumentSymbolSupport":nested}}}}})).await;
+        session.send(json!({"jsonrpc":"2.0","id":1,"method":"initialize","params":{"workspaceFolders":folders,"capabilities":{"textDocument":{"hover":{"contentFormat":if markdown {json!(["markdown","plaintext"])}else{json!(["plaintext"])}},"documentSymbol":{"hierarchicalDocumentSymbolSupport":nested}}}}})).await;
         let initialized = session.response(1).await;
         assert!(initialized.get("error").is_none(), "{initialized}");
         assert_eq!(

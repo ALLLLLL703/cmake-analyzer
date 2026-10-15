@@ -9,10 +9,12 @@ pub(super) async fn run(
     config: crate::config::ConfigStore,
     context: Context,
     hierarchical: bool,
+    hover_markdown: bool,
     receiver: mpsc::Receiver<ServiceCommand>,
     stop: Cancellation,
 ) {
     let mut service = Service {
+        hover_markdown,
         roots: roots.iter().cloned().collect(),
         config,
         projects: Vec::new(),

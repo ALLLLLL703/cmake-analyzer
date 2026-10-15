@@ -1,4 +1,5 @@
 // AI-generated tests.
+mod documentation;
 mod locations;
 mod references;
 mod values;
