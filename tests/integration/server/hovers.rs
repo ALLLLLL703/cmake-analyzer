@@ -70,7 +70,8 @@ async fn repeated_include_hover_keeps_both_invocation_values() {
         value.contains("\"first\"") && value.contains("\"second\""),
         "{result}"
     );
-    assert!(value.matches("Static (visit").count() >= 2);
+    assert!(value.matches("Static:").count() >= 2);
+    assert!(!value.contains("Static ("));
     client.finish().await;
     p.remove().await;
 }

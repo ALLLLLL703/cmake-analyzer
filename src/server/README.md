@@ -46,7 +46,7 @@ The service has a 64-message queue and a 64-edit batch policy, both named static
 
 - didOpen/didChange/didSave/didClose update overlays in notification order. Edits in one notification apply sequentially. Non-increasing versions and invalid encoded ranges are rejected without modifying stored text.
 - Workspace uses the existing incremental lexer/parser/semantic/build pipeline. Queued edits supersede unpublished diagnostic batches; symbol queries observe preceding edits, not later queued edits.
-- Push diagnostics combine semantic, build, and dependency errors for open documents. Variable warnings use Workspace invocation context for visited files (local warnings otherwise) and severity 2; external function bindings suppress local unknown-command errors. Snapshot-local reference/function records and immutable Workspace aggregates are described in [References](../parser/semanticer/REFERENCES.md). Failed child reads are warnings at the caller's include/subdirectory range and name the failed path; cycle/traversal failures remain errors. Known input paths warn for missing or wrong-kind entries; outputs, known generated paths, expressions, unknown values, and unexecuted conditional/deferred inputs are excluded. See [path checks](paths/README.md). Closing a published document sends an empty report. Unopened project files are analyzed but do not receive diagnostic publications.
+- Push diagnostics combine semantic, build, and dependency errors for open documents. Variable warnings use Workspace invocation context for visited files (local warnings otherwise) and severity 2; external function bindings suppress local unknown-command errors. Snapshot-local reference/function records and immutable Workspace aggregates are described in [References](../parser/semanticer/REFERENCES.md). Failed child reads are warnings at the caller's include/subdirectory range; cycle/traversal failures remain errors. Diagnostic messages do not prepend or append file-origin labels; URI/range provide the location. Paths that are the subject of a check remain part of its message. Known input paths warn for missing or wrong-kind entries; outputs, known generated paths, expressions, unknown values, and unexecuted conditional/deferred inputs are excluded. See [path checks](paths/README.md). Closing a published document sends an empty report. Unopened project files are analyzed but do not receive diagnostic publications.
 - Publication keys use version, weak snapshot identity, contextual warnings/resolved calls, and dependency diagnostics. Unchanged reports are not converted or sent again; obsolete snapshots are not retained by that cache.
 - Positions use UTF-16 negotiation and byte-span conversion; the mapper also supports UTF-8/UTF-32. It indexes line starts and multibyte characters instead of rescanning line prefixes per symbol/diagnostic.
 - Document symbols use SemanticedBuffer root symbols and direct block membership. Nested blocks assemble bottom-up; clients without hierarchical support receive SymbolInformation records. No builtin-variable catalogue dump or CMake execution is involved.
@@ -58,8 +58,8 @@ Interpreter commands select -S/-B project or -P script entries without executing
 `textDocument/hover` currently supports variables only. It selects the variable
 name, not the whole argument, and shows the value at that reference rather than
 the variable's last assignment. Static visits remain distinct for repeated
-includes. Installed runtime observations include run/event identifiers; unknown
-is distinct from an empty string. No run is started by hover. The configured
+includes. Values use Static: and Observed: labels without visit/run/event details;
+unknown is distinct from an empty string. No run is started by hover. The configured
 runtime.max_view_bytes also bounds hover text. Runtime state is partial, not a
 complete variable store.
 

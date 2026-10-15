@@ -152,8 +152,7 @@ pub(super) async fn hover(
                     break;
                 }
                 content.push_str(&format!(
-                    "Static (visit {}): {}\n",
-                    value.invocation.map_or(0, |id| id.index()),
+                    "Static: {}\n",
                     value_text(
                         value.possible_value.as_ref(),
                         limit.saturating_sub(content.len() + 64)
@@ -175,9 +174,7 @@ pub(super) async fn hover(
                     break;
                 }
                 content.push_str(&format!(
-                    "Observed (run {}, event {}): {}\n",
-                    layer.trace.run.value(),
-                    value.event.index(),
+                    "Observed: {}\n",
                     value_text(
                         value.possible_value.as_ref(),
                         limit.saturating_sub(content.len() + 80)

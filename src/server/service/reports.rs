@@ -102,11 +102,7 @@ impl Service {
                                 } else {
                                     1
                                 },
-                                if origin != &diagnostic.file {
-                                    format!("{}: {}", diagnostic.file.display(), diagnostic.message)
-                                } else {
-                                    diagnostic.message.clone()
-                                },
+                                diagnostic.message.clone(),
                             ));
                         }
                     }

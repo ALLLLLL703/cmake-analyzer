@@ -253,7 +253,7 @@ async fn interpreter_script_mode_traverses_dependencies_and_reload_can_remove_it
             .as_array()
             .unwrap()
             .iter()
-            .any(|item| item["message"].as_str().unwrap().contains("missing.cmake")),
+            .any(|item| item["severity"] == 2 && item["range"]["start"]["line"] == 1),
         "{diagnostics}"
     );
     tokio::fs::write(&config, "").await.unwrap();

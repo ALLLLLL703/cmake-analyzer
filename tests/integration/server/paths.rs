@@ -21,7 +21,6 @@ async fn input_paths_warn_without_checking_outputs_generated_unknown_or_optional
         "missing.txt",
         "existing_dir",
         "input.in",
-        "required.cmake",
         "later.txt",
     ] {
         assert!(
@@ -32,6 +31,12 @@ async fn input_paths_warn_without_checking_outputs_generated_unknown_or_optional
             "{name}: {report}"
         );
     }
+    assert!(
+        diagnostics
+            .iter()
+            .any(|item| item["severity"] == 2 && item["range"]["start"]["line"] == 15),
+        "{report}"
+    );
     for name in [
         "written.c",
         "configured.c",

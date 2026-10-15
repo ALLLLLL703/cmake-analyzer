@@ -32,8 +32,15 @@ async fn roots_and_shared_dependency_receive_live_overlays() {
     assert!(
         errors
             .iter()
-            .any(|error| { error["message"].as_str().unwrap().contains("missing.cmake") })
+            .any(|error| error["severity"] == 2 && error["range"]["start"]["line"] == 1)
     );
+    assert!(errors.iter().all(|error| {
+        !error["message"].as_str().unwrap().contains("missing.cmake")
+            && !error["message"]
+                .as_str()
+                .unwrap()
+                .contains(&shared.display().to_string())
+    }));
     session.send(json!({"jsonrpc":"2.0","method":"textDocument/didChange","params":{"textDocument":{"uri":uri(&shared),"version":2},"contentChanges":[{"text":format!("{HEADER}set(LIVE x)")}]}})).await;
     assert!(
         session.diagnostics(&shared, 2).await["params"]["diagnostics"]
@@ -76,7 +83,20 @@ async fn dependency_resolution_diagnostics_clear_on_root_edit() {
             .as_array()
             .unwrap()
             .iter()
-            .any(|error| error["message"].as_str().unwrap().contains("missing.cmake"))
+            .any(|error| error["severity"] == 2 && error["range"]["start"]["line"] == 1)
+    );
+    assert!(
+        diagnostics["params"]["diagnostics"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(
+                |error| !error["message"].as_str().unwrap().contains("missing.cmake")
+                    && !error["message"]
+                        .as_str()
+                        .unwrap()
+                        .contains(&root.display().to_string())
+            )
     );
     session.send(json!({"jsonrpc":"2.0","method":"textDocument/didChange","params":{"textDocument":{"uri":uri(&root),"version":2},"contentChanges":[{"text":format!("{HEADER}message(fixed)")}]}})).await;
     assert!(
