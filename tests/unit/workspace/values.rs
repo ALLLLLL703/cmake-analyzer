@@ -70,3 +70,51 @@ async fn repeated_static_visits_qualify_values_by_invocation_not_just_command() 
     assert_eq!(reads[0].possible_value.as_ref().unwrap().text(), "one");
     assert_eq!(reads[1].possible_value.as_ref().unwrap().text(), "two");
 }
+#[tokio::test]
+async fn explicit_script_context_overrides_filename_and_seeds_cwd_not_project_defaults() {
+    let p = Project::new().await;
+    p.write("CMakeLists.txt","message(\"${CMAKE_SOURCE_DIR}\")\nmessage(\"${CMAKE_CURRENT_LIST_DIR}\")\nmessage(\"${CMAKE_BINARY_DIR}\")\nmessage(\"${PROJECT_SOURCE_DIR}\")\ninclude(\"${CMAKE_SOURCE_DIR}/dep.cmake\")\n").await;
+    p.write("working/dep.cmake", "set(FROM_SCRIPT yes)\n").await;
+    let mut workspace = p.workspace();
+    let cwd = p.0.join("working");
+    workspace.set_script_working_directory(&cwd).unwrap();
+    workspace.flush().await.unwrap();
+    let graph = workspace.root_graph().unwrap();
+    assert!(!graph.project_defaults);
+    assert_eq!(graph.invocations.len(), 2);
+    for name in ["CMAKE_SOURCE_DIR", "CMAKE_BINARY_DIR"] {
+        assert_eq!(
+            graph
+                .values
+                .iter()
+                .find(|value| value.name == name)
+                .unwrap()
+                .possible_value
+                .as_ref()
+                .unwrap()
+                .text(),
+            cwd.to_str().unwrap()
+        );
+    }
+    assert_eq!(
+        graph
+            .values
+            .iter()
+            .find(|value| value.name == "CMAKE_CURRENT_LIST_DIR")
+            .unwrap()
+            .possible_value
+            .as_ref()
+            .unwrap()
+            .text(),
+        p.0.to_str().unwrap()
+    );
+    assert!(
+        graph
+            .values
+            .iter()
+            .find(|value| value.name == "PROJECT_SOURCE_DIR")
+            .unwrap()
+            .possible_value
+            .is_none()
+    );
+}

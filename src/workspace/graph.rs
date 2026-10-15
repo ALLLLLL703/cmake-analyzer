@@ -77,14 +77,21 @@ impl Workspace {
             values: ValueBindings::default(),
         });
         let directory = DirectoryContext {
-            source: root.file.parent().unwrap_or(Path::new("/")).to_owned(),
-            binary: root.binary_directory.clone(),
+            source: root
+                .script_working_directory
+                .clone()
+                .unwrap_or_else(|| root.file.parent().unwrap_or(Path::new("/")).to_owned()),
+            binary: root
+                .script_working_directory
+                .clone()
+                .or_else(|| root.binary_directory.clone()),
         };
-        if root
-            .file
-            .file_name()
-            .is_some_and(|name| name == "CMakeLists.txt")
-        {
+        graph.project_defaults = root.script_working_directory.is_none()
+            && root
+                .file
+                .file_name()
+                .is_some_and(|name| name == "CMakeLists.txt");
+        if graph.project_defaults {
             graph.scopes[0].values.assign(
                 "PROJECT_SOURCE_DIR",
                 directory
@@ -176,9 +183,14 @@ impl Workspace {
                         next: 0,
                         next_command: 0,
                         directories: ValueDirectories {
-                            source_root: root.file.parent().unwrap_or(Path::new("/")).to_owned(),
+                            source_root: root.script_working_directory.clone().unwrap_or_else(
+                                || root.file.parent().unwrap_or(Path::new("/")).to_owned(),
+                            ),
                             source: graph.invocations[invocation].directory.source.clone(),
-                            binary_root: root.binary_directory.clone(),
+                            binary_root: root
+                                .script_working_directory
+                                .clone()
+                                .or_else(|| root.binary_directory.clone()),
                             binary: graph.invocations[invocation].directory.binary.clone(),
                             file: graph.invocations[invocation].file.clone(),
                         },

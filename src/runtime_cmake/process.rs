@@ -1,10 +1,10 @@
-// AI-authored cancellable configure process with bounded captured trace output.
+// AI-authored cancellable CMake process with bounded captured trace output.
 use super::{model::*, trace};
 use lspally::server::model::Cancellation;
 use std::{io, process::Stdio};
 use tokio::io::AsyncReadExt;
 
-pub async fn configure(
+pub async fn execute(
     run: RunId,
     options: ConfigureOptions,
     cancel: Cancellation,
@@ -12,7 +12,7 @@ pub async fn configure(
     if cancel.is_cancelled() {
         return Err(io::Error::new(
             io::ErrorKind::Interrupted,
-            "CMake configure cancelled",
+            "CMake execution cancelled",
         ));
     }
     let limit = u64::try_from(options.max_output_bytes)
@@ -24,13 +24,25 @@ pub async fn configure(
                 "Runtime output limit is too large",
             )
         })?;
-    let mut child = tokio::process::Command::new(&options.executable)
-        .arg("-S")
-        .arg(&options.source_directory)
-        .arg("-B")
-        .arg(&options.build_directory)
+    let mut command = tokio::process::Command::new(&options.executable);
+    command
         .args(&options.arguments)
-        .args(["--trace-expand", "--trace-format=json-v1"])
+        .args(["--trace-expand", "--trace-format=json-v1"]);
+    let build = match &options.mode {
+        ExecutionMode::Configure => {
+            command
+                .arg("-S")
+                .arg(&options.source_directory)
+                .arg("-B")
+                .arg(&options.build_directory);
+            Some(options.build_directory.clone())
+        }
+        ExecutionMode::Script { file } => {
+            command.arg("-P").arg(file);
+            None
+        }
+    };
+    let mut child = command
         .current_dir(&options.source_directory)
         .stdin(Stdio::null())
         .stdout(Stdio::null())
@@ -42,8 +54,8 @@ pub async fn configure(
         .take()
         .ok_or_else(|| io::Error::other("CMake stderr was not captured"))?;
     let result = tokio::select! {
-        _=cancel.cancelled()=>Err(io::Error::new(io::ErrorKind::Interrupted,"CMake configure cancelled")),
-        _=tokio::time::sleep(options.timeout)=>Err(io::Error::new(io::ErrorKind::TimedOut,"CMake configure timed out")),
+        _=cancel.cancelled()=>Err(io::Error::new(io::ErrorKind::Interrupted,"CMake execution cancelled")),
+        _=tokio::time::sleep(options.timeout)=>Err(io::Error::new(io::ErrorKind::TimedOut,"CMake execution timed out")),
         result=async {
             let mut bytes=Vec::new();stderr.take(limit).read_to_end(&mut bytes).await?;
             if bytes.len()>options.max_output_bytes {return Err(io::Error::other("CMake trace output limit exceeded"));}
@@ -55,7 +67,7 @@ pub async fn configure(
         Ok((bytes, status)) => tokio::task::spawn_blocking(move || {
             if !status.success() {
                 return Err(io::Error::other(format!(
-                    "CMake configure failed ({status}): {}",
+                    "CMake execution failed ({status}): {}",
                     error_detail(&bytes, options.max_error_bytes)
                 )));
             }
@@ -63,7 +75,7 @@ pub async fn configure(
                 run,
                 &bytes,
                 &options.source_directory,
-                &options.build_directory,
+                build.as_deref(),
                 &cancel,
             )
         })

@@ -9,7 +9,7 @@ pub(super) fn parse(
     run: RunId,
     bytes: &[u8],
     cwd: &Path,
-    build: &Path,
+    build: Option<&Path>,
     cancel: &lspally::server::model::Cancellation,
 ) -> io::Result<Trace> {
     let mut events = Vec::new();
@@ -151,7 +151,7 @@ pub(super) fn parse(
     }
     Ok(Trace {
         run,
-        build_directory: build.to_owned(),
+        build_directory: build.map(Path::to_owned),
         events,
         dependencies,
     })

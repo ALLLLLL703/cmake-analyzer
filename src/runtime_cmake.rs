@@ -2,4 +2,5 @@
 pub mod model;
 mod process;
 mod trace;
-pub use process::configure;
+pub use process::execute;
+pub use process::execute as configure;

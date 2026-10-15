@@ -89,6 +89,7 @@ impl CmakeAnalyzer {
                 execute_command_provider: Some(ExecuteCommandOptions {
                     commands: [
                         super::action::model::ActionKind::Configure,
+                        super::action::model::ActionKind::RunScript,
                         super::action::model::ActionKind::ExpandedArguments,
                         super::action::model::ActionKind::CancelConfigure,
                     ]

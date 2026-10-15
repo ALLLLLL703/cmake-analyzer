@@ -31,6 +31,7 @@ mod unix {
         .await
         .unwrap();
         ConfigureOptions {
+            mode: cmake_analyzer::runtime_cmake::model::ExecutionMode::Configure,
             executable,
             source_directory: root.clone(),
             build_directory: root.join("build"),
@@ -62,6 +63,9 @@ mod unix {
     async fn output_limits_timeouts_and_precancel_do_not_leave_running_children() {
         let mut bounded = options("printf '01234567890123456789' >&2; exec sleep 60").await;
         bounded.max_output_bytes = 8;
+        bounded.mode = cmake_analyzer::runtime_cmake::model::ExecutionMode::Script {
+            file: bounded.source_directory.join("input.cmake"),
+        };
         let root = bounded.source_directory.clone();
         assert!(
             configure(RunId::new(1), bounded, Cancellation::default())
@@ -73,6 +77,9 @@ mod unix {
         tokio::fs::remove_dir_all(root).await.unwrap();
         let mut timed = options("exec sleep 60").await;
         timed.timeout = Duration::from_millis(100);
+        timed.mode = cmake_analyzer::runtime_cmake::model::ExecutionMode::Script {
+            file: timed.source_directory.join("input.cmake"),
+        };
         let root = timed.source_directory.clone();
         assert_eq!(
             configure(RunId::new(2), timed, Cancellation::default())

@@ -2,6 +2,8 @@
 mod cancel_configure;
 mod configure;
 mod expanded_arguments;
+mod run_script;
+use crate::runtime_cmake::model::ExecutionMode;
 pub(in crate::server) mod model;
 use super::{model::*, uri};
 use lspally::server::model::*;
@@ -53,6 +55,18 @@ impl CmakeAnalyzer {
         if line >= u64::from(u32::MAX) {
             return Err(ServerError::invalid("Source line exceeds protocol limits"));
         }
+        let execution = match arguments.next() {
+            None => None,
+            Some(Data::Text(mode)) if mode == "configure" => Some(ExecutionMode::Configure),
+            Some(Data::Text(mode)) if mode == "script" => Some(ExecutionMode::Script {
+                file: std::path::PathBuf::from(&root),
+            }),
+            _ => {
+                return Err(ServerError::invalid(
+                    "Expected configure or script execution profile",
+                ));
+            }
+        };
         if arguments.next().is_some() {
             return Err(ServerError::invalid("Unexpected action arguments"));
         }
@@ -62,6 +76,7 @@ impl CmakeAnalyzer {
             root: std::path::PathBuf::from(root),
             line,
             cancellation: context.cancellation.clone(),
+            execution,
         };
         let (reply, response) = oneshot::channel();
         self.send(ServiceCommand::RunAction { request, reply })
@@ -77,6 +92,21 @@ impl Service {
             .find(|index| {
                 self.projects[*index].workspace.root().file == request.root
                     && !self.projects[*index].standalone
+                    && request
+                        .execution
+                        .as_ref()
+                        .is_none_or(|mode| self.projects[*index].execution.as_ref() == Some(mode))
+                    && match request.kind {
+                        ActionKind::Configure => matches!(
+                            self.projects[*index].execution,
+                            Some(ExecutionMode::Configure)
+                        ),
+                        ActionKind::RunScript => matches!(
+                            self.projects[*index].execution,
+                            Some(ExecutionMode::Script { .. })
+                        ),
+                        _ => true,
+                    }
             })
             .ok_or_else(|| ServerError::invalid("Action does not belong to an active project"))
     }
@@ -90,18 +120,20 @@ impl Service {
         for owner in self.owners(&path) {
             let project = &self.projects[owner];
             let root = &project.workspace.root().file;
-            if project.standalone
-                || !project.settings.runtime.enable
-                || root.file_name().is_none_or(|name| name != "CMakeLists.txt")
+            if project.standalone || !project.settings.runtime.enable || project.execution.is_none()
             {
                 continue;
             }
             let root_text = root
                 .to_str()
                 .ok_or_else(|| ServerError::invalid("Project path is not UTF-8"))?;
+            let (kind, label) = match &project.execution {
+                Some(ExecutionMode::Script { .. }) => (ActionKind::RunScript, "Run CMake script"),
+                _ => (ActionKind::Configure, "Run CMake"),
+            };
             let mut entries = vec![(
-                ActionKind::Configure,
-                format!("Run CMake for {} (executes project code)", root_text),
+                kind,
+                format!("{label} for {root_text} (executes project code)"),
             )];
             if project.workspace.runtime().is_some() {
                 entries.push((
@@ -109,8 +141,12 @@ impl Service {
                     "Show observed expanded arguments at this line".into(),
                 ));
             }
-            if self.running.contains_key(root) {
-                entries.push((ActionKind::CancelConfigure, "Cancel CMake configure".into()));
+            if self
+                .running
+                .get(root)
+                .is_some_and(|job| project.execution.as_ref() == Some(&job.mode))
+            {
+                entries.push((ActionKind::CancelConfigure, "Cancel CMake run".into()));
             }
             for (kind, title) in entries {
                 actions.push(CodeActionOrCommand::CodeAction(CodeAction {
@@ -122,10 +158,21 @@ impl Service {
                         title,
                         command: kind.command().into(),
                         arguments: Some(vec![
-                            Data::Text(uri.0.clone()),
-                            Data::Text(root_text.into()),
-                            Data::Unsigned(line),
-                        ]),
+                                Data::Text(uri.0.clone()),
+                                Data::Text(root_text.into()),
+                                Data::Unsigned(line),
+                                Data::Text(
+                                    if matches!(
+                                        project.execution,
+                                        Some(ExecutionMode::Script { .. })
+                                    ) {
+                                        "script"
+                                    } else {
+                                        "configure"
+                                    }
+                                    .into(),
+                                ),
+                            ]),
                     }),
                     is_preferred: None,
                     disabled: None,
@@ -141,6 +188,7 @@ impl Service {
     ) -> ServerResult<Option<Data>> {
         match request.kind {
             ActionKind::Configure => configure::run(self, request).await,
+            ActionKind::RunScript => run_script::run(self, request).await,
             ActionKind::ExpandedArguments => expanded_arguments::run(self, request).await,
             ActionKind::CancelConfigure => cancel_configure::run(self, request).await,
         }

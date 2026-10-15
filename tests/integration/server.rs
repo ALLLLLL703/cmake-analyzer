@@ -15,5 +15,7 @@ mod limits;
 mod projects;
 #[path = "server/references.rs"]
 mod references;
+#[path = "server/scripts.rs"]
+mod scripts;
 #[path = "server/session.rs"]
 mod session;

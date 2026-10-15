@@ -1,11 +1,11 @@
-// AI-authored background configure coordination; the actor remains available for edits.
+// AI-authored background CMake coordination; the actor remains available for edits.
 use super::{
     super::{action::model::ActionRequest, model::*},
     internal,
 };
 use crate::runtime_cmake::{
     self,
-    model::{ConfigureOptions, RunId},
+    model::{ConfigureOptions, ExecutionMode, RunId},
 };
 use lspally::server::model::*;
 use std::{collections::BTreeMap, path::PathBuf, sync::Arc, time::Duration};
@@ -26,7 +26,13 @@ impl Service {
                 layer
                     .documents
                     .iter()
-                    .filter(|(file, _)| !file.starts_with(&layer.trace.build_directory))
+                    .filter(|(file, _)| {
+                        !layer
+                            .trace
+                            .build_directory
+                            .as_ref()
+                            .is_some_and(|build| file.starts_with(build))
+                    })
                     .map(|(file, snapshot)| (file.clone(), snapshot.text.clone())),
             );
         }
@@ -85,7 +91,7 @@ impl Service {
         }
         self.flush().await
     }
-    pub(in crate::server) async fn start_configure(
+    pub(in crate::server) async fn start_runtime(
         &mut self,
         request: ActionRequest,
     ) -> ServerResult<Option<Data>> {
@@ -95,49 +101,55 @@ impl Service {
         if !settings.enable {
             return Err(ServerError::invalid("Runtime actions are disabled"));
         }
-        if request
-            .root
-            .file_name()
-            .is_none_or(|name| name != "CMakeLists.txt")
-        {
-            return Err(ServerError::invalid(
-                "Configure requires a CMakeLists.txt project",
-            ));
+        let mode = project
+            .execution
+            .clone()
+            .ok_or_else(|| ServerError::invalid("No configured runtime entry"))?;
+        let script = matches!(mode, ExecutionMode::Script { .. });
+        if script {
+            crate::config::validate_script_arguments(&settings.arguments)
+                .map_err(|error| ServerError::invalid(error.to_string()))?;
         }
         if self.running.contains_key(&request.root)
             || self.jobs.len() >= self.config.limits.max_workspaces
         {
             return Err(ServerError::invalid(
-                "A configure is already running or the Workspace job limit is reached",
+                "A CMake run is already running or the Workspace job limit is reached",
             ));
         }
         self.refresh_configure_inputs(owner).await?;
         let owner = self.action_project(&request)?;
         self.require_saved(owner).await?;
-        let source = request
-            .root
-            .parent()
-            .ok_or_else(|| ServerError::invalid("Project has no source directory"))?
-            .to_owned();
+        let source = if script {
+            self.config.sources.cwd.clone()
+        } else {
+            request
+                .root
+                .parent()
+                .ok_or_else(|| ServerError::invalid("Project has no source directory"))?
+                .to_owned()
+        };
         let build = settings
             .build_directory
             .clone()
             .unwrap_or_else(|| source.join(".cmake-analyzer/build"));
-        let source_actual = tokio::fs::canonicalize(&source).await.map_err(internal)?;
-        if tokio::fs::canonicalize(&build).await.ok().as_ref() == Some(&source_actual) {
-            return Err(ServerError::invalid(
-                "Build directory resolves to the source directory",
-            ));
-        }
-        if build == source
-            || self
-                .running
-                .values()
-                .any(|job| job.build_directory == build)
-        {
-            return Err(ServerError::invalid(
-                "Configure requires a separate, currently unused build directory",
-            ));
+        if !script {
+            let source_actual = tokio::fs::canonicalize(&source).await.map_err(internal)?;
+            if tokio::fs::canonicalize(&build).await.ok().as_ref() == Some(&source_actual) {
+                return Err(ServerError::invalid(
+                    "Build directory resolves to the source directory",
+                ));
+            }
+            if build == source
+                || self
+                    .running
+                    .values()
+                    .any(|job| job.build_directory.as_ref() == Some(&build))
+            {
+                return Err(ServerError::invalid(
+                    "Configure requires a separate, currently unused build directory",
+                ));
+            }
         }
         if request.cancellation.is_cancelled() {
             return Err(ServerError::cancelled());
@@ -149,6 +161,7 @@ impl Service {
         let run = RunId::new(self.run_counter);
         let cancel = Cancellation::default();
         let options = ConfigureOptions {
+            mode: mode.clone(),
             executable: settings.executable.clone(),
             source_directory: source,
             build_directory: build.clone(),
@@ -159,26 +172,29 @@ impl Service {
         };
         let root = request.root.clone();
         let cancellation = cancel.clone();
+        let execution = mode.clone();
         self.jobs.spawn(async move {
             RuntimeCompletion {
                 root,
                 run,
-                result: runtime_cmake::configure(run, options, cancellation).await,
+                mode,
+                result: runtime_cmake::execute(run, options, cancellation).await,
             }
         });
         self.running.insert(
             request.root,
             RunningConfigure {
+                mode: execution,
                 run,
                 cancel,
-                build_directory: build,
+                build_directory: (!script).then_some(build),
             },
         );
         self.client
             .show_message(ShowMessageParams {
                 typ: MessageType(3),
                 message: format!(
-                    "CMake run {} started; use Cancel CMake configure to stop it",
+                    "CMake run {} started; use Cancel CMake run to stop it",
                     run.value()
                 ),
             })
@@ -222,7 +238,9 @@ impl Service {
             return;
         };
         let Some(owner) = self.projects.iter().position(|project| {
-            project.workspace.root().file == completion.root && !project.standalone
+            project.workspace.root().file == completion.root
+                && !project.standalone
+                && project.execution.as_ref() == Some(&completion.mode)
         }) else {
             return;
         };

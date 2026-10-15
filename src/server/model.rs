@@ -96,6 +96,7 @@ pub(super) struct Project {
     pub settings: Arc<Settings>,
     pub bindings: BTreeSet<PathBuf>,
     pub standalone: bool,
+    pub execution: Option<crate::runtime_cmake::model::ExecutionMode>,
     pub dirty: bool,
     pub members: BTreeSet<PathBuf>,
     pub overlays: BTreeMap<PathBuf, i32>,
@@ -115,11 +116,13 @@ pub(super) struct Service {
     pub run_counter: u64,
 }
 pub(super) struct RunningConfigure {
+    pub mode: crate::runtime_cmake::model::ExecutionMode,
     pub run: crate::runtime_cmake::model::RunId,
     pub cancel: Cancellation,
-    pub build_directory: PathBuf,
+    pub build_directory: Option<PathBuf>,
 }
 pub(super) struct RuntimeCompletion {
+    pub mode: crate::runtime_cmake::model::ExecutionMode,
     pub root: PathBuf,
     pub run: crate::runtime_cmake::model::RunId,
     pub result: std::io::Result<crate::runtime_cmake::model::Trace>,

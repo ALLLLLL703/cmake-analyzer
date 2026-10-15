@@ -2,8 +2,10 @@
 
 # Explicit CMake runtime analysis
 
-`configure` runs CMake with `-S`, `-B`, `--trace-expand`, and
-`--trace-format=json-v1`. It never builds targets. JSON trace v1 minor 2
+`execute` selects Configure or Script from ConfigureOptions.mode (`configure`
+remains an alias). Configure uses -S/-B; Script uses -P with an absolute entry
+file and source_directory as cwd, ignoring build_directory. Both enable
+--trace-expand and --trace-format=json-v1. Neither builds targets. JSON trace v1 minor 2
 (`global_frame`) is required; older trace formats are rejected.
 
 - `model.rs`: typed run/event IDs, frame depth, configure options, trace events,
@@ -17,7 +19,7 @@
 
 CMake receives no shell interpolation. It uses the source directory as cwd,
 null stdin/stdout, and captured stderr. The stderr limit includes JSON trace,
-warnings, and ordinary messages. Only successful configure/trace results can
+warnings, and ordinary messages. Only successful execution/trace results can
 be installed. Recognized command events with malformed required fields fail the run; other
 stderr lines are ignored. Cancellation kills
 and reaps the direct CMake child; it is not a portable descendant-process-tree

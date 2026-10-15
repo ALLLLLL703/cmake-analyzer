@@ -107,6 +107,7 @@ impl Workspace {
         limits: WorkspaceLimits,
     ) -> io::Result<Self> {
         let root = Root {
+            script_working_directory: None,
             file: absolute(file.as_ref())?,
             binary_directory: binary.as_deref().map(absolute).transpose()?,
         };
@@ -163,6 +164,16 @@ impl Workspace {
                 document.analysis = None;
             }
         }
+    }
+    /// Override filename-based project defaults for an explicitly selected -P entry.
+    pub fn set_script_working_directory(&mut self, directory: impl AsRef<Path>) -> io::Result<()> {
+        let directory = absolute(directory.as_ref())?;
+        if self.root.script_working_directory.as_ref() != Some(&directory) {
+            self.root.script_working_directory = Some(directory);
+            self.clear_runtime();
+            self.refresh_root();
+        }
+        Ok(())
     }
     pub fn root(&self) -> &Root {
         &self.root

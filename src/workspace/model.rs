@@ -59,6 +59,7 @@ pub struct DocumentWork {
 }
 #[derive(Clone, Debug)]
 pub struct Root {
+    pub script_working_directory: Option<PathBuf>,
     pub file: PathBuf,
     pub binary_directory: Option<PathBuf>,
 }
@@ -103,6 +104,7 @@ pub struct WorkspaceDiagnostic {
 }
 #[derive(Clone, Debug, Default)]
 pub struct RootGraph {
+    pub project_defaults: bool,
     pub invocations: Vec<Invocation>,
     pub edges: Vec<DependencyEdge>,
     pub scopes: Vec<VariableScope>,

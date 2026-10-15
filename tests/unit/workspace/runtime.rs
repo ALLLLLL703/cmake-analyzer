@@ -53,6 +53,7 @@ async fn observed_dependencies_values_functions_and_repeated_calls_stay_separate
     let trace = configure(
         RunId::new(1),
         ConfigureOptions {
+            mode: cmake_analyzer::runtime_cmake::model::ExecutionMode::Configure,
             executable: defaults.executable,
             source_directory: p.0.clone(),
             build_directory: p.0.join("dedicated-build"),
@@ -145,7 +146,7 @@ async fn observed_dependencies_values_functions_and_repeated_calls_stay_separate
     cancelled.cancel();
     let empty = cmake_analyzer::runtime_cmake::model::Trace {
         run: RunId::new(2),
-        build_directory: p.0.join("dedicated-build"),
+        build_directory: Some(p.0.join("dedicated-build")),
         events: Vec::new(),
         dependencies: Vec::new(),
     };

@@ -77,8 +77,8 @@ max_view_bytes = 65536
 These settings only configure manual actions. Loading project settings, opening,
 editing, or saving files never authorizes configure. Select **Run CMake for …
 (executes project code)** to execute it; `enable = false` hides runtime actions.
-Automatic Code Action requests return none. Script/standalone entries cannot
-configure. See [actions](../server/README.md#manual-code-actions).
+Automatic Code Action requests return none. Unmapped standalone files cannot
+run; configured script entries use the separate script action. See [actions](../server/README.md#manual-code-actions).
 
 Relative executable paths containing directory components and explicit build
 directories use the defining configuration file's directory. Bare executable
@@ -98,6 +98,38 @@ Arguments allow -D/-U cache settings, -G/-A/-T generator settings, -W warnings,
 script/build/install modes, presets, positional arguments, and other flags are
 rejected. Values are passed directly, without a shell. Configure requires JSON
 trace v1 minor 2 global_frame support. No automatic execution mode is provided.
+
+## Configured script execution
+
+```toml
+[interpreter_commands]
+"tools/check.cmake" = "cmake -P tools/check.cmake"
+
+[runtime]
+arguments = ["-DINPUT=example"]
+```
+
+After saving/reloading configuration, open the mapped file and select **Run
+CMake script for … (executes project code)**. The explicit mapping wins over
+nearest-project and filename inference, even for a file named CMakeLists.txt.
+Nearest-project (otherwise document-directory) settings are checked first, then startup-directory
+settings for a matching mapping. This also supports nested scripts without a
+CMakeLists.txt ancestor. Keys/entry paths remain relative to startup cwd.
+
+Runtime settings come from the profile selecting the script mapping; other
+analysis settings still follow the analysis entry directory. The process uses
+startup cwd and executes cmake with trace flags, runtime arguments, and -P
+followed by the mapped absolute script path. No -S/-B or build directory is used;
+runtime.build_directory is ignored. Source/binary directory builtins in the
+script Workspace use that cwd, and filename-based implicit-project defaults
+are disabled. Scripts may still write anywhere their CMake code permits.
+
+Script runtime arguments permit only -D/-U, -W, and --no-warn-unused-cli.
+Configure-only options such as -G and --fresh are rejected before launching.
+CMake's own non-scriptable command restrictions still apply. Cancellation,
+time/output limits, dynamic include/value/function observations, and edit/reload
+invalidation are shared with configure. Configuration discovery never executes
+the script automatically.
 
 ## Dynamic reload
 

@@ -48,20 +48,23 @@ The service has a 64-message queue and a 64-edit batch policy, both named static
 - Positions use UTF-16 negotiation and byte-span conversion; the mapper also supports UTF-8/UTF-32. It indexes line starts and multibyte characters instead of rescanning line prefixes per symbol/diagnostic.
 - Document symbols use SemanticedBuffer root symbols and direct block membership. Nested blocks assemble bottom-up; clients without hierarchical support receive SymbolInformation records. No builtin-variable catalogue dump or CMake execution is involved.
 
-Interpreter commands are parsed, never executed; only -S/-B project and -P script modes are supported. Default module paths include entry-relative cmake, cmake/Modules, and cmake/modules. Builtin modules are discovered once per configuration generation from PATH CMake's executable location and version for standard installation layouts; explicit configuration takes precedence. Detection never runs configure or project scripts. Pull diagnostics and filesystem watching are not implemented. Other LSP features remain unadvertised.
+Interpreter commands select -S/-B project or -P script entries without executing during parsing. Configured scripts can subsequently run through their manual action. Default module paths include entry-relative cmake, cmake/Modules, and cmake/modules. Builtin modules are discovered once per configuration generation from PATH CMake's executable location and version for standard installation layouts; explicit configuration takes precedence. Detection never runs configure or project scripts. Pull diagnostics and filesystem watching are not implemented. Other LSP features remain unadvertised.
 
 ## Manual Code Actions
 
 1. Save related files.
 2. Request Code Actions and select **Run CMake for … (executes project code)**.
-3. Wait for the completion notification. A **Cancel CMake configure** action is
+3. Wait for the completion notification. A **Cancel CMake run** action is
    available while the child runs; ordinary requests/edits remain available.
 4. Select **Show observed expanded arguments at this line** on an executed command, including a
    continuation line. Repeated executions retain separate event/frame records.
 
-The commands are cmake-analyzer.configure, cmake-analyzer.expandedArguments,
-and cmake-analyzer.cancelConfigure. Each accepts three positional arguments:
-`["file:///project/CMakeLists.txt", "/project/CMakeLists.txt", 3]`.
+The commands are cmake-analyzer.configure, cmake-analyzer.runScript,
+cmake-analyzer.expandedArguments, and cmake-analyzer.cancelConfigure (cancels
+either mode). Actions supply four positional arguments:
+`["file:///project/CMakeLists.txt", "/project/CMakeLists.txt", 3, "configure"]`.
+The final profile is configure or script; legacy three-argument calls remain
+accepted. Profiles distinguish script/configure Workspaces sharing an entry.
 The line is zero-based. Project membership is validated. Automatic Code Action
 requests return no actions; configuration alone never starts a run.
 
@@ -77,6 +80,10 @@ observed files also prevent installation. Changes/save/close/folder events and
 successful configuration reload clear results and cancel runs. There is no
 filesystem watcher; inspection checks known saved inputs. Configure-generated
 sources inside its build directory are not frozen as prior source inputs.
+
+Configured -P mappings expose **Run CMake script for … (executes project code)**
+instead of configure, regardless of filename. They use startup cwd without a
+build directory. See [script configuration](../config/README.md#configured-script-execution).
 
 Runtime documents join ownership; opening them exposes their parsed symbols.
 Observed function/macro calls suppress matching unknown-command diagnostics.

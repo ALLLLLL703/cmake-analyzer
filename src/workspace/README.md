@@ -102,7 +102,7 @@ add_subdirectory(child)   # child starts with the names known here
 set(after yes)            # this later write does not reach the child
 ```
 
-Scopes track project names, **possible write names**, and conservative literal/simple-expansion values. Shared name sets are copied only when one side changes. Local scope IDs are mapped separately for every visit.
+Scopes track project names, **possible write names**, and conservative literal/simple-expansion values. Explicit script Workspaces use set_script_working_directory to seed source/binary cwd context and suppress filename-based project defaults. Shared name sets are copied only when one side changes. Local scope IDs are mapped separately for every visit.
 
 Facts inside conditions, loops, functions, and macros are kept but not applied. Their dependency edges remain unresolved candidates. Cache/parent writes are also kept without guessing their destination.
 

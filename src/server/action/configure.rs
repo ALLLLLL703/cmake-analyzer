@@ -5,5 +5,5 @@ pub(super) async fn run(
     service: &mut Service,
     request: ActionRequest,
 ) -> ServerResult<Option<Data>> {
-    service.start_configure(request).await
+    service.start_runtime(request).await
 }

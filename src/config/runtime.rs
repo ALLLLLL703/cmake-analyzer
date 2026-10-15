@@ -1,4 +1,28 @@
-// AI-authored validation for opt-in configure arguments.
+// AI-authored validation for opt-in CMake arguments.
+pub(crate) fn validate_script_arguments(arguments: &[String]) -> std::io::Result<()> {
+    let mut arguments = arguments.iter();
+    while let Some(argument) = arguments.next() {
+        if matches!(argument.as_str(), "-D" | "-U") {
+            if arguments.next().is_none() {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::InvalidData,
+                    "Missing script CMake option value",
+                ));
+            }
+        } else if argument == "--no-warn-unused-cli"
+            || ["-D", "-U", "-W"]
+                .iter()
+                .any(|prefix| argument.starts_with(prefix) && argument.len() > prefix.len())
+        {
+        } else {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "Runtime script arguments accept only -D, -U, -W and --no-warn-unused-cli",
+            ));
+        }
+    }
+    Ok(())
+}
 use std::io;
 pub(super) fn validate_arguments(arguments: &[String]) -> io::Result<()> {
     let mut arguments = arguments.iter();

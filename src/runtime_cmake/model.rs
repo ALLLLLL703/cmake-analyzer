@@ -53,12 +53,20 @@ pub struct ObservedDependency {
 #[derive(Clone, Debug)]
 pub struct Trace {
     pub run: RunId,
-    pub build_directory: PathBuf,
+    /// None for script runs; no build directory is created or exempted from input checks.
+    pub build_directory: Option<PathBuf>,
     pub events: Vec<TraceEvent>,
     pub dependencies: Vec<ObservedDependency>,
 }
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum ExecutionMode {
+    Configure,
+    Script { file: PathBuf },
+}
 #[derive(Clone, Debug)]
+/// Shared execution options. Script mode uses source_directory as cwd and ignores build_directory.
 pub struct ConfigureOptions {
+    pub mode: ExecutionMode,
     pub executable: PathBuf,
     pub source_directory: PathBuf,
     pub build_directory: PathBuf,

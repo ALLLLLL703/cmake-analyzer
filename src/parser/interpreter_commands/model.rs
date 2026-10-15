@@ -1,7 +1,7 @@
 // AI-authored interpreter service requirements.
 use std::path::PathBuf;
 
-/// Static analysis mode selected by a command; the command is never executed.
+/// Parsed analysis/entry mode; parsing never executes the command.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum InterpreterServices {
     Project {

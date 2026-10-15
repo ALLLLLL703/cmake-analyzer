@@ -4,6 +4,7 @@ use std::path::PathBuf;
 #[derive(Clone, Copy, Debug)]
 pub(in crate::server) enum ActionKind {
     Configure,
+    RunScript,
     ExpandedArguments,
     CancelConfigure,
 }
@@ -11,6 +12,7 @@ impl ActionKind {
     pub fn command(self) -> &'static str {
         match self {
             Self::Configure => "cmake-analyzer.configure",
+            Self::RunScript => "cmake-analyzer.runScript",
             Self::ExpandedArguments => "cmake-analyzer.expandedArguments",
             Self::CancelConfigure => "cmake-analyzer.cancelConfigure",
         }
@@ -18,6 +20,7 @@ impl ActionKind {
     pub fn parse(value: &str) -> Option<Self> {
         [
             Self::Configure,
+            Self::RunScript,
             Self::ExpandedArguments,
             Self::CancelConfigure,
         ]
@@ -31,4 +34,5 @@ pub(in crate::server) struct ActionRequest {
     pub root: PathBuf,
     pub line: u64,
     pub cancellation: Cancellation,
+    pub execution: Option<crate::runtime_cmake::model::ExecutionMode>,
 }

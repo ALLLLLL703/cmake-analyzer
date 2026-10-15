@@ -10,12 +10,7 @@ pub(super) struct ValueReplay {
 impl ValueReplay {
     pub fn new(root: ReferenceEnvironmentId, graph: &RootGraph) -> Self {
         let mut values = ValueBindings::default();
-        if let Some(visit) = graph.invocations.first().filter(|visit| {
-            visit
-                .file
-                .file_name()
-                .is_some_and(|name| name == "CMakeLists.txt")
-        }) {
+        if let Some(visit) = graph.invocations.first().filter(|_| graph.project_defaults) {
             values.assign(
                 "PROJECT_SOURCE_DIR",
                 visit

@@ -3,11 +3,15 @@ use super::{
     super::{model::*, roots},
     internal,
 };
-use crate::workspace::Workspace;
+use crate::{
+    parser::interpreter_commands::InterpreterServices, runtime_cmake::model::ExecutionMode,
+    workspace::Workspace,
+};
 use lspally::server::model::*;
 use std::{
     collections::{BTreeMap, BTreeSet},
     path::{Path, PathBuf},
+    sync::Arc,
 };
 
 impl Service {
@@ -17,10 +21,67 @@ impl Service {
         standalone: bool,
         binary: Option<PathBuf>,
     ) -> ServerResult<usize> {
+        let mut execution = (!standalone
+            && entry
+                .file_name()
+                .is_some_and(|name| name == "CMakeLists.txt"))
+        .then_some(ExecutionMode::Configure);
+        let mut profile = None;
+        if !standalone {
+            let directory = entry
+                .parent()
+                .unwrap_or(&self.config.sources.cwd)
+                .to_owned();
+            let settings = self.mapping_settings(&directory, &entry).await?;
+            if matches!(settings.interpreter_commands.get(&entry),Some(InterpreterServices::Script {file}) if file==&entry)
+            {
+                execution = Some(ExecutionMode::Script {
+                    file: entry.clone(),
+                });
+                profile = Some(settings);
+            }
+        }
+        let index = self
+            .add_execution_project(entry, standalone, binary, execution)
+            .await?;
+        if let Some(settings) = profile {
+            Arc::make_mut(&mut self.projects[index].settings).runtime = settings.runtime.clone();
+        }
+        Ok(index)
+    }
+    async fn mapping_settings(
+        &mut self,
+        directory: &Path,
+        path: &Path,
+    ) -> ServerResult<Arc<crate::config::Settings>> {
+        let settings = self
+            .config
+            .for_directory(directory)
+            .await
+            .map_err(internal)?;
+        if settings.interpreter_commands.contains_key(path) {
+            return Ok(settings);
+        }
+        let cwd = self.config.sources.cwd.clone();
+        let startup = self.config.for_directory(&cwd).await.map_err(internal)?;
+        Ok(if startup.interpreter_commands.contains_key(path) {
+            startup
+        } else {
+            settings
+        })
+    }
+    async fn add_execution_project(
+        &mut self,
+        entry: PathBuf,
+        standalone: bool,
+        binary: Option<PathBuf>,
+        execution: Option<ExecutionMode>,
+    ) -> ServerResult<usize> {
         if let Some(index) = self.projects.iter().position(|project| {
             project.workspace.root().file == entry
                 && project.standalone == standalone
                 && project.workspace.root().binary_directory == binary
+                && project.execution == execution
         }) {
             return Ok(index);
         }
@@ -43,6 +104,11 @@ impl Service {
             .await
             .map_err(internal)?;
         let mut workspace = Workspace::new(&entry, binary).map_err(internal)?;
+        if matches!(execution, Some(ExecutionMode::Script { .. })) {
+            workspace
+                .set_script_working_directory(&self.config.sources.cwd)
+                .map_err(internal)?;
+        }
         workspace.set_module_paths(if settings.modules.enable {
             settings.modules.search_paths.clone()
         } else {
@@ -61,6 +127,7 @@ impl Service {
             settings,
             bindings: BTreeSet::new(),
             standalone,
+            execution,
             dirty: !standalone,
             members: BTreeSet::from([entry]),
             overlays: BTreeMap::new(),
@@ -136,15 +203,27 @@ impl Service {
             .or_else(|| path.parent())
             .unwrap_or(&self.config.sources.cwd)
             .to_owned();
-        let settings = self
-            .config
-            .for_directory(&directory)
-            .await
-            .map_err(internal)?;
+        let settings = self.mapping_settings(&directory, path).await?;
         if let Some(services) = settings.interpreter_commands.get(path) {
+            let execution = match services {
+                InterpreterServices::Project { .. } => ExecutionMode::Configure,
+                InterpreterServices::Script { file } => {
+                    ExecutionMode::Script { file: file.clone() }
+                }
+            };
+            let script = matches!(execution, ExecutionMode::Script { .. });
             let index = self
-                .add_project(services.entry(), false, services.binary_directory())
+                .add_execution_project(
+                    services.entry(),
+                    false,
+                    services.binary_directory(),
+                    Some(execution),
+                )
                 .await?;
+            if script {
+                Arc::make_mut(&mut self.projects[index].settings).runtime =
+                    settings.runtime.clone();
+            }
             self.projects[index].bindings.insert(path.to_owned());
             return Ok(vec![index]);
         }
