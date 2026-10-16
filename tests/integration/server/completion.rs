@@ -1,4 +1,6 @@
 // AI-generated command completion integration tests.
+#[path = "completion/keywords.rs"]
+mod keywords;
 #[path = "completion/names.rs"]
 mod names;
 use super::session::{HEADER, Project, Session, uri};

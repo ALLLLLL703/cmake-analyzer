@@ -1,5 +1,5 @@
 use super::{
-    model::{Candidate, Input, Kind},
+    model::{ArgumentChoices, Candidate, Input, Kind},
     roles,
 };
 use crate::{
@@ -182,11 +182,18 @@ pub(super) fn collect(
         let Some(argument) = super::argument_context::argument(&input.snapshot, offset) else {
             continue;
         };
-        let accepted = if expansion {
-            vec![NameRole::Variable]
+        let choices = if expansion {
+            ArgumentChoices {
+                roles: vec![NameRole::Variable],
+                keywords: Vec::new(),
+            }
         } else {
-            roles::names(input, &argument, prefix)
+            roles::choices(input, &argument, prefix, cancel)
         };
+        for keyword in choices.keywords {
+            add(&mut out, keyword, prefix, Kind::Keyword);
+        }
+        let accepted = choices.roles;
         if accepted.contains(&NameRole::Variable) {
             variables(input, argument.command, prefix, &mut out, cancel)?;
         }
@@ -214,6 +221,9 @@ pub(super) fn collect(
                 }
             }
         }
+    }
+    if cancel.is_cancelled() {
+        return Err(ServerError::cancelled());
     }
     Ok(out.into_values().collect())
 }

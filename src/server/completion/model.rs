@@ -16,6 +16,11 @@ pub(super) struct ArgumentSite<'a> {
     pub payload: Range<usize>,
     pub form: crate::parser::semanticer::model::SemanticArgForm,
 }
+#[derive(Default)]
+pub(super) struct ArgumentChoices<'a> {
+    pub roles: Vec<crate::parser::semanticer::schema::NameRole>,
+    pub keywords: Vec<&'a str>,
+}
 pub(super) struct Site {
     pub replace: Range<usize>,
     pub prefix: String,

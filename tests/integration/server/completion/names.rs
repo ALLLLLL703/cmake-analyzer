@@ -194,7 +194,8 @@ async fn schema_targets_use_enum_member_and_keep_alias_names_quotes_and_typed_ro
         22,
     )
     .await;
-    assert!(keyword.as_array().unwrap().is_empty());
+    assert_eq!(keyword.as_array().unwrap().len(), 1);
+    assert_eq!(item(&keyword, "PUBLIC")["kind"], 14);
     let renamed = changed(
         &mut client,
         &root,

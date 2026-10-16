@@ -2,7 +2,9 @@
 pub mod block;
 mod functions;
 pub(super) mod outputs;
-pub(crate) use outputs::{completion_roles, has_target_arguments, target_arguments};
+pub(crate) use outputs::{
+    completion_keywords, completion_roles, has_target_arguments, target_arguments,
+};
 pub(crate) mod references;
 pub mod scope;
 pub mod symbols;

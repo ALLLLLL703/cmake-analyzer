@@ -1,8 +1,8 @@
-use super::model::{ArgumentSite, Input};
+use super::model::{ArgumentChoices, ArgumentSite, Input};
 use crate::parser::semanticer::{
     model::{ReferenceKind, SemanticArgForm},
-    parsing::completion_roles,
-    schema::{CommandSchemaFrom, NameRole},
+    parsing::{completion_keywords, completion_roles},
+    schema::CommandSchemaFrom,
     values::argument_value,
 };
 
@@ -27,16 +27,21 @@ pub(super) fn shadowed(
             call.file == file && call.command == command && call.kind == ReferenceKind::Call
         })
 }
-pub(super) fn names(input: &Input, argument: &ArgumentSite<'_>, prefix: &str) -> Vec<NameRole> {
+pub(super) fn choices<'a>(
+    input: &'a Input,
+    argument: &ArgumentSite<'a>,
+    prefix: &str,
+    cancel: &lspally::server::model::Cancellation,
+) -> ArgumentChoices<'a> {
     let Some(schema) = &argument.command.schema else {
-        return Vec::new();
+        return ArgumentChoices::default();
     };
     if matches!(
         schema.from,
         CommandSchemaFrom::Builtin | CommandSchemaFrom::KeyWord
     ) && shadowed(input, argument.command.id, input.snapshot.semantics.id)
     {
-        return Vec::new();
+        return ArgumentChoices::default();
     }
     let mut preceding = Vec::with_capacity(argument.argument + 1);
     for (index, arg) in argument.command.args[..argument.argument]
@@ -62,15 +67,13 @@ pub(super) fn names(input: &Input, argument: &ArgumentSite<'_>, prefix: &str) ->
             preceding.push(std::borrow::Cow::Borrowed(arg.content.as_str()));
         } else {
             // Unknown unquoted expansion/list splitting can change every later argument position.
-            return Vec::new();
+            return ArgumentChoices::default();
         }
     }
     preceding.push(std::borrow::Cow::Borrowed(prefix));
-    completion_roles(
-        schema,
-        &preceding
-            .iter()
-            .map(|argument| argument.as_ref())
-            .collect::<Vec<_>>(),
-    )
+    let arguments: Vec<_> = preceding.iter().map(|argument| argument.as_ref()).collect();
+    ArgumentChoices {
+        roles: completion_roles(schema, &arguments),
+        keywords: completion_keywords(schema, &arguments, || cancel.is_cancelled()),
+    }
 }

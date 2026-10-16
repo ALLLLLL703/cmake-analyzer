@@ -46,12 +46,13 @@ name is inserted. Set it to `true` to insert new-call parentheses and snippet
 placeholders for known required parameters, provided the client supports snippets.
 Existing parentheses/arguments remain unchanged. Optional/unmodeled arguments and
 ambiguous overload suffixes are not inserted. This field affects command-call snippets
-only; variable/target name completions remain plain text.
+only; variable/target names and schema keyword completions remain plain text.
 
 Variable names are completed in schema Variable/Out/Unset positions and ordinary
 ${...} references. Target names are completed in schema target positions with
-EnumMember icons. These features do not require reserve_arg; arbitrary values,
-paths, and keyword enums are not completed.
+EnumMember icons. Explicit schema keywords are completed in reachable argument
+positions with Keyword icons. These features do not require reserve_arg; arbitrary
+values, scalar enums, and paths are not completed.
 
 The field follows user/project/explicit precedence. Missing values inherit; an
 explicit `false` overrides a lower-layer `true`. Shared files require all owners

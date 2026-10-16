@@ -1,5 +1,7 @@
 // AI-generated implementation.
+mod keywords;
 mod trails;
+pub(crate) use keywords::completion_keywords;
 use trails::TargetTrails;
 #[cfg(test)]
 #[path = "../../../../tests/unit/parser/semanticer/target_arguments.rs"]
@@ -148,6 +150,7 @@ enum MatchRole<'a> {
     Variable,
     Path(crate::parser::semanticer::model::PathKind),
     Name(crate::parser::semanticer::schema::NameRole),
+    Keyword(&'a str),
     Target(
         crate::parser::semanticer::schema::NameRole,
         &'a TargetTrails,
@@ -282,6 +285,9 @@ pub(crate) fn path_arguments(
     }
     result
 }
+fn prefix_mode(role: MatchRole<'_>) -> bool {
+    matches!(role, MatchRole::Name(_) | MatchRole::Keyword(_))
+}
 fn contains_role(kind: &ArgSchemaKind, role: MatchRole) -> bool {
     if matches_role(kind, role) {
         return true;
@@ -335,6 +341,9 @@ fn contains_variable(kind: &ArgSchemaKind) -> bool {
     }
 }
 fn matches_role(kind: &ArgSchemaKind, role: MatchRole) -> bool {
+    if let MatchRole::Keyword(candidate) = role {
+        return matches!(kind,ArgSchemaKind::Keyword(word) if word==candidate);
+    }
     use crate::parser::semanticer::model::PathKind;
     if let MatchRole::Path(path) = role {
         return matches!(
@@ -376,7 +385,7 @@ fn sequence(
                 .into_iter()
                 .flat_map(|state| {
                     // Missing required suffixes do not invalidate an editing prefix.
-                    if matches!(role, MatchRole::Name(_)) && state.position == arguments.len() {
+                    if prefix_mode(role) && state.position == arguments.len() {
                         vec![state]
                     } else {
                         step(kind, state, arguments, role)
@@ -429,7 +438,7 @@ fn step(
             for count in 0..=arguments.len() {
                 if count >= *min {
                     matches.extend(frontier.iter().cloned());
-                } else if matches!(role, MatchRole::Name(_)) {
+                } else if prefix_mode(role) {
                     matches.extend(
                         frontier
                             .iter()
@@ -460,9 +469,20 @@ fn step(
             })
             .collect(),
         ArgSchemaKind::Keyword(word) => {
+            if let MatchRole::Keyword(candidate) = role {
+                if state.position + 1 == arguments.len() {
+                    if word != candidate {
+                        return Vec::new();
+                    }
+                    let mut next = state;
+                    next.indices.push(next.position);
+                    next.position += 1;
+                    next.keywords += 1;
+                    return vec![next];
+                }
+            }
             let current = arguments.get(state.position).copied();
-            let active =
-                matches!(role, MatchRole::Name(_)) && state.position + 1 == arguments.len();
+            let active = prefix_mode(role) && state.position + 1 == arguments.len();
             if !current
                 .is_some_and(|argument| argument == word || active && word.starts_with(argument))
             {
@@ -478,15 +498,30 @@ fn step(
             if state.position >= arguments.len() {
                 return Vec::new();
             }
-            if kinds.iter().any(|kind|matches!(kind,ArgSchemaKind::Keyword(word) if arguments[state.position]!=word)){return Vec::new()}
+            let current = if state.position + 1 == arguments.len() {
+                if let MatchRole::Keyword(candidate) = role {
+                    candidate
+                } else {
+                    arguments[state.position]
+                }
+            } else {
+                arguments[state.position]
+            };
+            if kinds
+                .iter()
+                .any(|kind| matches!(kind,ArgSchemaKind::Keyword(word) if current!=word))
+            {
+                return Vec::new();
+            }
             let mut next = state;
-            if (!matches!(role, MatchRole::Name(_)) || next.position + 1 == arguments.len())
+            if (!prefix_mode(role) || next.position + 1 == arguments.len())
                 && kinds.iter().any(|kind| match role {
                     MatchRole::Out => contains_out(kind),
                     MatchRole::Variable => contains_variable(kind),
-                    MatchRole::Path(_) | MatchRole::Name(_) | MatchRole::Target(_, _) => {
-                        contains_role(kind, role)
-                    }
+                    MatchRole::Path(_)
+                    | MatchRole::Name(_)
+                    | MatchRole::Target(_, _)
+                    | MatchRole::Keyword(_) => contains_role(kind, role),
                 })
             {
                 record(&mut next, role);
@@ -500,7 +535,7 @@ fn step(
             }
             let mut next = state;
             if matches_role(kind, role)
-                && (!matches!(role, MatchRole::Name(_)) || next.position + 1 == arguments.len())
+                && (!prefix_mode(role) || next.position + 1 == arguments.len())
             {
                 record(&mut next, role);
             }
@@ -523,7 +558,7 @@ fn merge(states: Vec<OutputMatch>, role: MatchRole) -> Vec<OutputMatch> {
             Some(old) if old.keywords < state.keywords => *old = state,
             Some(old) if old.keywords == state.keywords => {
                 // Completion offers alternatives; binding requires agreement instead.
-                if matches!(role, MatchRole::Name(_)) {
+                if prefix_mode(role) {
                     for index in state.indices {
                         if !old.indices.contains(&index) {
                             old.indices.push(index);

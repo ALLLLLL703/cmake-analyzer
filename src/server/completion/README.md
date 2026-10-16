@@ -10,10 +10,12 @@
   names without relexing. Edits preserve surrounding quotes/brackets/braces.
 - `candidates.rs` merges versioned native schemas, used external schemas, and known
   document/Workspace function and macro declarations.
-- `roles.rs` resolves active schema name roles through the shared parser matcher.
+- `roles.rs` resolves active schema name roles and keyword choices through the
+  shared parser matcher, preparing prior argument values once.
   Position-qualified values may resolve earlier simple expansions; unknown unquoted
   splitting/empty removal suppresses later role inference.
-- `names.rs` collects variable/target names. Deduplication borrows source names;
+- `names.rs` merges variable/target names and literal argument keywords.
+  Deduplication borrows source names and schema words;
   only returned labels are copied.
 - `arguments.rs` renders command-call parameter snippets; `render.rs` converts
   edits using the negotiated position encoding. `model.rs` contains feature models.
@@ -34,6 +36,26 @@ placeholders, and a final cursor stop. Existing parentheses suppress snippets.
 Optional arguments are omitted, repeats use their minimum count, and overloads
 retain only a common required prefix. Keywords remain literal. Conflicting source
 signatures use name-only edits; shared owners must all enable reserve_arg.
+
+## Argument keywords
+
+Explicit schema Keyword nodes use Keyword icons and case-sensitive prefix matching,
+including canonical lowercase words such as debug. outputs/keywords.rs borrows and
+sorts schema words, then probes reachable active slots through the shared matcher.
+Optional/Repeat/Choice/AllOf branches and unfinished required suffixes are supported;
+probes use the canonical replacement rather than the partial spelling. Completed
+arguments constrain candidates; required scalar slots and Unmodeled tails do not
+invent keywords. Matching stops cooperatively when the request is cancelled.
+
+Examples include add_library(Core ST...) -> STATIC, target_link_libraries(App PU...)
+-> PUBLIC, and file(READ input OUT HE...) -> HEX. Version selection and native user
+shadows follow the same rules as name roles. Explicit external schemas retain their
+own keywords. Variable references offer only variable names, not keywords.
+
+Keyword edits replace only the current payload, preserving quotes/brackets and
+remaining arguments, including unfinished quoted arguments. They are always plain
+text, independent of reserve_arg. Keyword and target/name alternatives can coexist;
+results are deduplicated and sorted by label/kind. No extra help lookup or execution.
 
 ## Variable and target names
 
@@ -64,7 +86,7 @@ Variable/target prefixes are case-sensitive. Edits replace only the active liter
 name or reference name and never insert snippets, quotes, or closing braces.
 Simple names are supported; whitespace, escapes, list separators, and unresolved
 template names are excluded. Suggestions describe known names, not proof of runtime
-availability. General values, enum keywords, properties, paths, and runtime-only
+availability. General scalar enums/values, properties, paths, and runtime-only
 names are not completed. Trigger characters include `(` and `{`.
 
 Queries observe preceding edits, support cancellation, and retain immutable inputs.

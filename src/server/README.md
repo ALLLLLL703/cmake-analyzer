@@ -59,7 +59,9 @@ Interpreter commands select -S/-B project or -P script entries without executing
 Completion is advertised without item resolve. It offers versioned native command
 names and known local/imported functions/macros outside argument parentheses,
 including block bodies, but not in comments or strings. Argument completion follows
-schema Variable/Out/Unset and target roles, including partial calls. Ordinary ${...}
+schema Variable/Out/Unset and target roles, including partial calls. Literal schema
+keywords are offered only at reachable argument positions with Keyword icons,
+case-sensitive prefixes, and plain-text payload edits; opaque tails are not guessed. Ordinary ${...}
 references also offer variable names. Variables use Variable icons; targets use
 EnumMember icons. Known literal target declarations include imports and aliases,
 with executable/library slot filtering. Names are case-sensitive in arguments;
