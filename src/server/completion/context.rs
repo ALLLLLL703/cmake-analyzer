@@ -14,11 +14,11 @@ pub(super) fn identifier(name: &str) -> bool {
 fn word(byte: u8) -> bool {
     byte.is_ascii_alphanumeric() || byte == b'_'
 }
-pub(super) fn site(snapshot: &DocumentSnapshot, offset: usize) -> Option<Site> {
+pub(super) fn in_comment(snapshot: &DocumentSnapshot, offset: usize) -> bool {
     let text = &snapshot.text;
     let lexed = &snapshot.lexed;
     for span in &lexed.comments {
-        let raw = span.text(text)?;
+        let Some(raw) = span.text(text) else { continue };
         let block = raw
             .strip_prefix("#[")
             .is_some_and(|rest| rest.trim_start_matches('=').starts_with('['));
@@ -31,8 +31,16 @@ pub(super) fn site(snapshot: &DocumentSnapshot, offset: usize) -> Option<Site> {
         if span.start_byte <= offset
             && (offset < span.end_byte || offset == span.end_byte && (!block || unclosed))
         {
-            return None;
+            return true;
         }
+    }
+    false
+}
+pub(super) fn site(snapshot: &DocumentSnapshot, offset: usize) -> Option<Site> {
+    let text = &snapshot.text;
+    let lexed = &snapshot.lexed;
+    if in_comment(snapshot, offset) {
+        return None;
     }
     if lexed.parenthesis_depth(offset) != 0 {
         return None;

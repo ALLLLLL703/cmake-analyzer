@@ -10,6 +10,16 @@ pub struct CommandSchema {
     pub kind: CommandKind,
 }
 
+/// Name classes offered by incomplete-argument schema matching.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum NameRole {
+    Variable,
+    Target,
+    Executable,
+    Library,
+    CustomTarget,
+}
+
 #[derive(Clone, Debug)]
 pub struct ArgSchema {
     pub kind: ArgSchemaKind,

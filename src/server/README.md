@@ -54,11 +54,16 @@ The service has a 64-message queue and a 64-edit batch policy, both named static
 
 Interpreter commands select -S/-B project or -P script entries without executing during parsing. Configured scripts can subsequently run through their manual action. Default module paths include entry-relative cmake, cmake/Modules, and cmake/modules. Builtin modules are discovered once per configuration generation from PATH CMake's executable location and version for standard installation layouts; explicit configuration takes precedence. Detection never runs configure or project scripts. Pull diagnostics and filesystem watching are not implemented. Other LSP features remain unadvertised.
 
-## Command-name completion
+## Completion
 
 Completion is advertised without item resolve. It offers versioned native command
 names and known local/imported functions/macros outside argument parentheses,
-including block bodies, but not in comments or strings. Keyword icons mark control
+including block bodies, but not in comments or strings. Argument completion follows
+schema Variable/Out/Unset and target roles, including partial calls. Ordinary ${...}
+references also offer variable names. Variables use Variable icons; targets use
+EnumMember icons. Known literal target declarations include imports and aliases,
+with executable/library slot filtering. Names are case-sensitive in arguments;
+quotes/braces and other surrounding text are retained. Keyword icons mark control
 keywords; Module icons mark native build/module commands; other commands use
 Function. Actual glyphs depend on the editor/theme.
 

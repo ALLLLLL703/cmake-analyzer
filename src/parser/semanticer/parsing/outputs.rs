@@ -146,6 +146,47 @@ enum MatchRole {
     Out,
     Variable,
     Path(crate::parser::semanticer::model::PathKind),
+    Name(crate::parser::semanticer::schema::NameRole),
+}
+/// Match an unfinished argument prefix. Only the active slot is recorded, avoiding growing repeat histories.
+pub(crate) fn completion_roles(
+    schema: &crate::parser::semanticer::schema::CommandSchema,
+    arguments: &[&str],
+) -> Vec<crate::parser::semanticer::schema::NameRole> {
+    use crate::parser::semanticer::schema::NameRole;
+    let Some(position) = arguments.len().checked_sub(1) else {
+        return Vec::new();
+    };
+    let roots: Vec<_> = schema.args.iter().map(|argument| &argument.kind).collect();
+    [
+        NameRole::Variable,
+        NameRole::Target,
+        NameRole::Executable,
+        NameRole::Library,
+        NameRole::CustomTarget,
+    ]
+    .into_iter()
+    .filter(|role| {
+        if !roots
+            .iter()
+            .any(|kind| contains_role(kind, MatchRole::Name(*role)))
+        {
+            return false;
+        }
+        sequence(
+            &roots,
+            vec![OutputMatch {
+                position: 0,
+                indices: Vec::new(),
+                keywords: 0,
+            }],
+            arguments,
+            MatchRole::Name(*role),
+        )
+        .iter()
+        .any(|state| state.position == arguments.len() && state.indices.contains(&position))
+    })
+    .collect()
 }
 pub(crate) fn path_arguments(
     command: &crate::parser::semanticer::model::SemanticCommandRepresent,
@@ -268,6 +309,19 @@ fn matches_role(kind: &ArgSchemaKind, role: MatchRole) -> bool {
                 | (ArgSchemaKind::OutputPath, PathKind::Output)
         );
     }
+    if let MatchRole::Name(role) = role {
+        use crate::parser::semanticer::schema::NameRole;
+        return matches!(
+            (kind, role),
+            (
+                ArgSchemaKind::Variable | ArgSchemaKind::Out | ArgSchemaKind::Unset,
+                NameRole::Variable
+            ) | (ArgSchemaKind::Target, NameRole::Target)
+                | (ArgSchemaKind::TargetExe, NameRole::Executable)
+                | (ArgSchemaKind::TargetLib, NameRole::Library)
+                | (ArgSchemaKind::CustomTarget(_), NameRole::CustomTarget)
+        );
+    }
     matches!(
         (kind, role),
         (ArgSchemaKind::Out, MatchRole::Out) | (ArgSchemaKind::Variable, MatchRole::Variable)
@@ -283,8 +337,16 @@ fn sequence(
         states = merge(
             states
                 .into_iter()
-                .flat_map(|state| step(kind, state, arguments, role))
+                .flat_map(|state| {
+                    // Missing required suffixes do not invalidate an editing prefix.
+                    if matches!(role, MatchRole::Name(_)) && state.position == arguments.len() {
+                        vec![state]
+                    } else {
+                        step(kind, state, arguments, role)
+                    }
+                })
                 .collect(),
+            role,
         );
         if states.is_empty() {
             break;
@@ -315,13 +377,14 @@ fn step(
         ArgSchemaKind::Optional(args) => {
             let mut states = group(args, state.clone(), arguments, role);
             states.push(state);
-            merge(states)
+            merge(states, role)
         }
         ArgSchemaKind::Choice(choices) => merge(
             choices
                 .iter()
                 .flat_map(|choice| group(choice, state.clone(), arguments, role))
                 .collect(),
+            role,
         ),
         ArgSchemaKind::Repeat { args, min } => {
             let mut frontier = vec![state];
@@ -329,6 +392,13 @@ fn step(
             for count in 0..=arguments.len() {
                 if count >= *min {
                     matches.extend(frontier.iter().cloned());
+                } else if matches!(role, MatchRole::Name(_)) {
+                    matches.extend(
+                        frontier
+                            .iter()
+                            .filter(|state| state.position == arguments.len())
+                            .cloned(),
+                    );
                 }
                 let next = frontier
                     .into_iter()
@@ -339,12 +409,12 @@ fn step(
                             .filter(move |next| next.position > position)
                     })
                     .collect();
-                frontier = merge(next);
+                frontier = merge(next, role);
                 if frontier.is_empty() {
                     break;
                 }
             }
-            merge(matches)
+            merge(matches, role)
         }
         ArgSchemaKind::Unmodeled => (state.position..=arguments.len())
             .map(|position| OutputMatch {
@@ -353,12 +423,17 @@ fn step(
             })
             .collect(),
         ArgSchemaKind::Keyword(word) => {
-            if arguments.get(state.position).copied() != Some(word.as_str()) {
+            let current = arguments.get(state.position).copied();
+            let active =
+                matches!(role, MatchRole::Name(_)) && state.position + 1 == arguments.len();
+            if !current
+                .is_some_and(|argument| argument == word || active && word.starts_with(argument))
+            {
                 return Vec::new();
             }
             vec![OutputMatch {
                 position: state.position + 1,
-                keywords: state.keywords + 1,
+                keywords: state.keywords + usize::from(current == Some(word.as_str())),
                 ..state
             }]
         }
@@ -368,11 +443,13 @@ fn step(
             }
             if kinds.iter().any(|kind|matches!(kind,ArgSchemaKind::Keyword(word) if arguments[state.position]!=word)){return Vec::new()}
             let mut next = state;
-            if kinds.iter().any(|kind| match role {
-                MatchRole::Out => contains_out(kind),
-                MatchRole::Variable => contains_variable(kind),
-                MatchRole::Path(_) => contains_role(kind, role),
-            }) {
+            if (!matches!(role, MatchRole::Name(_)) || next.position + 1 == arguments.len())
+                && kinds.iter().any(|kind| match role {
+                    MatchRole::Out => contains_out(kind),
+                    MatchRole::Variable => contains_variable(kind),
+                    MatchRole::Path(_) | MatchRole::Name(_) => contains_role(kind, role),
+                })
+            {
                 next.indices.push(next.position);
             }
             next.position += 1;
@@ -383,7 +460,9 @@ fn step(
                 return Vec::new();
             }
             let mut next = state;
-            if matches_role(kind, role) {
+            if matches_role(kind, role)
+                && (!matches!(role, MatchRole::Name(_)) || next.position + 1 == arguments.len())
+            {
                 next.indices.push(next.position);
             }
             next.position += 1;
@@ -391,13 +470,22 @@ fn step(
         }
     }
 }
-fn merge(states: Vec<OutputMatch>) -> Vec<OutputMatch> {
+fn merge(states: Vec<OutputMatch>, role: MatchRole) -> Vec<OutputMatch> {
     let mut positions: BTreeMap<usize, OutputMatch> = BTreeMap::new();
     for state in states {
         match positions.get_mut(&state.position) {
             Some(old) if old.keywords < state.keywords => *old = state,
             Some(old) if old.keywords == state.keywords => {
-                old.indices.retain(|index| state.indices.contains(index))
+                // Completion offers alternatives; binding requires agreement instead.
+                if matches!(role, MatchRole::Name(_)) {
+                    for index in state.indices {
+                        if !old.indices.contains(&index) {
+                            old.indices.push(index);
+                        }
+                    }
+                } else {
+                    old.indices.retain(|index| state.indices.contains(index))
+                }
             }
             Some(_) => {}
             None => {

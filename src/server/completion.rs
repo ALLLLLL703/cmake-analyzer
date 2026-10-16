@@ -1,9 +1,13 @@
+mod argument_context;
 mod arguments;
 mod candidates;
 mod context;
+mod inputs;
 pub mod model;
+mod names;
 mod query;
 mod render;
+mod roles;
 
 use super::model::{CmakeAnalyzer, ServiceCommand};
 use lspally::server::model::*;

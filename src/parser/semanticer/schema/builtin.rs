@@ -395,7 +395,26 @@ pub static BASE_SCHEMAS: LazyLock<Vec<CommandSchema>> = LazyLock::new(|| {
                 InputDirectory,
             ),
         ),
-        ("target_link_libraries", vec![Target, Unmodeled]),
+        (
+            "target_link_libraries",
+            vec![
+                Target,
+                many(choice(vec![
+                    vec![one_of(&[
+                        "PRIVATE",
+                        "PUBLIC",
+                        "INTERFACE",
+                        "LINK_PRIVATE",
+                        "LINK_PUBLIC",
+                        "LINK_INTERFACE_LIBRARIES",
+                        "debug",
+                        "optimized",
+                        "general",
+                    ])],
+                    vec![Target],
+                ])),
+            ],
+        ),
         ("try_compile", vec![Out, Unmodeled]),
         ("try_run", vec![Out, Out, Unmodeled]),
         (

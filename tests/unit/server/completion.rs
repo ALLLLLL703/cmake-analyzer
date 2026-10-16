@@ -1,4 +1,6 @@
 // AI-generated command completion syntax and snippet tests.
+#[path = "completion/names.rs"]
+mod names;
 use super::{arguments, context, model::Parameter};
 use crate::{parser::semanticer::schema::builtin, workspace::Workspace};
 

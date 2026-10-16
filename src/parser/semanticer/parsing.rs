@@ -2,6 +2,7 @@
 pub mod block;
 mod functions;
 pub(super) mod outputs;
+pub(crate) use outputs::completion_roles;
 pub(crate) mod references;
 pub mod scope;
 pub mod symbols;

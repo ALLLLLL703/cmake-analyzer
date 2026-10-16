@@ -1,4 +1,4 @@
-use super::{candidates, context, model::Input, render};
+use super::{argument_context, candidates, context, inputs, names, render};
 use crate::server::{model::Service, service::internal, text::TextIndex, uri};
 use lspally::server::model::*;
 
@@ -18,13 +18,7 @@ impl Service {
                 .all(|owner| self.projects[*owner].settings.completion.reserve_arg);
         let inputs: Vec<_> = owners
             .into_iter()
-            .filter_map(|owner| {
-                let workspace = &self.projects[owner].workspace;
-                Some(Input {
-                    snapshot: workspace.snapshot(&path).ok().flatten()?,
-                    index: workspace.root_graph().map(|graph| graph.references.clone()),
-                })
-            })
+            .filter_map(|owner| inputs::capture(&self.projects[owner].workspace, &path))
             .collect();
         let encoding = self.encoding;
         let items = tokio::task::spawn_blocking(move || {
@@ -36,15 +30,30 @@ impl Service {
             };
             let index = TextIndex::new(&input.snapshot.text, encoding);
             let offset = index.byte(&position)?;
-            let Some(site) = context::site(&input.snapshot, offset) else {
-                return Ok(Vec::new());
-            };
-            let candidates = candidates::collect(
-                &inputs,
-                &site.prefix,
-                reserve && !site.has_parentheses,
-                &cancel,
-            )?;
+            let (site, candidates) =
+                if let Some(argument) = argument_context::argument(&input.snapshot, offset) {
+                    let expansion = argument_context::expansion(&input.snapshot, &argument, offset);
+                    let is_expansion = expansion.is_some();
+                    let Some(site) = expansion
+                        .or_else(|| argument_context::bare(&input.snapshot, &argument, offset))
+                    else {
+                        return Ok(Vec::new());
+                    };
+                    let candidates =
+                        names::collect(&inputs, offset, &site.prefix, is_expansion, &cancel)?;
+                    (site, candidates)
+                } else {
+                    let Some(site) = context::site(&input.snapshot, offset) else {
+                        return Ok(Vec::new());
+                    };
+                    let candidates = candidates::collect(
+                        &inputs,
+                        &site.prefix,
+                        reserve && !site.has_parentheses,
+                        &cancel,
+                    )?;
+                    (site, candidates)
+                };
             let mut items = Vec::with_capacity(candidates.len());
             for candidate in candidates {
                 if cancel.is_cancelled() {

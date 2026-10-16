@@ -23,6 +23,8 @@ pub(super) fn item(
             Kind::Keyword => 14,
             Kind::Module => 9,
             Kind::Function => 3,
+            Kind::Variable => 6,
+            Kind::EnumMember => 20,
         })),
         text_edit: Some(CompletionTextEdit::Edit(TextEdit {
             range: index.range(site.replace.clone())?,

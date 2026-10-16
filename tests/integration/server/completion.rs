@@ -1,4 +1,6 @@
-// AI-generated outer-command completion integration tests.
+// AI-generated command completion integration tests.
+#[path = "completion/names.rs"]
+mod names;
 use super::session::{HEADER, Project, Session, uri};
 use cmake_analyzer::server::ServerOptions;
 use serde_json::{Value, json};
