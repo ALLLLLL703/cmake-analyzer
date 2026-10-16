@@ -2,6 +2,7 @@
 use super::{
     actions::{actions, execute},
     hovers::hover,
+    navigation::definition,
     session::{Project, Session},
 };
 use serde_json::json;
@@ -56,6 +57,18 @@ async fn configured_nested_script_reloads_from_startup_settings_and_observes_dyn
             .unwrap()
             .contains("Runtime-only function documentation."),
         "{function_hover}"
+    );
+    let import_line = text
+        .lines()
+        .position(|line| line.starts_with("include("))
+        .unwrap();
+    let import_definition = definition(&mut client, &root, import_line, 20, 31).await;
+    assert!(
+        import_definition["result"][0]["uri"]
+            .as_str()
+            .unwrap()
+            .ends_with("/modules/observed.cmake"),
+        "{import_definition}"
     );
     assert!(!p.0.join("unused-build").exists());
     assert!(!p.0.join("CMakeCache.txt").exists());

@@ -1,4 +1,5 @@
 mod definition;
+mod dependencies;
 mod locations;
 pub(in crate::server) mod model;
 mod query;

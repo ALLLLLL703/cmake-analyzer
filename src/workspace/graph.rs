@@ -352,7 +352,8 @@ impl Workspace {
         graph
     }
     // Return the chosen file and checked paths, including missing earlier choices.
-    async fn resolve_dependency(
+    /// Resolve using Workspace module precedence; direct file candidates may not exist yet.
+    pub(crate) async fn resolve_dependency(
         &self,
         dependency: &Dependency,
         caller: &Path,

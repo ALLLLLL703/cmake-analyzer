@@ -12,6 +12,28 @@ use std::{
     time::Duration,
 };
 static NEXT: AtomicUsize = AtomicUsize::new(0);
+async fn executable_ready(path: &std::path::Path) {
+    // Parallel fork/exec can briefly inherit a fixture's writer before CLOEXEC closes it.
+    tokio::time::timeout(Duration::from_secs(5), async {
+        loop {
+            match tokio::process::Command::new(path)
+                .arg("--help-command-list")
+                .output()
+                .await
+            {
+                Err(error) if error.kind() == std::io::ErrorKind::ExecutableFileBusy => {
+                    tokio::time::sleep(Duration::from_millis(5)).await
+                }
+                result => {
+                    assert!(result.unwrap().status.success());
+                    break;
+                }
+            }
+        }
+    })
+    .await
+    .unwrap();
+}
 async fn fixture(body: &str, limits: Runtime) -> (PathBuf, LocalHelp) {
     let root = std::env::temp_dir().join(format!(
         "cmake-local-help-{}-{}",
@@ -29,6 +51,8 @@ async fn fixture(body: &str, limits: Runtime) -> (PathBuf, LocalHelp) {
     tokio::fs::set_permissions(&executable, std::fs::Permissions::from_mode(0o755))
         .await
         .unwrap();
+    executable_ready(&executable).await;
+    tokio::fs::remove_file(root.join("calls")).await.unwrap();
     let help = LocalHelp::new(root.clone(), limits);
     help.executable.set(Some(executable)).unwrap();
     (root, help)
@@ -201,6 +225,7 @@ async fn cancellation_reaps_the_help_child_and_does_not_cache_a_failure() {
     )
     .await
     .unwrap();
+    executable_ready(&root.join("cmake")).await;
     assert!(
         help.documentation(Kind::Command, "message", &Cancellation::default())
             .await

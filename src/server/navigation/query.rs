@@ -1,5 +1,5 @@
 use super::{
-    locations,
+    dependencies, locations,
     model::{Input, Query},
 };
 use crate::{
@@ -17,6 +17,11 @@ impl Service {
         cancel: Cancellation,
     ) -> ServerResult<Vec<Location>> {
         let path = uri::to_path(&document)?;
+        if matches!(query, Query::Definition) {
+            if let Some(locations) = dependencies::query(self, &path, &position, &cancel).await? {
+                return Ok(locations);
+            }
+        }
         let mut inputs = Vec::new();
         for owner in self.owners(&path) {
             let workspace = &self.projects[owner].workspace;

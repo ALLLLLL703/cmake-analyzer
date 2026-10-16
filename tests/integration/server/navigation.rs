@@ -2,9 +2,11 @@
 use super::session::{HEADER, Project, Session, uri};
 use serde_json::{Value, json};
 use std::path::Path;
+#[path = "navigation/dependencies.rs"]
+mod dependencies;
 #[path = "navigation/scopes.rs"]
 mod scopes;
-async fn definition(
+pub(super) async fn definition(
     client: &mut Session,
     path: &Path,
     line: usize,

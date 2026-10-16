@@ -61,8 +61,13 @@ function/macro, parameter, and used-builtin reference relations. Results include
 cross-file targets, honor includeDeclaration, and deduplicate repeated physical
 locations. Shared-file queries keep Workspace ID namespaces separate. Standalone
 files reuse the reference collector. Builtin commands have references but no
-source definition; unbound names do not receive guessed targets. Navigation observes
-preceding edits and never executes CMake. See [details and limits](navigation/README.md).
+source definition; unbound names do not receive guessed targets. Definition on an
+include module/path opens the resolved file; add_subdirectory's source argument
+opens that directory's CMakeLists.txt. Literal paths reuse Workspace module search,
+including standalone and conditional/deferred commands; installed runtime dependency
+observations can supply dynamic targets. Names inside ${...} keep variable navigation.
+Navigation observes preceding edits and never executes CMake. See
+[details and limits](navigation/README.md).
 
 ## Variable hover
 
