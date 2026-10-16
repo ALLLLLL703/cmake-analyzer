@@ -84,6 +84,14 @@ impl Session {
         let initialized = session.response(1).await;
         assert!(initialized.get("error").is_none(), "{initialized}");
         assert_eq!(
+            initialized["result"]["capabilities"]["definitionProvider"],
+            true
+        );
+        assert_eq!(
+            initialized["result"]["capabilities"]["referencesProvider"],
+            true
+        );
+        assert_eq!(
             initialized["result"]["capabilities"]["positionEncoding"],
             "utf-16"
         );

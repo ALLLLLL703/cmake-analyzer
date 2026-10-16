@@ -1,9 +1,8 @@
-use super::{builtins, documentation, model::Target, render};
+use super::{documentation, model::Target, render};
 use crate::{
     parser::semanticer::model::{ReferenceKind, ReferenceLocation},
     server::model::Service,
 };
-use lspally::server::model::*;
 use std::{collections::HashSet, path::Path};
 fn same(
     reference: &ReferenceLocation,
@@ -15,7 +14,12 @@ fn same(
         && reference.span.start_byte == target.span.start_byte
         && reference.span.end_byte == target.span.end_byte
 }
-pub(super) fn hover(service: &Service, path: &Path, target: Target, limit: usize) -> Option<Hover> {
+pub(super) fn content(
+    service: &Service,
+    path: &Path,
+    target: &Target,
+    limit: usize,
+) -> Option<String> {
     let mut content = String::new();
     let mut known = false;
     let mut seen = HashSet::new();
@@ -36,9 +40,11 @@ pub(super) fn hover(service: &Service, path: &Path, target: Target, limit: usize
                     .iter()
                     .any(|reference| same(reference, &target.location, snapshot.semantics.id))
         }) {
+            let Some(definition) = function.definition.as_ref() else {
+                continue;
+            };
             known = true;
-            let Some((file, source)) =
-                documentation::source(workspace, function.definition.file, path)
+            let Some((file, source)) = documentation::source(workspace, definition.file, path)
             else {
                 continue;
             };
@@ -81,8 +87,7 @@ pub(super) fn hover(service: &Service, path: &Path, target: Target, limit: usize
         }
     }
     if !known {
-        let doc = builtins::command(&target.name)?;
-        render::append(&mut content, doc, limit);
+        return None;
     } else if content.is_empty() {
         render::append(
             &mut content,
@@ -93,10 +98,5 @@ pub(super) fn hover(service: &Service, path: &Path, target: Target, limit: usize
             limit,
         );
     }
-    Some(render::hover(
-        content,
-        target.range,
-        limit,
-        service.hover_markdown,
-    ))
+    Some(content)
 }

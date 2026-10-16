@@ -20,6 +20,10 @@ impl Service {
         }
         // Stage configuration, ownership, and analysis before replacing the live state.
         let mut staged = Service {
+            local_help: super::super::hovers::LocalHelp::new(
+                config.sources.cwd.clone(),
+                config.global_runtime(),
+            ),
             hover_markdown: self.hover_markdown,
             config,
             roots: self.roots.clone(),
@@ -47,6 +51,7 @@ impl Service {
         staged.flush().await?;
         self.invalidate_runtime();
         self.saved_runs.clear();
+        self.local_help = staged.local_help;
         self.config = staged.config;
         self.roots = staged.roots;
         self.projects = staged.projects;

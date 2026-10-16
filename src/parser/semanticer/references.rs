@@ -19,7 +19,13 @@ impl ReferenceCollector {
     pub fn finish(mut self) -> ReferenceIndex {
         // Deferred bodies can call declarations reached later; these remain static candidates.
         let mut functions: HashMap<String, Vec<IndexedFunctionId>> = HashMap::new();
-        for (id, function) in self.index.functions.iter().enumerate() {
+        for (id, function) in self
+            .index
+            .functions
+            .iter()
+            .enumerate()
+            .filter(|(_, function)| function.definition.is_some())
+        {
             functions
                 .entry(function.name.to_ascii_lowercase())
                 .or_default()
@@ -79,13 +85,22 @@ impl ReferenceCollector {
                 .functions
                 .iter()
                 .enumerate()
-                .map(|(id, function)| (function.definition.command, SnapshotFunctionId::new(id)))
+                .filter_map(|(id, function)| {
+                    function
+                        .definition
+                        .as_ref()
+                        .map(|definition| (definition.command, SnapshotFunctionId::new(id)))
+                })
                 .collect(),
             function_blocks: buffer
                 .functions
                 .iter()
                 .enumerate()
-                .map(|(id, function)| (function.block, SnapshotFunctionId::new(id)))
+                .filter_map(|(id, function)| {
+                    function
+                        .block
+                        .map(|block| (block, SnapshotFunctionId::new(id)))
+                })
                 .collect(),
         }
     }
@@ -162,13 +177,16 @@ impl ReferenceCollector {
         function: &SemanticFunction,
         environment: ReferenceEnvironmentId,
     ) {
-        let key = (function.definition.file, function.definition.command);
+        let Some(definition) = function.definition.as_ref() else {
+            return;
+        };
+        let key = (definition.file, definition.command);
         let id = if let Some(&id) = self.functions.get(&key) {
             id
         } else {
             let id = IndexedFunctionId::new(self.index.functions.len());
             let mut function = function.clone();
-            function.references = vec![function.definition.clone()];
+            function.references = vec![definition.clone()];
             self.index.functions.push(function);
             self.functions.insert(key, id);
             id
@@ -176,6 +194,41 @@ impl ReferenceCollector {
         self.environments[environment.index()]
             .functions
             .insert(function.name.to_ascii_lowercase(), vec![id]);
+    }
+    fn builtin_command(
+        &mut self,
+        buffer: &SemanticedBuffer,
+        command: &SemanticCommandRepresent,
+        name: &str,
+    ) {
+        let id = if let Some(&id) = self.builtin_functions.get(name) {
+            id
+        } else {
+            let id = IndexedFunctionId::new(self.index.functions.len());
+            self.index.functions.push(SemanticFunction {
+                documentation: None,
+                name: name.to_owned(),
+                kind: FunctionKind::Builtin,
+                block: None,
+                scope: None,
+                definition: None,
+                parameters: Vec::new(),
+                references: Vec::new(),
+            });
+            self.builtin_functions.insert(name.to_owned(), id);
+            id
+        };
+        if self.call_seen.insert((id, buffer.id, command.id)) {
+            self.index.functions[id.index()]
+                .references
+                .push(ReferenceLocation {
+                    file: buffer.id,
+                    command: command.id,
+                    span: command.span,
+                    kind: ReferenceKind::Call,
+                    possible_value: None,
+                });
+        }
     }
     pub fn environment(
         &mut self,
@@ -283,6 +336,19 @@ impl ReferenceCollector {
         for reference in &command.variable_references {
             self.read(reference, environment, invocation);
         }
+        let functions = self.function(environment, &name);
+        // Keep native calls separate from user bindings, including declaration keywords.
+        if functions.is_empty()
+            && command.schema.as_ref().is_some_and(|schema| {
+                matches!(
+                    schema.from,
+                    super::schema::CommandSchemaFrom::Builtin
+                        | super::schema::CommandSchemaFrom::KeyWord
+                )
+            })
+        {
+            self.builtin_command(buffer, command, &name);
+        }
         if command.closed {
             if let Some(function) = context
                 .definitions
@@ -291,7 +357,6 @@ impl ReferenceCollector {
             {
                 self.define_function(function, environment);
             } else {
-                let functions = self.function(environment, &name);
                 let location = ReferenceLocation {
                     file: buffer.id,
                     command: command.id,
@@ -600,21 +665,25 @@ fn context_root(
     environment
 }
 
+/// Preserve environment identities when querying a file without a RootGraph.
+pub(crate) fn local_index(buffer: &SemanticedBuffer, source: &str) -> ReferenceIndex {
+    let mut collector = ReferenceCollector::default();
+    let root = collector.root();
+    let mut context = collector.file(buffer, root);
+    for command in &buffer.commands {
+        collector.command(
+            &mut context,
+            buffer,
+            source,
+            command,
+            ReferenceInvocationId::new(0),
+        );
+    }
+    collector.finish()
+}
 impl Semanticer {
     pub(crate) fn collect_references(&self, result: &mut SemanticedBuffer, source: &str) {
-        let mut collector = ReferenceCollector::default();
-        let root = collector.root();
-        let mut context = collector.file(result, root);
-        for command in &result.commands {
-            collector.command(
-                &mut context,
-                result,
-                source,
-                command,
-                ReferenceInvocationId::new(0),
-            );
-        }
-        let index = collector.finish();
+        let index = local_index(result, source);
         result.warnings = index
             .warnings
             .into_iter()

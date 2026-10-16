@@ -67,7 +67,10 @@ async fn include_and_subdirectory_bind_external_references_without_mutating_snap
         .iter()
         .find(|function| function.name == "Fn")
         .unwrap();
-    assert_eq!(function.definition.file, module.semantics.id);
+    assert_eq!(
+        function.definition.as_ref().unwrap().file,
+        module.semantics.id
+    );
     assert!(
         function
             .references
@@ -75,7 +78,17 @@ async fn include_and_subdirectory_bind_external_references_without_mutating_snap
             .any(|reference| reference.file == root.semantics.id
                 && reference.kind == ReferenceKind::Call)
     );
-    assert_eq!(module.semantics.functions[0].references.len(), 1);
+    assert_eq!(
+        module
+            .semantics
+            .functions
+            .iter()
+            .find(|function| function.name == "Fn")
+            .unwrap()
+            .references
+            .len(),
+        1
+    );
     assert_eq!(
         graph.references.warnings.len(),
         1,

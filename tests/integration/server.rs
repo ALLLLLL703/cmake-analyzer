@@ -17,6 +17,8 @@ mod hovers;
 mod lifecycle;
 #[path = "server/limits.rs"]
 mod limits;
+#[path = "server/navigation.rs"]
+mod navigation;
 #[path = "server/paths.rs"]
 mod paths;
 #[path = "server/projects.rs"]

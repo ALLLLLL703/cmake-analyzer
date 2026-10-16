@@ -17,6 +17,26 @@ pub(super) fn section(content: &mut String, text: &str, limit: usize) {
     }
     append(content, text, limit);
 }
+/// CMake help is reStructuredText, not Markdown; preserve its literal formatting.
+pub(super) fn local_help(content: &mut String, text: &str, limit: usize, markdown: bool) {
+    if !markdown {
+        section(content, text, limit);
+        return;
+    }
+    if !content.is_empty() {
+        append(content, "\n\n", limit);
+    }
+    for (index, line) in text.lines().enumerate() {
+        if content.len() >= limit {
+            break;
+        }
+        if index > 0 {
+            append(content, "\n", limit);
+        }
+        append(content, "    ", limit);
+        append(content, line, limit);
+    }
+}
 pub(super) fn hover(mut content: String, range: Range, limit: usize, markdown: bool) -> Hover {
     if content.len() > limit {
         let mut end = limit;

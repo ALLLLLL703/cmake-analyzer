@@ -43,9 +43,9 @@ impl Semanticer {
                 documentation: command.documentation.clone(),
                 name: name.to_owned(),
                 kind,
-                block: block.id,
+                block: Some(block.id),
                 scope: command.scope,
-                definition: definition.clone(),
+                definition: Some(definition.clone()),
                 parameters,
                 references: vec![definition],
             });

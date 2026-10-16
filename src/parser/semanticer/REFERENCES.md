@@ -7,7 +7,7 @@
 - `ReferenceLocation`: FileId, CommandId, name span, Definition/Read/Write/Call kind, and optional PossibleValue at that reference.
 - `ArgumentReference`: variable name, argument index, and location; stored on each SemanticCommandRepresent before binding.
 - `SemanticVariable.references`: local definitions, reads, and writes. `builtin` distinguishes catalogue descriptors from source variables; `first_write` remains the existing possible Out-write range, not proof of initialization.
-- `SemanticFunction`: function/macro name and kind, block/scope, formal parameters, definition, and references including the definition.
+- `SemanticFunction`: name, Builtin/Function/Macro kind, optional block/scope and definition, formal parameters, and references. Source declarations include their definition among references; used native commands have no definition/body block or formal parameters, only calls. Unused builtins are not materialized.
 - `SemanticWarn`: variable name and PossiblyUnset/Unset/Empty classification, stored as Vec<Spanned<SemanticWarn>> on SemanticedBuffer.
 - `UnresolvedReference`: name, target kind, and location when binding is unavailable.
 
@@ -23,7 +23,7 @@ The schema matcher shares its grammar traversal for Out and Variable roles. Func
 
 Formal parameters have unknown values. Normal literal empty assignments and unset operations can establish Empty/Unset; dynamic values stay unknown. Existing known bindings with unknown values are not reported as missing. Missing bindings and branch-dependent declarations produce PossiblyUnset warnings. Branch merges discard conflicting value facts. Reads through parent bindings remain visible; child writes do not change the parent scope, and removing a child binding reveals its parent.
 
-Function/macro bodies are indexed in isolated deferred environments, not executed. Later declarations are potential targets for unresolved deferred calls. User calls invalidate known value facts without interpreting their bodies. Known list/string mutations also discard previous literal value facts. Cache/environment writes are excluded from ordinary bindings; PARENT_SCOPE writes remain unresolved locations. Runtime caller scopes, cache fallback, arbitrary expansion, and general CMake evaluation are not implemented.
+Function/macro bodies are indexed in isolated deferred environments, not executed. Later declarations are potential targets for unresolved deferred calls. Used native commands are collected by canonical lowercase name without inserting them into user-function bindings. Known user shadows retain separate references; native calls do not invalidate values like opaque user calls. User calls invalidate known value facts without interpreting their bodies. Known list/string mutations also discard previous literal value facts. Cache/environment writes are excluded from ordinary bindings; PARENT_SCOPE writes remain unresolved locations. Runtime caller scopes, cache fallback, arbitrary expansion, and general CMake evaluation are not implemented.
 
 ## Possible values
 
@@ -47,7 +47,9 @@ and [explicit runtime analysis](../../runtime_cmake/README.md).
 
 ## Workspace aggregation
 
-`RootGraph.references` is a ReferenceIndex rebuilt by `workspace/references.rs` over resolved dependency visits in command order. Includes share the caller environment; subdirectories fork it. Repeated visits retain separate contextual warnings while symbol reference locations are deduplicated. The index owns aggregate records rather than mutating shared document snapshots.
+`RootGraph.references` is a shared immutable Arc<ReferenceIndex> rebuilt by `workspace/references.rs` over resolved dependency visits in command order. Includes share the caller environment; subdirectories fork it. Repeated visits retain separate contextual warnings while symbol reference locations are deduplicated. The index owns aggregate records rather than mutating shared document snapshots.
+
+`references::local_index` replays the same collector for file-only navigation without flattening reference environments. Native declaration keywords and incomplete native command names also retain call references.
 
 Local buffers retain local warnings. Project diagnostic publications use contextual warnings for visited files and suppress local unknown-command errors when an external declaration resolves the call. Files without a graph visit use local warnings. Warnings are LSP severity 2 and follow the diagnostics enable switch. Inspection displays include warnings; warnings alone do not produce an error exit status.
 

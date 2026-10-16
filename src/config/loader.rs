@@ -39,6 +39,13 @@ impl ConfigStore {
             builtin_directory: tokio::sync::OnceCell::new(),
         })
     }
+    /// Process-wide inspection budgets must not inherit project-local execution settings.
+    pub(crate) fn global_runtime(&self) -> Runtime {
+        let mut settings = Settings::default();
+        apply(&mut settings, &self.user);
+        apply(&mut settings, &self.explicit);
+        settings.runtime
+    }
     /// Omitted fields inherit; arrays replace and interpreter mappings merge by normalized file path.
     pub async fn for_directory(&mut self, directory: &Path) -> io::Result<Arc<Settings>> {
         let directory = resolve_path(&self.sources.cwd, directory)?;

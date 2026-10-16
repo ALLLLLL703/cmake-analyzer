@@ -1,4 +1,4 @@
-use super::{builtins, model::*};
+use super::model::*;
 use crate::{
     parser::semanticer::{model::*, parsing::references::argument_name_span},
     server::text::TextIndex,
@@ -76,15 +76,21 @@ pub(super) fn locate(
     let offset = index.byte(position)?;
     let found = if let Some((name, location)) = variable(source, offset) {
         Some((name, location, TargetKind::Variable))
-    } else if let Some(function) = source
+    } else if let Some((function, definition)) = source
         .semantics
         .functions
         .iter()
-        .find(|function| contains(function.definition.span, offset))
+        .filter_map(|function| {
+            function
+                .definition
+                .as_ref()
+                .map(|definition| (function, definition))
+        })
+        .find(|(_, definition)| contains(definition.span, offset))
     {
         Some((
             function.name.clone(),
-            function.definition.clone(),
+            definition.clone(),
             TargetKind::Command,
         ))
     } else if let Some(command) = source
@@ -112,7 +118,6 @@ pub(super) fn locate(
                     return None;
                 }
                 let name = arg.literal_text()?;
-                builtins::variable(name)?;
                 Some((
                     name.to_owned(),
                     ReferenceLocation {
@@ -122,7 +127,7 @@ pub(super) fn locate(
                         kind: ReferenceKind::Read,
                         possible_value: None,
                     },
-                    TargetKind::Variable,
+                    TargetKind::BuiltinVariable,
                 ))
             })
         })

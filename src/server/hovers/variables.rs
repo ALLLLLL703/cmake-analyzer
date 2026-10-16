@@ -1,10 +1,9 @@
 // AI-authored variable hover with position-qualified values and documentation.
-use super::{builtins, documentation, model::Target, render};
+use super::{documentation, model::Target, render};
 use crate::{
     parser::semanticer::model::{PossibleValue, ReferenceKind},
     server::model::Service,
 };
-use lspally::server::model::*;
 use std::path::Path;
 fn value_text(value: Option<&PossibleValue>, budget: usize) -> String {
     value.map_or_else(
@@ -23,13 +22,9 @@ fn value_text(value: Option<&PossibleValue>, budget: usize) -> String {
         },
     )
 }
-pub(super) fn hover(service: &Service, path: &Path, target: Target, limit: usize) -> Hover {
-    let Target {
-        name,
-        location,
-        range,
-        ..
-    } = target;
+pub(super) fn content(service: &Service, path: &Path, target: &Target, limit: usize) -> String {
+    let name = target.name.as_str();
+    let location = &target.location;
     let mut content = format!(
         "Variable {:?}\n",
         name.chars().take(limit / 6).collect::<String>()
@@ -100,13 +95,10 @@ pub(super) fn hover(service: &Service, path: &Path, target: Target, limit: usize
     let comments = documentation::variable(
         service,
         path,
-        &name,
-        &location,
+        name,
+        location,
         limit.saturating_sub(content.len() + 2),
     );
     render::section(&mut content, &comments, limit);
-    if let Some(doc) = builtins::variable(&name) {
-        render::section(&mut content, doc, limit);
-    }
-    render::hover(content, range, limit, service.hover_markdown)
+    content
 }

@@ -8,5 +8,6 @@ pub(super) struct Target {
 }
 pub(super) enum TargetKind {
     Variable,
+    BuiltinVariable,
     Command,
 }

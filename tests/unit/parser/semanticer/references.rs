@@ -109,19 +109,24 @@ async fn complete_expansions_are_indexed_inside_unclosed_commands() {
 async fn functions_macros_and_parameters_keep_definitions_and_calls() {
     let source = "cmake_minimum_required(VERSION 3.31)\nfunction(F P)\nmessage(\"${P}\")\nset(LOCAL \"\")\nmessage(\"${LOCAL}\")\nendfunction()\nf(value)\nmacro(M ARG)\nmessage(\"${ARG}\")\nendmacro()\nm(value)\nunknown_fn()\n";
     let buffer = analyze(source).await;
-    assert_eq!(buffer.functions.len(), 2);
-    for function in &buffer.functions {
+    let functions: Vec<_> = buffer
+        .functions
+        .iter()
+        .filter(|function| function.definition.is_some())
+        .collect();
+    assert_eq!(functions.len(), 2);
+    for function in &functions {
         assert_eq!(function.references.len(), 2, "{function:?}");
         assert_eq!(function.references[0].kind, ReferenceKind::Definition);
         assert_eq!(function.references[1].kind, ReferenceKind::Call);
         assert_eq!(
-            function.definition.span.text(source),
+            function.definition.as_ref().unwrap().span.text(source),
             Some(function.name.as_str())
         );
         assert_eq!(function.parameters.len(), 1);
     }
-    assert_eq!(buffer.functions[0].kind, FunctionKind::Function);
-    assert_eq!(buffer.functions[1].kind, FunctionKind::Macro);
+    assert_eq!(functions[0].kind, FunctionKind::Function);
+    assert_eq!(functions[1].kind, FunctionKind::Macro);
     assert!(buffer.variables.iter().any(|variable| {
         variable.name == "P"
             && variable

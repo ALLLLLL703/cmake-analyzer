@@ -92,6 +92,7 @@ pub(crate) struct ReferenceCollector {
     pub(super) variables: HashMap<(ReferenceEnvironmentId, String), IndexedVariableId>,
     pub(super) functions: HashMap<(FileId, CommandId), IndexedFunctionId>,
     pub(super) builtins: HashSet<String>,
+    pub(super) builtin_functions: HashMap<String, IndexedFunctionId>,
     pub(super) reference_seen: HashSet<(
         IndexedVariableId,
         FileId,

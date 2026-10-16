@@ -45,6 +45,9 @@ async fn discover_from_path(path: &OsStr, cwd: &Path) -> Option<PathBuf> {
     }
     None
 }
+pub(crate) async fn cmake_executable(cwd: &Path) -> Option<PathBuf> {
+    executable(std::env::var_os("PATH").as_deref()?, cwd).await
+}
 async fn executable(path: &OsStr, cwd: &Path) -> Option<PathBuf> {
     let name = if cfg!(windows) { "cmake.exe" } else { "cmake" };
     for directory in std::env::split_paths(path) {

@@ -1,6 +1,28 @@
 // AI-authored local file URI conversion; no filesystem canonicalization.
 use lspally::server::model::{ServerError, ServerResult, Uri};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+
+/// Encode a normalized absolute path without losing Unix filename bytes.
+pub(super) fn from_path(path: &Path) -> Uri {
+    const HEX: &[u8; 16] = b"0123456789ABCDEF";
+    let bytes = path.as_os_str().as_encoded_bytes();
+    let mut uri = String::from("file://");
+    if !bytes.starts_with(b"/") {
+        uri.push('/');
+    }
+    for &byte in bytes {
+        if cfg!(windows) && byte == b'\\' {
+            uri.push('/');
+        } else if byte.is_ascii_alphanumeric() || matches!(byte, b'/' | b'-' | b'.' | b'_' | b'~') {
+            uri.push(char::from(byte));
+        } else {
+            uri.push('%');
+            uri.push(char::from(HEX[(byte >> 4) as usize]));
+            uri.push(char::from(HEX[(byte & 15) as usize]));
+        }
+    }
+    Uri(uri)
+}
 
 pub(super) fn to_path(uri: &Uri) -> ServerResult<PathBuf> {
     let parsed =

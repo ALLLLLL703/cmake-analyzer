@@ -5,6 +5,7 @@ mod diagnostics;
 mod handlers;
 pub mod hovers;
 pub mod model;
+mod navigation;
 mod paths;
 pub mod roots;
 mod service;

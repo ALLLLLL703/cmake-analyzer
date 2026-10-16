@@ -117,7 +117,7 @@ pub struct RootGraph {
     // Each pair selects a file visit, then a fact in that visit's saved BuildStruct.
     pub facts: Vec<(usize, usize)>,
     pub diagnostics: Vec<WorkspaceDiagnostic>,
-    pub references: crate::parser::semanticer::model::ReferenceIndex,
+    pub references: Arc<crate::parser::semanticer::model::ReferenceIndex>,
     pub values: Vec<crate::parser::semanticer::model::VariableValueAt>,
     pub runtime: Option<Arc<super::runtime::RuntimeLayer>>,
 }

@@ -110,7 +110,14 @@ concurrently used build directories are rejected. A dedicated directory is
 
 Timeout is positive seconds per run. max_output_bytes is a positive per-run
 stderr/trace byte limit; max_view_bytes bounds formatted views and failure
-details and variable hover output in bytes (including static hover). Defaults are named in model.rs. Successful reload applies
+details and variable hover output in bytes (including static hover). Native builtin
+help uses only the user/explicit timeout and output limits: seconds per help child,
+bytes per captured help/catalog output and total cached help-body bytes. Project
+executable/arguments/enable/mode do not affect help inspection; the inspector uses
+the startup PATH CMake, and missing help has no fallback. The effective per-project
+max_view_bytes bounds combined hover values/comments/help. Successful reload clears
+the native help cache without starting help processes. Defaults are named in
+model.rs. Successful reload applies
 new settings, cancels active runs, and clears runtime results; failed reload
 preserves live settings/results.
 

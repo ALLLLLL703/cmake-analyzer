@@ -230,6 +230,7 @@ pub(super) fn collect(project: &Project) -> Vec<Candidate> {
                     .semantics
                     .functions
                     .iter()
+                    .filter(|function| function.definition.is_some())
                     .flat_map(|function| &function.references)
                     .filter(|reference| reference.kind == ReferenceKind::Call)
                     .map(|reference| reference.command)

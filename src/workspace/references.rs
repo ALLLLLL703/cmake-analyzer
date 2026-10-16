@@ -134,7 +134,7 @@ impl Workspace {
         let result = tokio::task::spawn_blocking(move || {
             let _permit = permit;
             let (references, values) = analyze(&graph);
-            graph.references = references;
+            graph.references = std::sync::Arc::new(references);
             graph.values = values;
             graph
         })

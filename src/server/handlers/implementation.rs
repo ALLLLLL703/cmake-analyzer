@@ -57,16 +57,14 @@ impl ILanguageServer for CmakeAnalyzer {
         context: Context,
         params: GotoDefinitionParams,
     ) -> ServerResult<Option<GotoDefinitionResponse>> {
-        let _ = (context, params);
-        Err(ServerError::unsupported())
+        self.query_definition(context, params).await
     }
     async fn references(
         &self,
         context: Context,
         params: ReferenceParams,
     ) -> ServerResult<Option<Vec<Location>>> {
-        let _ = (context, params);
-        Err(ServerError::unsupported())
+        self.query_references(context, params).await
     }
     async fn goto_type_definition(
         &self,

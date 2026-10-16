@@ -14,6 +14,10 @@ pub(super) async fn run(
     stop: Cancellation,
 ) {
     let mut service = Service {
+        local_help: super::super::hovers::LocalHelp::new(
+            config.sources.cwd.clone(),
+            config.global_runtime(),
+        ),
         hover_markdown,
         roots: roots.iter().cloned().collect(),
         config,
@@ -68,6 +72,7 @@ async fn drive(
                 current,
                 ServiceCommand::Symbols { .. }
                     | ServiceCommand::Hover { .. }
+                    | ServiceCommand::Navigate { .. }
                     | ServiceCommand::ReloadConfig { .. }
                     | ServiceCommand::Actions { .. }
                     | ServiceCommand::RunAction { .. }
@@ -93,12 +98,23 @@ async fn drive(
             return;
         }
         match query {
+            Some(ServiceCommand::Navigate {
+                uri,
+                position,
+                query,
+                cancel,
+                reply,
+            }) if !reply.is_closed() => {
+                let result = service.navigate(uri, position, query, cancel).await;
+                let _ = reply.send(result);
+            }
             Some(ServiceCommand::Hover {
+                cancel,
                 uri,
                 position,
                 reply,
             }) if !reply.is_closed() => {
-                let result = service.variable_hover(uri, position).await;
+                let result = service.variable_hover(uri, position, cancel).await;
                 let _ = reply.send(result);
             }
             Some(ServiceCommand::Symbols { uri, reply }) if !reply.is_closed() => {

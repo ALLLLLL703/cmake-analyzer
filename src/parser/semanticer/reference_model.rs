@@ -52,6 +52,7 @@ pub struct ArgumentReference {
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum FunctionKind {
+    Builtin,
     Function,
     Macro,
 }
@@ -65,9 +66,10 @@ pub struct SemanticFunction {
     pub documentation: Option<std::sync::Arc<super::model::Documentation>>,
     pub name: String,
     pub kind: FunctionKind,
-    pub block: BlockId,
+    pub block: Option<BlockId>,
     pub scope: Option<ScopeId>,
-    pub definition: ReferenceLocation,
+    /// Builtin commands have neither a source definition nor a body block.
+    pub definition: Option<ReferenceLocation>,
     pub parameters: Vec<FunctionParameter>,
     pub references: Vec<ReferenceLocation>,
 }

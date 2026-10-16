@@ -81,7 +81,15 @@ pub(super) enum ServiceCommand {
         request: super::action::model::ActionRequest,
         reply: oneshot::Sender<ServerResult<Option<Data>>>,
     },
+    Navigate {
+        uri: Uri,
+        position: Position,
+        query: super::navigation::model::Query,
+        cancel: Cancellation,
+        reply: oneshot::Sender<ServerResult<Vec<Location>>>,
+    },
     Hover {
+        cancel: Cancellation,
         uri: Uri,
         position: Position,
         reply: oneshot::Sender<ServerResult<Option<Hover>>>,
@@ -110,6 +118,7 @@ pub(super) struct Project {
     pub overlays: BTreeMap<PathBuf, i32>,
 }
 pub(super) struct Service {
+    pub local_help: super::hovers::LocalHelp,
     pub hover_markdown: bool,
     pub config: ConfigStore,
     pub roots: BTreeSet<PathBuf>,

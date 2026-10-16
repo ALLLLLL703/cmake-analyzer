@@ -3,22 +3,44 @@ use super::{
     hovers::hover,
     session::{HEADER, Project, Session, uri},
 };
-use cmake_analyzer::server::{ServerOptions, hovers::include};
+use cmake_analyzer::server::ServerOptions;
 use serde_json::json;
-#[test]
-fn embedded_catalog_covers_every_vendored_command_and_variable_page() {
-    assert_eq!(include::VERSION, "4.4.4");
-    assert_eq!(include::COMMANDS.len(), 132);
-    assert_eq!(include::VARIABLES.len(), 810);
-    for table in [include::COMMANDS, include::VARIABLES] {
-        assert!(table.windows(2).all(|pair| pair[0].0 < pair[1].0));
-        for (name, doc) in table {
-            assert!(doc.starts_with("CMake 4.4.4"), "{name}");
-            assert!(doc.ends_with("<!-- Script-generated content. Generator: scripts/gen/cmake_builtin_docs.py. -->\n"), "{name}");
-            assert!(doc.contains("CMake 4.4.4"), "{name}");
-            assert!(doc.contains("https://cmake.org/cmake/help/v4.4/"), "{name}");
-        }
+async fn local_help(command: &str) -> Option<String> {
+    let output = tokio::process::Command::new("cmake")
+        .args(["--help-command", command])
+        .output()
+        .await
+        .ok()?;
+    output
+        .status
+        .success()
+        .then(|| String::from_utf8(output.stdout).unwrap())
+}
+#[tokio::test]
+async fn command_hover_uses_native_help_or_returns_none_without_it() {
+    let p = Project::new().await;
+    tokio::fs::write(
+        p.0.join(".cmake-analyzer.toml"),
+        "[runtime]\nenable=false\nexecutable=\"not-a-cmake-executable\"\n",
+    )
+    .await
+    .unwrap();
+    let text = "set(V value)\n";
+    let root = p.write("CMakeLists.txt", text).await;
+    let mut client = Session::start(&p.0, vec![], true).await;
+    client.open(&root, text).await;
+    client.diagnostics(&root, 1).await;
+    let response = hover(&mut client, &root, 1, 0, 10).await;
+    if let Some(expected) = local_help("set").await {
+        assert_eq!(
+            response["result"]["contents"]["value"], expected,
+            "{response}"
+        );
+    } else {
+        assert!(response["result"].is_null(), "{response}");
     }
+    client.finish().await;
+    p.remove().await;
 }
 #[tokio::test]
 async fn builtin_commands_and_exact_multi_template_and_argument_variables_have_docs() {
@@ -28,20 +50,22 @@ async fn builtin_commands_and_exact_multi_template_and_argument_variables_have_d
     let mut client = Session::start(&p.0, vec![], true).await;
     client.open(&root, text).await;
     client.diagnostics(&root, 1).await;
-    for (id, line, character) in [
-        (10, 1, 0),
-        (11, 2, 0),
-        (12, 2, 4),
-        (13, 3, 12),
-        (14, 4, 12),
-        (15, 6, 12),
+    if local_help("set").await.is_none() {
+        client.finish().await;
+        p.remove().await;
+        return;
+    }
+    for (id, line, character, expected) in [
+        (10, 1, 0, "project\n"),
+        (11, 2, 0, "set\n"),
+        (12, 2, 4, "CMAKE_<LANG>_FLAGS_DEBUG\n"),
+        (13, 3, 12, "CMAKE_CURRENT_SOURCE_DIR\n"),
+        (14, 4, 12, "CMAKE_ARGV0\n"),
+        (15, 6, 12, "function\n"),
     ] {
         let result = hover(&mut client, &root, line, character, id).await;
         let content = result["result"]["contents"]["value"].as_str().unwrap();
-        assert!(
-            content.contains("CMake 4.4.4") && content.contains("Official documentation"),
-            "{result}"
-        );
+        assert!(content.contains(expected), "{result}");
         assert!(!content.contains("Script-generated"), "{result}");
         assert!(!content.contains("scripts/gen/"), "{result}");
         assert_eq!(result["result"]["contents"]["kind"], "plaintext");
@@ -53,7 +77,7 @@ async fn builtin_commands_and_exact_multi_template_and_argument_variables_have_d
         result["result"]["contents"]["value"]
             .as_str()
             .unwrap()
-            .contains("Official documentation"),
+            .contains("SOURCE_DIR"),
         "{result}"
     );
     client.finish().await;
