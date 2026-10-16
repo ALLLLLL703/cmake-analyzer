@@ -1,6 +1,17 @@
 use super::model::LexContent;
 use crate::model::{Spanned, TextSpan};
 
+impl super::model::LexedBuffer {
+    /// Nesting at a byte boundary; quoted/bracket payloads and comments do not affect depth.
+    pub fn parenthesis_depth(&self, offset: usize) -> usize {
+        self.checkpoints[..self
+            .checkpoints
+            .partition_point(|checkpoint| checkpoint.state.position.start_byte <= offset)]
+            .last()
+            .map_or(0, |checkpoint| checkpoint.state.depth)
+    }
+}
+
 impl Spanned<LexContent> {
     /// Payload view; the stored span continues to cover the complete token.
     pub fn payload_span(&self, source: &str) -> Option<TextSpan> {

@@ -45,6 +45,7 @@ impl CmakeAnalyzer {
 }
 #[derive(Default)]
 pub(super) struct ServiceState {
+    pub completion_snippets: bool,
     pub hover_markdown: bool,
     pub roots: Vec<PathBuf>,
     pub hierarchical: bool,
@@ -80,6 +81,13 @@ pub(super) enum ServiceCommand {
     RunAction {
         request: super::action::model::ActionRequest,
         reply: oneshot::Sender<ServerResult<Option<Data>>>,
+    },
+    Complete {
+        uri: Uri,
+        position: Position,
+        snippets: bool,
+        cancel: Cancellation,
+        reply: oneshot::Sender<ServerResult<Option<CompletionResponse>>>,
     },
     Navigate {
         uri: Uri,

@@ -543,22 +543,40 @@ pub static CMAKE_4_ADDITIONS: LazyLock<Vec<(u32, CommandSchema)>> = LazyLock::ne
     .collect()
 });
 
-pub fn schemas_for_version(major: u32, minor: u32) -> Option<HashMap<String, CommandSchema>> {
+/// Ordered schema layers; later entries can replace earlier command signatures.
+pub(crate) fn schema_layers(
+    major: u32,
+    minor: u32,
+) -> Option<impl Iterator<Item = &'static CommandSchema>> {
     if !matches!((major, minor), (3, 0..=31) | (4, 0..=4)) {
         return None;
     }
+    Some(
+        BASE_SCHEMAS
+            .iter()
+            .chain(
+                CMAKE_3_ADDITIONS
+                    .iter()
+                    .filter_map(move |(introduced, schema)| {
+                        ((3, *introduced) <= (major, minor)).then_some(schema)
+                    }),
+            )
+            .chain(
+                CMAKE_4_ADDITIONS
+                    .iter()
+                    .filter_map(move |(introduced, schema)| {
+                        ((4, *introduced) <= (major, minor)).then_some(schema)
+                    }),
+            ),
+    )
+}
+pub fn schemas_for_version(major: u32, minor: u32) -> Option<HashMap<String, CommandSchema>> {
+    let layers = schema_layers(major, minor)?;
     let mut schemas = HashMap::with_capacity(
         BASE_SCHEMAS.len() + CMAKE_3_ADDITIONS.len() + CMAKE_4_ADDITIONS.len(),
     );
-    for schema in BASE_SCHEMAS.iter() {
+    for schema in layers {
         schemas.insert(schema.command_name.clone(), schema.clone());
-    }
-    for (layer_major, entries) in [(3, &*CMAKE_3_ADDITIONS), (4, &*CMAKE_4_ADDITIONS)] {
-        for (layer_minor, schema) in entries {
-            if (layer_major, *layer_minor) <= (major, minor) {
-                schemas.insert(schema.command_name.clone(), schema.clone());
-            }
-        }
     }
     Some(schemas)
 }

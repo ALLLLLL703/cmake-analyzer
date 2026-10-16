@@ -1,4 +1,5 @@
 // AI-generated configuration and interpreter tests.
+mod completion;
 mod limits;
 mod module_defaults;
 mod runtime;

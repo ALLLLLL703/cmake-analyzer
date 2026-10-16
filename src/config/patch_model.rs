@@ -14,6 +14,11 @@ pub(super) struct DocumentSymbolsPatch {
 }
 #[derive(Default, Deserialize)]
 #[serde(default, deny_unknown_fields)]
+pub(super) struct CompletionPatch {
+    pub reserve_arg: Option<bool>,
+}
+#[derive(Default, Deserialize)]
+#[serde(default, deny_unknown_fields)]
 pub(super) struct ModulesPatch {
     pub enable: Option<bool>,
     pub search_paths: Option<Vec<PathBuf>>,
@@ -46,6 +51,7 @@ pub(super) enum RuntimeModePatch {
 #[derive(Default, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub(super) struct SettingsPatch {
+    pub completion: CompletionPatch,
     pub limits: Option<LimitsPatch>,
     pub diagnostics: DiagnosticsPatch,
     pub document_symbols: DocumentSymbolsPatch,

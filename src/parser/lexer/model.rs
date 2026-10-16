@@ -42,7 +42,7 @@ pub(super) struct LexCheckpoint {
 }
 pub struct IncrementalLexer {
     pub source: std::sync::Arc<str>,
-    pub buffer: LexedBuffer,
+    pub buffer: std::sync::Arc<LexedBuffer>,
     pub work: crate::model::incremental::IncrementalWork,
 }
 

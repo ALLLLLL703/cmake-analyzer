@@ -60,7 +60,7 @@ new(root_file) / set_overlay / invalidate_disk
 
 ## Saved results, not copied files
 
-`DocumentSnapshot` holds text, `SemanticedBuffer`, and `BuildStruct`. Readers share it through `Arc`; later edits create a new result rather than changing the old one.
+`DocumentSnapshot` holds text and shared immutable `LexedBuffer`, `SemanticedBuffer`, and `BuildStruct` results. The incremental lexer and snapshot share the lexical Arc, including comments/errors/checkpoints; completion reads it without copying tokens or relexing. Readers share snapshots through `Arc`; later edits create new results rather than changing retained ones.
 
 An unchanged file reuses its saved result. Changed files use the incremental lexer/parser/semantic/build caches; aggregation and reference/value replay may remain linear. Source IDs include file/version because command IDs only identify entries in one result.
 

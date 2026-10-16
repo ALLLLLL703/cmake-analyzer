@@ -18,6 +18,7 @@ handlers = {
     "did_close_text_document": "let _ = context; self.send(ServiceCommand::Close(params.text_document.uri)).await",
     "did_save_text_document": "let _ = context; self.send(ServiceCommand::Save(params)).await",
     "did_change_workspace_folders": "let _ = context; self.send(ServiceCommand::Folders(params.event)).await",
+    "completion": "self.query_completion(context, params).await",
     "hover_request": "self.hover_variable(context, params).await",
     "goto_definition": "self.query_definition(context, params).await",
     "references": "self.query_references(context, params).await",

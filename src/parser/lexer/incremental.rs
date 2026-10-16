@@ -13,7 +13,7 @@ impl IncrementalLexer {
         };
         Self {
             source,
-            buffer,
+            buffer: Arc::new(buffer),
             work,
         }
     }
@@ -151,12 +151,12 @@ impl IncrementalLexer {
             }
         }
         self.source = source;
-        self.buffer = LexedBuffer {
+        self.buffer = Arc::new(LexedBuffer {
             comments,
             lex,
             errors,
             checkpoints,
-        };
+        });
         self.work = work;
         change
     }

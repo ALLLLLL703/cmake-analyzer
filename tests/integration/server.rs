@@ -5,6 +5,8 @@ mod actions;
 mod automatic;
 #[path = "server/cli.rs"]
 mod cli;
+#[path = "server/completion.rs"]
+mod completion;
 #[path = "server/configuration.rs"]
 mod configuration;
 #[path = "server/discovery.rs"]

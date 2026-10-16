@@ -47,6 +47,14 @@ impl CmakeAnalyzer {
             .and_then(|caps| caps.content_format.as_ref())
             .and_then(|formats| formats.first())
             .is_some_and(|format| matches!(format, MarkupKind::Markdown));
+        let completion_snippets = params
+            .capabilities
+            .text_document
+            .as_ref()
+            .and_then(|caps| caps.completion.as_ref())
+            .and_then(|caps| caps.completion_item.as_ref())
+            .and_then(|caps| caps.snippet_support)
+            .unwrap_or(false);
         let hierarchical = params
             .capabilities
             .text_document
@@ -80,6 +88,7 @@ impl CmakeAnalyzer {
         state.config = Some(config);
         state.hierarchical = hierarchical;
         state.hover_markdown = hover_markdown;
+        state.completion_snippets = completion_snippets;
         Ok(InitializeResult {
             capabilities: ServerCapabilities {
                 // UTF-16 is mandatory LSP fallback; TextIndex also supports other encodings.
@@ -95,6 +104,15 @@ impl CmakeAnalyzer {
                 )),
                 document_symbol_provider: Some(OneOf::Left(true)),
                 hover_provider: Some(HoverProviderCapability::Simple(true)),
+                completion_provider: Some(CompletionOptions {
+                    resolve_provider: Some(false),
+                    trigger_characters: None,
+                    all_commit_characters: None,
+                    work_done_progress_options: WorkDoneProgressOptions {
+                        work_done_progress: None,
+                    },
+                    completion_item: None,
+                }),
                 definition_provider: Some(OneOf::Left(true)),
                 references_provider: Some(OneOf::Left(true)),
                 code_action_provider: Some(CodeActionProviderCapability::Simple(true)),

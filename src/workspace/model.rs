@@ -30,6 +30,7 @@ impl Default for WorkspaceLimits {
 #[derive(Debug)]
 /// Saved file results, shared by readers and each visit to the file.
 pub struct DocumentSnapshot {
+    pub lexed: Arc<crate::parser::lexer::model::LexedBuffer>,
     pub text: Arc<str>,
     // AI-authored shared incremental outputs; old snapshots retain their own revision.
     pub semantics: Arc<SemanticedBuffer>,

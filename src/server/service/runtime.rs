@@ -73,6 +73,7 @@ async fn drive(
                 ServiceCommand::Symbols { .. }
                     | ServiceCommand::Hover { .. }
                     | ServiceCommand::Navigate { .. }
+                    | ServiceCommand::Complete { .. }
                     | ServiceCommand::ReloadConfig { .. }
                     | ServiceCommand::Actions { .. }
                     | ServiceCommand::RunAction { .. }
@@ -98,6 +99,16 @@ async fn drive(
             return;
         }
         match query {
+            Some(ServiceCommand::Complete {
+                uri,
+                position,
+                snippets,
+                cancel,
+                reply,
+            }) if !reply.is_closed() => {
+                let result = service.complete(uri, position, snippets, cancel).await;
+                let _ = reply.send(result);
+            }
             Some(ServiceCommand::Navigate {
                 uri,
                 position,

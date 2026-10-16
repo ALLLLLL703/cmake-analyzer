@@ -54,6 +54,10 @@ impl Default for DocumentSymbols {
         Self { enable: true }
     }
 }
+#[derive(Clone, Debug, Default)]
+pub struct Completion {
+    pub reserve_arg: bool,
+}
 #[derive(Clone, Debug)]
 pub struct Modules {
     pub enable: bool,
@@ -108,6 +112,7 @@ impl Default for Runtime {
 
 #[derive(Clone, Debug, Default)]
 pub struct Settings {
+    pub completion: Completion,
     pub diagnostics: Diagnostics,
     pub document_symbols: DocumentSymbols,
     pub modules: Modules,

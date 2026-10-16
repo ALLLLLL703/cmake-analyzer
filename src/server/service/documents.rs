@@ -136,6 +136,7 @@ impl Service {
             ServiceCommand::Symbols { .. }
             | ServiceCommand::Hover { .. }
             | ServiceCommand::Navigate { .. }
+            | ServiceCommand::Complete { .. }
             | ServiceCommand::ReloadConfig { .. }
             | ServiceCommand::Actions { .. }
             | ServiceCommand::RunAction { .. } => {

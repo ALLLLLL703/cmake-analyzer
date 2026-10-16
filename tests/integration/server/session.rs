@@ -62,6 +62,22 @@ impl Session {
         nested: bool,
         markdown: bool,
     ) -> Self {
+        Self::start_capabilities(options, folders, nested, markdown, false).await
+    }
+    pub async fn start_completion(
+        options: ServerOptions,
+        folders: Vec<Value>,
+        snippets: bool,
+    ) -> Self {
+        Self::start_capabilities(options, folders, true, false, snippets).await
+    }
+    async fn start_capabilities(
+        options: ServerOptions,
+        folders: Vec<Value>,
+        nested: bool,
+        markdown: bool,
+        snippets: bool,
+    ) -> Self {
         let server = CmakeAnalyzer::new(options);
         let (client, stream) = tokio::io::duplex(65536);
         let (reader, writer) = tokio::io::split(stream);
@@ -80,9 +96,13 @@ impl Session {
             task,
             pending: VecDeque::new(),
         };
-        session.send(json!({"jsonrpc":"2.0","id":1,"method":"initialize","params":{"workspaceFolders":folders,"capabilities":{"textDocument":{"hover":{"contentFormat":if markdown {json!(["markdown","plaintext"])}else{json!(["plaintext"])}},"documentSymbol":{"hierarchicalDocumentSymbolSupport":nested}}}}})).await;
+        session.send(json!({"jsonrpc":"2.0","id":1,"method":"initialize","params":{"workspaceFolders":folders,"capabilities":{"textDocument":{"completion":{"completionItem":{"snippetSupport":snippets}},"hover":{"contentFormat":if markdown {json!(["markdown","plaintext"])}else{json!(["plaintext"])}},"documentSymbol":{"hierarchicalDocumentSymbolSupport":nested}}}}})).await;
         let initialized = session.response(1).await;
         assert!(initialized.get("error").is_none(), "{initialized}");
+        assert_eq!(
+            initialized["result"]["capabilities"]["completionProvider"]["resolveProvider"],
+            false
+        );
         assert_eq!(
             initialized["result"]["capabilities"]["definitionProvider"],
             true

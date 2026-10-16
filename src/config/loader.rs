@@ -167,6 +167,9 @@ fn parse_layer(text: &str, path: &Path, cwd: &Path) -> io::Result<Layer> {
     Ok(Layer { patch, commands })
 }
 fn apply(settings: &mut Settings, layer: &Layer) {
+    if let Some(value) = layer.patch.completion.reserve_arg {
+        settings.completion.reserve_arg = value;
+    }
     if let Some(enable) = layer.patch.diagnostics.enable {
         settings.diagnostics.enable = enable;
     }

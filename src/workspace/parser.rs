@@ -59,6 +59,7 @@ impl Workspace {
                 }
             });
             let snapshot = Arc::new(DocumentSnapshot {
+                lexed: analysis.lexer.buffer.clone(),
                 text,
                 semantics: analysis.semantics.buffer.clone(),
                 build: analysis.build.buffer.clone(),

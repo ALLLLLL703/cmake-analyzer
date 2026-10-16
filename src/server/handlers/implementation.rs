@@ -18,8 +18,7 @@ impl ILanguageServer for CmakeAnalyzer {
         context: Context,
         params: CompletionParams,
     ) -> ServerResult<Option<CompletionResponse>> {
-        let _ = (context, params);
-        Err(ServerError::unsupported())
+        self.query_completion(context, params).await
     }
     async fn resolve_completion_item(
         &self,
