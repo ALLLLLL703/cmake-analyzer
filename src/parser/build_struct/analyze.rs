@@ -43,7 +43,9 @@ impl BuildStructAnalyzer<'_> {
     }
     /// Extract ordered facts, not executed build state.
     pub fn analyze(&self) -> BuildStruct {
-        self.analyze_selected(|_| true)
+        let mut output = self.analyze_selected(|_| true);
+        super::target_references::bind_local(&mut output, self.buffer);
+        output
     }
     // AI-authored incremental extraction: unchanged effects need only fresh source references.
     pub(crate) fn analyze_selected(

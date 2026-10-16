@@ -6,6 +6,8 @@ use std::path::Path;
 mod dependencies;
 #[path = "navigation/scopes.rs"]
 mod scopes;
+#[path = "navigation/targets.rs"]
+mod targets;
 pub(super) async fn definition(
     client: &mut Session,
     path: &Path,

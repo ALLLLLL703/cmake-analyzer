@@ -75,7 +75,12 @@ impl IncrementalBuildStruct {
                             .iter()
                             .map(|fact| BuildFact {
                                 source: source.clone(),
-                                effect: fact.effect.clone(),
+                                effect: match &fact.effect {
+                                    BuildEffect::Target(target) => {
+                                        BuildEffect::Target(target.clone_unbound())
+                                    }
+                                    effect => effect.clone(),
+                                },
                             }),
                     );
                 buffer.diagnostics.extend(
@@ -102,6 +107,7 @@ impl IncrementalBuildStruct {
                 }
             }
         }
+        super::target_references::bind_local(&mut buffer, semantic);
         self.work = IncrementalWork {
             recomputed: changed.len(),
             reused: reused.len(),

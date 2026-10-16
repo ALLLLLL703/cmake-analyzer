@@ -60,15 +60,40 @@ pub enum TargetKind {
     Custom,
     Alias,
 }
+/// Snapshot-qualified target definition/read. The argument span retains delimiters.
+#[derive(Clone, Debug)]
+pub struct TargetReference {
+    pub source: SourceRef,
+    pub span: TextSpan,
+    pub kind: crate::parser::semanticer::model::ReferenceKind,
+}
 #[derive(Clone, Debug)]
 pub struct TargetDeclaration {
+    /// File-local in BuildStruct; owner-qualified in RootGraph.targets.
+    pub references: Vec<TargetReference>,
     pub name: Argument,
     pub kind: TargetKind,
     pub imported: bool,
     pub global: bool,
     pub alias: Option<Argument>,
-    pub sources: Vec<Argument>,
-    pub arguments: Vec<Argument>,
+    // Owner-qualified declarations share immutable source/argument payloads.
+    pub sources: std::sync::Arc<[Argument]>,
+    pub arguments: std::sync::Arc<[Argument]>,
+}
+impl TargetDeclaration {
+    /// Copy metadata without references tied to a previous analysis context.
+    pub(crate) fn clone_unbound(&self) -> Self {
+        Self {
+            references: Vec::new(),
+            name: self.name.clone(),
+            kind: self.kind,
+            imported: self.imported,
+            global: self.global,
+            alias: self.alias.clone(),
+            sources: self.sources.clone(),
+            arguments: self.arguments.clone(),
+        }
+    }
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Visibility {

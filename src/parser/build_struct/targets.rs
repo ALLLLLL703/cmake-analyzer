@@ -74,12 +74,13 @@ pub(super) fn target(command: &str, name: Argument, arguments: Vec<Argument>) ->
         arguments[start..].to_vec()
     };
     TargetDeclaration {
+        references: Vec::new(),
         name,
         kind,
         imported,
         global,
         alias,
-        sources,
-        arguments,
+        sources: sources.into(),
+        arguments: arguments.into(),
     }
 }

@@ -4,6 +4,7 @@ mod locations;
 pub(in crate::server) mod model;
 mod query;
 mod references;
+mod targets;
 use super::model::{CmakeAnalyzer, ServiceCommand};
 use lspally::server::model::*;
 use tokio::sync::oneshot;

@@ -76,7 +76,9 @@ edits, support cancellation, and do not execute project code. See
 ## Navigation
 
 `textDocument/definition` and `textDocument/references` use existing variable,
-function/macro, parameter, and used-builtin reference relations. Results include
+function/macro, parameter, used-builtin, and schema-qualified build-target relations.
+Build targets retain references in TargetDeclaration and aggregate per Workspace;
+aliases have separate definitions, and nonglobal imports follow directory visibility. Results include
 cross-file targets, honor includeDeclaration, and deduplicate repeated physical
 locations. Shared-file queries keep Workspace ID namespaces separate. Standalone
 files reuse the reference collector. Builtin commands have references but no

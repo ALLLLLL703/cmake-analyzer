@@ -1,8 +1,9 @@
 use super::model::{ArgumentSite, Input};
 use crate::parser::semanticer::{
-    model::{ArgumentReference, PossibleValue, ReferenceKind, SemanticArgForm, ValueBindings},
+    model::{ReferenceKind, SemanticArgForm},
     parsing::completion_roles,
     schema::{CommandSchemaFrom, NameRole},
+    values::argument_value,
 };
 
 pub(super) fn shadowed(
@@ -46,16 +47,13 @@ pub(super) fn names(input: &Input, argument: &ArgumentSite<'_>, prefix: &str) ->
             preceding.push(std::borrow::Cow::Borrowed(literal));
             continue;
         }
-        let mut values = ValueBindings::default();
-        for reference in argument
-            .command
-            .variable_references
-            .iter()
-            .filter(|reference| reference.argument == index)
-        {
-            values.assign(&reference.name, reference_value(input, reference));
-        }
-        if let Some(expanded) = values.expand(arg, None).filter(|value| {
+        if let Some(expanded) = argument_value(
+            &input.snapshot.semantics,
+            input.index.as_deref(),
+            argument.command,
+            index,
+        )
+        .filter(|value| {
             arg.form != SemanticArgForm::Unquoted
                 || !value.text().is_empty() && !value.text().contains(';')
         }) {
@@ -75,41 +73,4 @@ pub(super) fn names(input: &Input, argument: &ArgumentSite<'_>, prefix: &str) ->
             .map(|argument| argument.as_ref())
             .collect::<Vec<_>>(),
     )
-}
-fn unanimous<'a>(
-    mut values: impl Iterator<Item = Option<&'a PossibleValue>>,
-) -> Option<PossibleValue> {
-    let first = values.next()??;
-    values
-        .all(|value| value == Some(first))
-        .then(|| first.clone())
-}
-fn reference_value(input: &Input, reference: &ArgumentReference) -> Option<PossibleValue> {
-    let matches = |location: &crate::parser::semanticer::model::ReferenceLocation| {
-        location.file == reference.location.file
-            && location.command == reference.location.command
-            && location.span == reference.location.span
-            && location.kind == ReferenceKind::Read
-    };
-    if let Some(index) = &input.index {
-        unanimous(
-            index
-                .variables
-                .iter()
-                .filter(|variable| variable.name == reference.name)
-                .flat_map(|variable| &variable.references)
-                .filter(|location| matches(location))
-                .map(|location| location.possible_value.as_ref()),
-        )
-    } else {
-        unanimous(
-            input
-                .snapshot
-                .semantics
-                .values
-                .iter()
-                .filter(|value| value.name == reference.name && matches(&value.location))
-                .map(|value| value.possible_value.as_ref()),
-        )
-    }
 }

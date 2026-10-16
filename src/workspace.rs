@@ -11,4 +11,5 @@ mod reference_values;
 mod references;
 mod refresh;
 pub mod runtime;
+mod targets;
 pub use model::{DependencyGraphDisplay, Workspace, WorkspaceDisplay, WorkspaceLimits};

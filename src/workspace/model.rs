@@ -119,6 +119,7 @@ pub struct RootGraph {
     pub facts: Vec<(usize, usize)>,
     pub diagnostics: Vec<WorkspaceDiagnostic>,
     pub references: Arc<crate::parser::semanticer::model::ReferenceIndex>,
+    pub targets: Arc<Vec<crate::parser::build_struct::model::TargetDeclaration>>,
     pub values: Vec<crate::parser::semanticer::model::VariableValueAt>,
     pub runtime: Option<Arc<super::runtime::RuntimeLayer>>,
 }

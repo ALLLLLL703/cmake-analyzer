@@ -1,5 +1,7 @@
 // AI-authored limited literal expansion; unknown values are never guessed.
+mod arguments;
 use super::{model::*, value_model::ValueBinding};
+pub(crate) use arguments::argument_value;
 use std::{collections::HashMap, sync::Arc};
 impl ValueBindings {
     pub fn assign(&mut self, name: &str, value: Option<PossibleValue>) {

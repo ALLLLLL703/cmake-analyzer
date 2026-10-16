@@ -7,7 +7,7 @@ use crate::{
 use lspally::server::model::*;
 use std::{collections::BTreeMap, sync::Arc};
 
-type Results = BTreeMap<(String, usize, usize), Arc<DocumentSnapshot>>;
+pub(super) type Results = BTreeMap<(String, usize, usize), Arc<DocumentSnapshot>>;
 fn add(input: &Input, reference: &ReferenceLocation, output: &mut Results) {
     if let Some((uri, snapshot)) = input.files.get(&reference.file) {
         output
@@ -19,7 +19,7 @@ fn add(input: &Input, reference: &ReferenceLocation, output: &mut Results) {
             .or_insert_with(|| snapshot.clone());
     }
 }
-fn symbol(
+pub(super) fn symbol(
     input: &Input,
     offset: usize,
     definition: Option<&ReferenceLocation>,
@@ -83,6 +83,7 @@ pub(super) fn query(
             return Err(ServerError::cancelled());
         }
         let offset = TextIndex::new(&input.snapshot.text, encoding).byte(&position)?;
+        super::targets::query(input, offset, query, &mut output, cancel)?;
         let local;
         let index = if let Some(index) = &input.index {
             index.as_ref()

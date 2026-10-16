@@ -1,4 +1,9 @@
 // AI-generated implementation.
+mod trails;
+use trails::TargetTrails;
+#[cfg(test)]
+#[path = "../../../../tests/unit/parser/semanticer/target_arguments.rs"]
+mod target_tests;
 use crate::parser::semanticer::{
     model::{
         ArgKind, OutputMatch, ScopeId, SemanticArgForm, SemanticVariable, SemanticedBuffer,
@@ -58,11 +63,7 @@ impl Semanticer {
                 let roots: Vec<&ArgSchemaKind> = schema.args.iter().map(|arg| &arg.kind).collect();
                 sequence(
                     &roots,
-                    vec![OutputMatch {
-                        position: 0,
-                        indices: Vec::new(),
-                        keywords: 0,
-                    }],
+                    vec![OutputMatch::default()],
                     &arguments,
                     MatchRole::Out,
                 )
@@ -142,11 +143,15 @@ fn contains_out(kind: &ArgSchemaKind) -> bool {
     }
 }
 #[derive(Clone, Copy)]
-enum MatchRole {
+enum MatchRole<'a> {
     Out,
     Variable,
     Path(crate::parser::semanticer::model::PathKind),
     Name(crate::parser::semanticer::schema::NameRole),
+    Target(
+        crate::parser::semanticer::schema::NameRole,
+        &'a TargetTrails,
+    ),
 }
 /// Match an unfinished argument prefix. Only the active slot is recorded, avoiding growing repeat histories.
 pub(crate) fn completion_roles(
@@ -175,11 +180,7 @@ pub(crate) fn completion_roles(
         }
         sequence(
             &roots,
-            vec![OutputMatch {
-                position: 0,
-                indices: Vec::new(),
-                keywords: 0,
-            }],
+            vec![OutputMatch::default()],
             arguments,
             MatchRole::Name(*role),
         )
@@ -187,6 +188,60 @@ pub(crate) fn completion_roles(
         .any(|state| state.position == arguments.len() && state.indices.contains(&position))
     })
     .collect()
+}
+pub(crate) fn has_target_arguments(
+    schema: &crate::parser::semanticer::schema::CommandSchema,
+) -> bool {
+    use crate::parser::semanticer::schema::NameRole;
+    [
+        NameRole::Target,
+        NameRole::Executable,
+        NameRole::Library,
+        NameRole::CustomTarget,
+    ]
+    .into_iter()
+    .any(|role| {
+        schema
+            .args
+            .iter()
+            .any(|arg| contains_role(&arg.kind, MatchRole::Name(role)))
+    })
+}
+/// Full-call target slots use binding intersection. Arguments must retain source-slot correspondence.
+pub(crate) fn target_arguments(
+    command: &crate::parser::semanticer::model::SemanticCommandRepresent,
+    arguments: &[&str],
+) -> Vec<(usize, crate::parser::semanticer::schema::NameRole)> {
+    use crate::parser::semanticer::schema::NameRole;
+    let Some(schema) = &command.schema else {
+        return Vec::new();
+    };
+    let roots: Vec<_> = schema.args.iter().map(|argument| &argument.kind).collect();
+    let mut result = Vec::new();
+    for kind in [
+        NameRole::Target,
+        NameRole::Executable,
+        NameRole::Library,
+        NameRole::CustomTarget,
+    ] {
+        let trails = TargetTrails::default();
+        let role = MatchRole::Target(kind, &trails);
+        if !roots.iter().any(|root| contains_role(root, role)) {
+            continue;
+        }
+        if let Some(state) = sequence(&roots, vec![OutputMatch::default()], arguments, role)
+            .into_iter()
+            .find(|state| state.position == arguments.len())
+        {
+            result.extend(
+                trails
+                    .indices(state.trail)
+                    .into_iter()
+                    .map(|argument| (argument, kind)),
+            );
+        }
+    }
+    result
 }
 pub(crate) fn path_arguments(
     command: &crate::parser::semanticer::model::SemanticCommandRepresent,
@@ -213,18 +268,9 @@ pub(crate) fn path_arguments(
         if !roots.iter().any(|root| contains_role(root, role)) {
             continue;
         }
-        if let Some(state) = sequence(
-            &roots,
-            vec![OutputMatch {
-                position: 0,
-                indices: Vec::new(),
-                keywords: 0,
-            }],
-            &arguments,
-            role,
-        )
-        .into_iter()
-        .find(|state| state.position == arguments.len())
+        if let Some(state) = sequence(&roots, vec![OutputMatch::default()], &arguments, role)
+            .into_iter()
+            .find(|state| state.position == arguments.len())
         {
             result.extend(
                 state
@@ -267,19 +313,10 @@ pub(super) fn variable_arguments(
         .collect();
     let roots: Vec<_> = schema.args.iter().map(|arg| &arg.kind).collect();
     let matched = |role| {
-        sequence(
-            &roots,
-            vec![OutputMatch {
-                position: 0,
-                indices: Vec::new(),
-                keywords: 0,
-            }],
-            &arguments,
-            role,
-        )
-        .into_iter()
-        .find(|state| state.position == arguments.len())
-        .map_or_else(Vec::new, |state| state.indices)
+        sequence(&roots, vec![OutputMatch::default()], &arguments, role)
+            .into_iter()
+            .find(|state| state.position == arguments.len())
+            .map_or_else(Vec::new, |state| state.indices)
     };
     let outputs = matched(MatchRole::Out);
     matched(MatchRole::Variable)
@@ -309,7 +346,7 @@ fn matches_role(kind: &ArgSchemaKind, role: MatchRole) -> bool {
                 | (ArgSchemaKind::OutputPath, PathKind::Output)
         );
     }
-    if let MatchRole::Name(role) = role {
+    if let MatchRole::Name(role) | MatchRole::Target(role, _) = role {
         use crate::parser::semanticer::schema::NameRole;
         return matches!(
             (kind, role),
@@ -447,10 +484,12 @@ fn step(
                 && kinds.iter().any(|kind| match role {
                     MatchRole::Out => contains_out(kind),
                     MatchRole::Variable => contains_variable(kind),
-                    MatchRole::Path(_) | MatchRole::Name(_) => contains_role(kind, role),
+                    MatchRole::Path(_) | MatchRole::Name(_) | MatchRole::Target(_, _) => {
+                        contains_role(kind, role)
+                    }
                 })
             {
-                next.indices.push(next.position);
+                record(&mut next, role);
             }
             next.position += 1;
             vec![next]
@@ -463,11 +502,18 @@ fn step(
             if matches_role(kind, role)
                 && (!matches!(role, MatchRole::Name(_)) || next.position + 1 == arguments.len())
             {
-                next.indices.push(next.position);
+                record(&mut next, role);
             }
             next.position += 1;
             vec![next]
         }
+    }
+}
+fn record(state: &mut OutputMatch, role: MatchRole<'_>) {
+    if let MatchRole::Target(_, trails) = role {
+        state.trail = trails.push(state.trail, state.position);
+    } else {
+        state.indices.push(state.position);
     }
 }
 fn merge(states: Vec<OutputMatch>, role: MatchRole) -> Vec<OutputMatch> {
@@ -483,6 +529,8 @@ fn merge(states: Vec<OutputMatch>, role: MatchRole) -> Vec<OutputMatch> {
                             old.indices.push(index);
                         }
                     }
+                } else if let MatchRole::Target(_, trails) = role {
+                    old.trail = trails.intersect(old.trail, state.trail);
                 } else {
                     old.indices.retain(|index| state.indices.contains(index))
                 }

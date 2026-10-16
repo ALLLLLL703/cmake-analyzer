@@ -1,6 +1,7 @@
 // AI-generated tests.
 mod references;
 mod runtime;
+mod targets;
 mod values;
 use cmake_analyzer::workspace::model::{Workspace, WorkspaceLimits};
 use std::{

@@ -264,8 +264,21 @@ pub struct CMakeVersion {
     pub patch: u32,
 }
 
-#[derive(Clone)]
+/// Index into one schema-match target trail arena.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) struct TargetTrailId(usize);
+impl TargetTrailId {
+    pub(super) fn new(index: usize) -> Self {
+        Self(index)
+    }
+    pub(super) fn index(self) -> usize {
+        self.0
+    }
+}
+#[derive(Clone, Default)]
 pub(super) struct OutputMatch {
+    // Full target matches share histories; other roles use indices directly.
+    pub trail: Option<TargetTrailId>,
     /// the position of the arg
     pub position: usize,
     /// the possible collect of out arg

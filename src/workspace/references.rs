@@ -136,6 +136,7 @@ impl Workspace {
             let (references, values) = analyze(&graph);
             graph.references = std::sync::Arc::new(references);
             graph.values = values;
+            graph.targets = std::sync::Arc::new(super::targets::analyze(&graph));
             graph
         })
         .await;

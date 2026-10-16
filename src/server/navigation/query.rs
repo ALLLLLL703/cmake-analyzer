@@ -37,6 +37,7 @@ impl Service {
             };
             let mut files = std::collections::HashMap::new();
             let mut index = None;
+            let mut targets = None;
             if let Some(graph) = workspace.root_graph() {
                 for visit in &graph.invocations {
                     files
@@ -45,12 +46,14 @@ impl Service {
                 }
                 if files.contains_key(&snapshot.semantics.id) {
                     index = Some(graph.references.clone());
+                    targets = Some(graph.targets.clone());
                 }
             }
             files.insert(snapshot.semantics.id, source(&path, &snapshot));
             inputs.push(Input {
                 snapshot,
                 index,
+                targets,
                 files,
             });
         }
