@@ -127,7 +127,7 @@ impl Default for DocumentSymbols {
     }
 }
 #[derive(Clone, Debug)]
-/// Configured save/CLI formatting style. [`crate::format::Options`] is the pure renderer
+/// Configured save/CLI formatting style. [`crate::format::FormatOptions`] is the pure renderer
 /// input; [`Settings`] holds this configuration. Construction does not format or write files.
 ///
 /// # Examples
@@ -161,7 +161,7 @@ impl Default for Format {
     /// let value = Format::default();
     /// ```
     fn default() -> Self {
-        let options = crate::format::Options::default();
+        let options = crate::format::FormatOptions::default();
         Self {
             on_save: true,
             insert_spaces: options.insert_spaces,

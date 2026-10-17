@@ -117,7 +117,7 @@ pub(super) async fn run(
             diagnostic.message
         )));
     }
-    let options = format::Options {
+    let options = format::FormatOptions {
         indent_width: settings.format.indent_width,
         line_width: settings.format.line_width,
         insert_spaces: settings.format.insert_spaces,

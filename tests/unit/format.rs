@@ -5,7 +5,7 @@
 // Contains AI-generated documentation edits.
 // AI-generated tests.
 use cmake_analyzer::{
-    format::{self, Error, Options},
+    format::{self, FormatError, FormatOptions},
     workspace::{Workspace, model::DocumentSnapshot},
 };
 use std::sync::Arc;
@@ -73,10 +73,10 @@ async fn snapshot(source: &str) -> Arc<DocumentSnapshot> {
 /// # Examples
 /// Local test-module context (await inside an async test):
 /// ```text
-/// let output = formatted("cmake_minimum_required(VERSION 3.31)\nset( X x )\n", Options::default()).await;
+/// let output = formatted("cmake_minimum_required(VERSION 3.31)\nset( X x )\n", FormatOptions::default()).await;
 /// assert!(output.ends_with("set(X x)\n"));
 /// ```
-async fn formatted(source: &str, options: Options) -> String {
+async fn formatted(source: &str, options: FormatOptions) -> String {
     let snapshot = snapshot(source).await;
     format::render(
         &snapshot.text,
@@ -129,14 +129,14 @@ async fn commands_blocks_branches_and_comments_keep_all_literal_bytes() {
     let input = format!(
         "{HEADER}if( TRUE )\nmessage( STATUS \"a  b\" ) # trailing\nelseif( FALSE )\n# body\nset( X [=[\nraw  value\n]=] )\nelse( )\nunknown( abc\\ def )\nendif( )\n"
     );
-    let output = formatted(&input, Options::default()).await;
+    let output = formatted(&input, FormatOptions::default()).await;
     assert_eq!(
         output,
         format!(
             "{HEADER}if(TRUE)\n  message(STATUS \"a  b\") # trailing\nelseif(FALSE)\n  # body\n  set(\n    X\n    [=[\nraw  value\n]=]\n  )\nelse()\n  unknown(abc\\ def)\nendif()\n"
         )
     );
-    assert_eq!(formatted(&output, Options::default()).await, output);
+    assert_eq!(formatted(&output, FormatOptions::default()).await, output);
     let old = snapshot(&input).await;
     let new = snapshot(&output).await;
     let tokens = |snapshot: &DocumentSnapshot| {
@@ -205,9 +205,9 @@ async fn long_calls_wrap_with_comments_and_nested_parentheses_without_reflowing_
     let input = format!(
         "{HEADER}if((TRUE) AND (FALSE))\nset( LONG_NAME \"a long literal whose contents and whitespace must remain completely untouched\" )\nset(A # value\n B #[=[ raw\ncomment ]=]\n C)\nendif()\n"
     );
-    let options = Options {
+    let options = FormatOptions {
         line_width: 60,
-        ..Options::default()
+        ..FormatOptions::default()
     };
     let output = formatted(&input, options).await;
     assert!(output.contains("set(\n    LONG_NAME\n    \"a long literal whose contents and whitespace must remain completely untouched\"\n  )"),"{output}");
@@ -272,10 +272,10 @@ async fn long_calls_wrap_with_comments_and_nested_parentheses_without_reflowing_
 #[tokio::test]
 async fn crlf_tabs_empty_files_and_escaped_newlines_are_preserved_safely() {
     let input = "cmake_minimum_required(VERSION 3.31)\r\nif(TRUE)\r\nset(X foo\\\r\nbar) # comment\r\nendif()\r\n";
-    let options = Options {
+    let options = FormatOptions {
         insert_spaces: false,
         indent_width: 4,
-        ..Options::default()
+        ..FormatOptions::default()
     };
     let output = formatted(input, options).await;
     assert!(
@@ -284,7 +284,7 @@ async fn crlf_tabs_empty_files_and_escaped_newlines_are_preserved_safely() {
     );
     assert!(!output.contains("\r\r\n"));
     assert_eq!(formatted(&output, options).await, output);
-    assert_eq!(formatted("", Options::default()).await, "");
+    assert_eq!(formatted("", FormatOptions::default()).await, "");
 }
 /// Format a comment between command name and opening parenthesis and a comment inside an empty
 /// call. Require stable second formatting and preserve the name/comment/parenthesis ordering.
@@ -313,8 +313,8 @@ async fn comments_before_parentheses_and_after_empty_calls_keep_token_order() {
         "unknown(#[[empty]]) # trailing\n",
     ] {
         let input = format!("{HEADER}{body}");
-        let output = formatted(&input, Options::default()).await;
-        assert_eq!(formatted(&output, Options::default()).await, output);
+        let output = formatted(&input, FormatOptions::default()).await;
+        assert_eq!(formatted(&output, FormatOptions::default()).await, output);
         if body.starts_with("message") {
             assert!(output.contains("message #[[name comment]] ("), "{output}");
         }
@@ -365,32 +365,32 @@ async fn invalid_syntax_invalid_settings_and_cancellation_never_return_rewrites(
             &source,
             &snapshot.lexed,
             &snapshot.semantics,
-            Options::default(),
+            FormatOptions::default(),
             || false
         ),
-        Err(Error::InvalidSyntax)
+        Err(FormatError::InvalidSyntax)
     );
     assert_eq!(
         format::render(
             &source,
             &snapshot.lexed,
             &snapshot.semantics,
-            Options::default(),
+            FormatOptions::default(),
             || true
         ),
-        Err(Error::Cancelled)
+        Err(FormatError::Cancelled)
     );
     assert_eq!(
         format::render(
             &source,
             &snapshot.lexed,
             &snapshot.semantics,
-            Options {
+            FormatOptions {
                 indent_width: 0,
-                ..Options::default()
+                ..FormatOptions::default()
             },
             || false
         ),
-        Err(Error::InvalidOptions)
+        Err(FormatError::InvalidOptions)
     );
 }

@@ -3,7 +3,7 @@
 //!
 //! Contains AI-generated documentation additions.
 use super::{
-    model::{Error, Options, Writer},
+    model::{FormatError, FormatOptions, FormatWriter},
     trivia,
 };
 use crate::parser::{
@@ -14,7 +14,7 @@ use crate::parser::{
 };
 
 /// Render validated commands with branch/block indentation, preserving raw lexemes.
-/// Allocates a new Writer; no I/O or mutation of inputs.
+/// Allocates a new FormatWriter; no I/O or mutation of inputs.
 ///
 /// # Arguments
 /// - `source` `[in]`: original source with matching byte ranges.
@@ -38,7 +38,7 @@ use crate::parser::{
 ///
 /// # Flow
 /// ```text
-///  [source newline style] ---> [Writer]
+///  [source newline style] ---> [writer]
 ///                                |
 ///                          [next command] <--------+
 ///                                |                |
@@ -53,15 +53,15 @@ use crate::parser::{
 ///
 /// # Examples
 /// ```text
-/// let output = render(source, &lexed, &semantics, Options::default(), &|| false)?;
+/// let output = render(source, &lexed, &semantics, FormatOptions::default(), &|| false)?;
 /// ```
 pub(super) fn render(
     source: &str,
     lexed: &LexedBuffer,
     buffer: &SemanticedBuffer,
-    options: Options,
+    options: FormatOptions,
     stop: &impl Fn() -> bool,
-) -> Result<String, Error> {
+) -> Result<String, FormatError> {
     let newline = if source
         .find('\n')
         .is_some_and(|offset| offset > 0 && source.as_bytes()[offset - 1] == b'\r')
@@ -70,7 +70,7 @@ pub(super) fn render(
     } else {
         "\n"
     };
-    let mut out = Writer {
+    let mut out = FormatWriter {
         text: String::with_capacity(source.len()),
         column: 0,
         trailing_breaks: 0,
@@ -81,7 +81,7 @@ pub(super) fn render(
     let mut level: usize = 0;
     for command in &buffer.commands {
         if stop() {
-            return Err(Error::Cancelled);
+            return Err(FormatError::Cancelled);
         }
         trivia::render(
             source,
@@ -188,10 +188,13 @@ fn render_command(
     lexed: &LexedBuffer,
     command: &SemanticCommandRepresent,
     level: usize,
-    out: &mut Writer<'_>,
+    out: &mut FormatWriter<'_>,
     stop: &impl Fn() -> bool,
-) -> Result<(), Error> {
-    let name = command.span.text(source).ok_or(Error::InvalidSyntax)?;
+) -> Result<(), FormatError> {
+    let name = command
+        .span
+        .text(source)
+        .ok_or(FormatError::InvalidSyntax)?;
     let first = lexed
         .lex
         .partition_point(|token| token.span.start_byte < command.span.end_byte);
@@ -199,11 +202,11 @@ fn render_command(
         .lex
         .get(first)
         .filter(|token| token.content == LexContent::LeftParentheses)
-        .ok_or(Error::InvalidSyntax)?
+        .ok_or(FormatError::InvalidSyntax)?
         .span;
     let end = command.full_span.end_byte;
     if source.as_bytes().get(end.saturating_sub(1)) != Some(&b')') {
-        return Err(Error::InvalidSyntax);
+        return Err(FormatError::InvalidSyntax);
     }
     let comments = lexed
         .comments
@@ -217,10 +220,15 @@ fn render_command(
     let mut previous = None;
     for arg in &command.args {
         if stop() {
-            return Err(Error::Cancelled);
+            return Err(FormatError::Cancelled);
         }
         width += usize::from(separated(previous, arg.form));
-        for ch in arg.span.text(source).ok_or(Error::InvalidSyntax)?.chars() {
+        for ch in arg
+            .span
+            .text(source)
+            .ok_or(FormatError::InvalidSyntax)?
+            .chars()
+        {
             match ch {
                 '\n' => {
                     multiline = true;
@@ -250,7 +258,7 @@ fn render_command(
             if separated(previous, arg.form) {
                 out.push(" ");
             }
-            out.push(arg.span.text(source).ok_or(Error::InvalidSyntax)?);
+            out.push(arg.span.text(source).ok_or(FormatError::InvalidSyntax)?);
             previous = Some(arg.form);
         }
         out.push(")");
@@ -260,7 +268,7 @@ fn render_command(
     let mut nested: usize = 0;
     for arg in &command.args {
         if stop() {
-            return Err(Error::Cancelled);
+            return Err(FormatError::Cancelled);
         }
         trivia::render(
             source,
@@ -275,7 +283,7 @@ fn render_command(
         }
         out.line();
         out.indent(level + 1 + nested);
-        out.push(arg.span.text(source).ok_or(Error::InvalidSyntax)?);
+        out.push(arg.span.text(source).ok_or(FormatError::InvalidSyntax)?);
         if arg.form == SemanticArgForm::LeftParen {
             nested += 1;
         }

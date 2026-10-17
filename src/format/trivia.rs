@@ -2,7 +2,7 @@
 //! to the caller-owned writer; no filesystem/process effects or syntax-tree changes.
 //!
 //! Contains AI-generated documentation additions.
-use super::model::{Error, Writer};
+use super::model::{FormatError, FormatWriter};
 use crate::parser::lexer::model::LexedBuffer;
 use std::ops::Range;
 
@@ -45,7 +45,7 @@ use std::ops::Range;
 /// ```
 ///
 /// # Examples
-/// ```text
+/// ```rust
 /// render(source, &lexed, 0..command.full_span.start_byte, 0, &mut out, &|| false)?;
 /// ```
 pub(super) fn render(
@@ -53,9 +53,9 @@ pub(super) fn render(
     lexed: &LexedBuffer,
     range: Range<usize>,
     level: usize,
-    out: &mut Writer<'_>,
+    out: &mut FormatWriter<'_>,
     stop: &impl Fn() -> bool,
-) -> Result<(), Error> {
+) -> Result<(), FormatError> {
     let mut cursor = range.start;
     let first = lexed
         .comments
@@ -65,10 +65,10 @@ pub(super) fn render(
         .take_while(|comment| comment.start_byte < range.end)
     {
         if stop() {
-            return Err(Error::Cancelled);
+            return Err(FormatError::Cancelled);
         }
         if comment.start_byte < cursor || comment.end_byte > range.end {
-            return Err(Error::InvalidSyntax);
+            return Err(FormatError::InvalidSyntax);
         }
         whitespace(&source[cursor..comment.start_byte], out)?;
         if out.column == 0 {
@@ -103,9 +103,9 @@ pub(super) fn render(
 /// ```text
 /// whitespace("\n\n  ", &mut out)?;
 /// ```
-fn whitespace(raw: &str, out: &mut Writer<'_>) -> Result<(), Error> {
+fn whitespace(raw: &str, out: &mut FormatWriter<'_>) -> Result<(), FormatError> {
     if !raw.chars().all(char::is_whitespace) {
-        return Err(Error::InvalidSyntax);
+        return Err(FormatError::InvalidSyntax);
     }
     let count = raw.bytes().filter(|byte| *byte == b'\n').count();
     if count > 0 {

@@ -9,7 +9,7 @@ use super::{
     text::TextIndex,
     uri,
 };
-use crate::format::{self, Options};
+use crate::format::{self, FormatOptions};
 use lspally::server::model::*;
 use tokio::sync::oneshot;
 
@@ -106,7 +106,7 @@ impl Service {
             if save && !settings.on_save {
                 return Ok(Some(Vec::new()));
             }
-            let options = Options {
+            let options = FormatOptions {
                 indent_width: client
                     .as_ref()
                     .map_or(settings.indent_width, |options| options.tab_size as usize),
@@ -139,8 +139,8 @@ impl Service {
                 || cancel.is_cancelled(),
             ) {
                 Ok(text) => text,
-                Err(format::Error::InvalidSyntax) => return Ok(Some(Vec::new())),
-                Err(format::Error::Cancelled) => return Err(ServerError::cancelled()),
+                Err(format::FormatError::InvalidSyntax) => return Ok(Some(Vec::new())),
+                Err(format::FormatError::Cancelled) => return Err(ServerError::cancelled()),
                 Err(error) => return Err(ServerError::invalid(error.to_string())),
             };
             if cancel.is_cancelled() {

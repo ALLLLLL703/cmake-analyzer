@@ -1,6 +1,14 @@
 > AI-generated content.
 
-# Rustdoc
+# Rust Style
+
+## Type names
+
+- Every struct and enum name must include a meaningful domain, feature or responsibility qualifier in the identifier itself. Use `RenderOptions`, `SemanticerOptions` or `RenderMode`, not bare `Options`, `Context`, `Model` or `Mode`.
+- Apply this rule regardless of visibility, including test helpers and generated types. Different modules do not justify unqualified names; a module path or import alias does not replace a qualified declaration name.
+- Choose a short qualifier that explains ownership or purpose; do not mechanically copy the full module path into the name.
+
+## Rustdoc
 
 - Document every module, function/method, struct, field, enum, variant and variant field, regardless of visibility; include test helpers and trait items. Update generators that remain in use; one-time generated files may be documented directly.
 - Use `//!` for module contents; `///` for declarations. Start with the item's meaning, behavior/effect and side effects; explicitly state when none occur. Describe the item, not just its name/type.
@@ -12,26 +20,26 @@
 - Every function/method, struct field, enum variant and variant field needs its own usage example: call the function, read/write the field, or construct/use/match the variant. Use `# Examples` for functions; short inline examples suffice for fields/variants. An enclosing type's example alone is not enough.
 - Keep docs short; link shared explanations. Examples must match the API; complete code blocks must compile after adapting template imports. No undocumented obvious-item exception.
 
-## Example
+### Example
 
 `example` below is the containing crate's placeholder name. Diagrams demonstrate the required format; trivial implementations need no diagram.
 
 ```rust
-//! Keep or shorten byte buffers through [`Buffer::apply`]; no file/network access.
+//! Keep or shorten byte buffers through [`ByteBuffer::apply`]; no file/network access.
 
 /// Bytes that callers can shorten through [`Self::apply`].
-/// [`Mode`] chooses how many bytes to keep; applying it changes bytes and a counter.
+/// [`ByteBufferMode`] chooses how many bytes to keep; applying it changes bytes and a counter.
 /// No file/network access.
 ///
 /// # Flow
 /// ```text
-///    [Caller]             [Mode]
+///    [Caller]            [policy]
 ///        |                   |
 ///        +--------+----------+
 ///                 v
-///       +-------------------+
-///       | Buffer::apply     |
-///       +---------+---------+
+///      +---------------------+
+///      | ByteBuffer::apply   |
+///      +----------+----------+
 ///                 |
 ///         +-------+--------+
 ///         v                v
@@ -42,40 +50,40 @@
 /// ```
 /// # Examples
 /// ```
-/// # use example::{Buffer, Mode};
-/// let mut buffer = Buffer { bytes: vec![1, 2, 3] };
+/// # use example::{ByteBuffer, ByteBufferMode};
+/// let mut buffer = ByteBuffer { bytes: vec![1, 2, 3] };
 /// let mut removed = 0;
-/// assert_eq!(buffer.apply(Mode::Trim { len: 2 }, &mut removed), 2);
+/// assert_eq!(buffer.apply(ByteBufferMode::Trim { len: 2 }, &mut removed), 2);
 /// assert_eq!(removed, 1);
 /// ```
-pub struct Buffer {
-    /// Stored bytes; [`Buffer::apply`] may remove bytes from the end.
+pub struct ByteBuffer {
+    /// Stored bytes; [`ByteBuffer::apply`] may remove bytes from the end.
     /// Example: `buffer.bytes.push(1)` adds a byte; `buffer.bytes.len()` reads the count.
     pub bytes: Vec<u8>,
 }
 
-/// How many bytes [`Buffer::apply`] should keep.
+/// How many bytes [`ByteBuffer::apply`] should keep.
 /// Creating this choice changes nothing; applying it may remove bytes.
 ///
 /// # Examples
 /// ```
-/// # use example::Mode;
-/// let policy = Mode::Trim { len: 2 };
+/// # use example::ByteBufferMode;
+/// let policy = ByteBufferMode::Trim { len: 2 };
 /// ```
-pub enum Mode {
+pub enum ByteBufferMode {
     /// Keep all bytes; applying this choice removes nothing.
-    /// Example: `buffer.apply(Mode::Keep, &mut removed)` keeps the buffer unchanged.
+    /// Example: `buffer.apply(ByteBufferMode::Keep, &mut removed)` keeps the buffer unchanged.
     Keep,
     /// Keep only the first bytes; applying this choice removes the rest.
-    /// Example: `buffer.apply(Mode::Trim { len: 2 }, &mut removed)` keeps at most two.
+    /// Example: `buffer.apply(ByteBufferMode::Trim { len: 2 }, &mut removed)` keeps at most two.
     Trim {
         /// Maximum bytes to keep; larger values leave bytes unchanged.
-        /// Example: `Mode::Trim { len: 2 }` sets this limit to two bytes.
+        /// Example: `ByteBufferMode::Trim { len: 2 }` sets this limit to two bytes.
         len: usize,
     },
 }
 
-impl Buffer {
+impl ByteBuffer {
     /// Keep the requested bytes, overwrite the removed-byte counter and return the length.
     /// Changes this buffer and `removed`; no file/network access.
     ///
@@ -94,7 +102,7 @@ impl Buffer {
     /// ```text
     ///          [Save old length]
     ///                  |
-    ///              < Mode? >
+    ///             < policy? >
     ///              /       \
     ///           Keep       Trim
     ///            |           |
@@ -109,15 +117,15 @@ impl Buffer {
     /// ```
     /// # Examples
     /// ```
-    /// # use example::{Buffer, Mode};
-    /// let mut buffer = Buffer { bytes: vec![1, 2, 3] };
+    /// # use example::{ByteBuffer, ByteBufferMode};
+    /// let mut buffer = ByteBuffer { bytes: vec![1, 2, 3] };
     /// let mut removed = 0;
-    /// assert_eq!(buffer.apply(Mode::Trim { len: 2 }, &mut removed), 2);
+    /// assert_eq!(buffer.apply(ByteBufferMode::Trim { len: 2 }, &mut removed), 2);
     /// assert_eq!(removed, 1);
     /// ```
-    pub fn apply(&mut self, mode: Mode, removed: &mut usize) -> usize {
+    pub fn apply(&mut self, mode: ByteBufferMode, removed: &mut usize) -> usize {
         let before = self.bytes.len();
-        if let Mode::Trim { len } = mode {
+        if let ByteBufferMode::Trim { len } = mode {
             self.bytes.truncate(len);
         }
         *removed = before - self.bytes.len();

@@ -1,9 +1,9 @@
-//! In-memory text emission and column/newline bookkeeping for [`Writer`].
+//! In-memory text emission and column/newline bookkeeping for [`FormatWriter`].
 //! Methods change owned text only; they never access streams or files.
 //!
 //! Contains AI-generated documentation additions.
-use super::model::Writer;
-impl Writer<'_> {
+use super::model::FormatWriter;
+impl FormatWriter<'_> {
     /// Append exact text and update scalar/tab column and trailing-break counts. No I/O.
     ///
     /// # Arguments

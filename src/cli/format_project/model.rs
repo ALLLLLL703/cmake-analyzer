@@ -2,7 +2,7 @@
 //! These records allocate/retain data only; [`super::write::apply`] owns disk replacement.
 //!
 //! Contains AI-generated documentation additions.
-use crate::{format::Options, workspace::model::DocumentSnapshot};
+use crate::{format::FormatOptions, workspace::model::DocumentSnapshot};
 use std::{path::PathBuf, sync::Arc};
 /// One eligible saved file passed to [`super::prepare`]. Carries a retained analysis
 /// snapshot and its effective style; constructing it does not read disk.
@@ -17,7 +17,7 @@ pub(super) struct Input {
     /// Retained source and matching lexical/semantic analysis. Example: `input.snapshot.text.as_ref()`.
     pub snapshot: Arc<DocumentSnapshot>,
     /// Effective project style copied into the render job. Example: `input.options.line_width = 100`.
-    pub options: Options,
+    pub options: FormatOptions,
 }
 /// A changed file staged by [`super::prepare`] for [`super::write::apply`].
 /// Contains old text for conflict checking and replacement text; no I/O on construction.

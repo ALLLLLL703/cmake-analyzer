@@ -11,7 +11,7 @@ use crate::parser::{
     lexer::model::LexedBuffer,
     semanticer::model::{SemanticError, SemanticedBuffer},
 };
-pub use model::{Error, Options};
+pub use model::{FormatError, FormatOptions};
 
 /// Format semantic command/block structure while copying argument and comment lexemes verbatim.
 /// Syntactically invalid buffers are rejected; unknown command names do not prevent formatting.
@@ -58,7 +58,7 @@ pub use model::{Error, Options};
 ///
 /// # Examples
 /// ```
-/// # use cmake_analyzer::{format::{render, Options}, parser::{lexer::model::{Lexer, RawBuffer}, nparser::model::NParser, semanticer::model::{Semanticer, FileId}}};
+/// # use cmake_analyzer::{format::{render, FormatOptions}, parser::{lexer::model::{Lexer, RawBuffer}, nparser::model::NParser, semanticer::model::{Semanticer, FileId}}};
 /// # use std::collections::HashMap;
 /// # tokio::runtime::Runtime::new().unwrap().block_on(async {
 /// // Explicit version keeps this example offline and avoids CMake probing.
@@ -67,7 +67,7 @@ pub use model::{Error, Options};
 /// let parsed = NParser::new(lexed.clone()).parse(source);
 /// let mut analyzer = Semanticer::new(parsed, HashMap::new());
 /// let semantics = analyzer.parse(source, FileId::default()).await;
-/// let text = render(source, &lexed, &semantics, Options::default(), || false).unwrap();
+/// let text = render(source, &lexed, &semantics, FormatOptions::default(), || false).unwrap();
 /// assert!(text.ends_with("set(A 1)\n"));
 /// # });
 /// ```
@@ -75,17 +75,17 @@ pub fn render(
     source: &str,
     lexed: &LexedBuffer,
     semantics: &SemanticedBuffer,
-    options: Options,
+    options: FormatOptions,
     stop: impl Fn() -> bool,
-) -> Result<String, Error> {
+) -> Result<String, FormatError> {
     if options.indent_width == 0
         || options.line_width == 0
         || u8::try_from(options.indent_width).is_err()
     {
-        return Err(Error::InvalidOptions);
+        return Err(FormatError::InvalidOptions);
     }
     if stop() {
-        return Err(Error::Cancelled);
+        return Err(FormatError::Cancelled);
     }
     if !lexed.errors.is_empty()
         || semantics.commands.iter().any(|command| !command.closed)
@@ -94,7 +94,7 @@ pub fn render(
             .iter()
             .any(|error| !matches!(error.content, SemanticError::CommandNotFound(_)))
     {
-        return Err(Error::InvalidSyntax);
+        return Err(FormatError::InvalidSyntax);
     }
     layout::render(source, lexed, semantics, options, &stop)
 }

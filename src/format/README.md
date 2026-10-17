@@ -14,7 +14,7 @@ display serializer. Raw argument and comment lexemes are copied unchanged.
   contents and comment bodies are never wrapped or reindented internally.
 - `writer.rs`: track columns/tabs, use the first source newline style (LF/CRLF),
   and end nonempty output with one final newline.
-- `model.rs`: protocol-independent options, errors, and writer state.
+- `model.rs`: `FormatOptions`, `FormatError`, and private `FormatWriter` state.
 
 Line width counts Unicode scalar columns, with tabs advancing by indent_width.
 Atomic literals and command names may exceed the width; their text is never split.

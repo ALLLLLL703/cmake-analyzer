@@ -14,6 +14,7 @@ i didn't review most of the code at commits (see below), it's fully written by o
 # AnyWay 
 ## this project is still wip and cant be used
 - I only review the core code, i did not review a single test
+- some rust doc should not exist because its obvious, buti let ai generate all
 
 
 >我承认我有点急想快点弄完这个,但是我可能不太会使用AI,,,,
