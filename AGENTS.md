@@ -32,8 +32,8 @@
 
 ## Writing and Checks
 
-- Keep Markdown and comments terse.
-- Document non-obvious APIs; explain obscure logic inline. Short, clear functions need no comments.
+- Follow [Rustdoc style](agent-instructions/Style.md) for all Rust documentation; read it before writing or editing Rust. Its mandatory coverage overrides obvious-item comment exemptions.
+- Keep Markdown and comments terse; explain obscure logic inline.
 - Apply this to new and edited code.
 - Installed `.cmake` files under `/usr/lib/cmake` may be used as read-only test inputs.
 
