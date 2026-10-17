@@ -19,6 +19,7 @@ fn sequence<'a>(args: impl IntoIterator<Item = &'a Arg>, out: &mut Vec<Parameter
 }
 fn append(arg: &Arg, out: &mut Vec<Parameter>) -> bool {
     let name = match arg {
+        Arg::Grammar { placeholder, .. } => placeholder.as_str(),
         Arg::Optional(_) => return true,
         Arg::Repeat { args, min } => {
             for _ in 0..*min {
@@ -84,6 +85,7 @@ fn append(arg: &Arg, out: &mut Vec<Parameter>) -> bool {
         Arg::PackageName => "package",
         Arg::Url => "url",
         Arg::Expression => "expression",
+        Arg::CacheEntry => "CACHE{variable}",
     };
     out.push(Parameter::Placeholder(name.to_owned()));
     true

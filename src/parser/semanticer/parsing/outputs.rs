@@ -139,7 +139,8 @@ fn contains_out(kind: &ArgSchemaKind) -> bool {
         ArgSchemaKind::Out => true,
         ArgSchemaKind::Optional(args)
         | ArgSchemaKind::AllOf(args)
-        | ArgSchemaKind::Repeat { args, .. } => args.iter().any(contains_out),
+        | ArgSchemaKind::Repeat { args, .. }
+        | ArgSchemaKind::Grammar { args, .. } => args.iter().any(contains_out),
         ArgSchemaKind::Choice(choices) => choices.iter().flatten().any(contains_out),
         _ => false,
     }
@@ -151,6 +152,7 @@ enum MatchRole<'a> {
     Path(crate::parser::semanticer::model::PathKind),
     Name(crate::parser::semanticer::schema::NameRole),
     Keyword(&'a str),
+    CompletedPrefix,
     Target(
         crate::parser::semanticer::schema::NameRole,
         &'a TargetTrails,
@@ -286,7 +288,10 @@ pub(crate) fn path_arguments(
     result
 }
 fn prefix_mode(role: MatchRole<'_>) -> bool {
-    matches!(role, MatchRole::Name(_) | MatchRole::Keyword(_))
+    matches!(
+        role,
+        MatchRole::Name(_) | MatchRole::Keyword(_) | MatchRole::CompletedPrefix
+    )
 }
 fn contains_role(kind: &ArgSchemaKind, role: MatchRole) -> bool {
     if matches_role(kind, role) {
@@ -295,7 +300,8 @@ fn contains_role(kind: &ArgSchemaKind, role: MatchRole) -> bool {
     match kind {
         ArgSchemaKind::Optional(args)
         | ArgSchemaKind::AllOf(args)
-        | ArgSchemaKind::Repeat { args, .. } => args.iter().any(|kind| contains_role(kind, role)),
+        | ArgSchemaKind::Repeat { args, .. }
+        | ArgSchemaKind::Grammar { args, .. } => args.iter().any(|kind| contains_role(kind, role)),
         ArgSchemaKind::Choice(choices) => choices
             .iter()
             .flatten()
@@ -335,7 +341,8 @@ fn contains_variable(kind: &ArgSchemaKind) -> bool {
         ArgSchemaKind::Variable => true,
         ArgSchemaKind::Optional(args)
         | ArgSchemaKind::AllOf(args)
-        | ArgSchemaKind::Repeat { args, .. } => args.iter().any(contains_variable),
+        | ArgSchemaKind::Repeat { args, .. }
+        | ArgSchemaKind::Grammar { args, .. } => args.iter().any(contains_variable),
         ArgSchemaKind::Choice(choices) => choices.iter().flatten().any(contains_variable),
         _ => false,
     }
@@ -420,6 +427,7 @@ fn step(
     role: MatchRole,
 ) -> Vec<OutputMatch> {
     match kind {
+        ArgSchemaKind::Grammar { args, .. } => group(args, state, arguments, role),
         ArgSchemaKind::Optional(args) => {
             let mut states = group(args, state.clone(), arguments, role);
             states.push(state);
@@ -477,12 +485,13 @@ fn step(
                     let mut next = state;
                     next.indices.push(next.position);
                     next.position += 1;
-                    next.keywords += 1;
+                    // Only completed arguments rank branches; a proposed keyword is not evidence.
                     return vec![next];
                 }
             }
             let current = arguments.get(state.position).copied();
-            let active = prefix_mode(role) && state.position + 1 == arguments.len();
+            let active =
+                matches!(role, MatchRole::Name(_)) && state.position + 1 == arguments.len();
             if !current
                 .is_some_and(|argument| argument == word || active && word.starts_with(argument))
             {
@@ -522,6 +531,7 @@ fn step(
                     | MatchRole::Name(_)
                     | MatchRole::Target(_, _)
                     | MatchRole::Keyword(_) => contains_role(kind, role),
+                    MatchRole::CompletedPrefix => false,
                 })
             {
                 record(&mut next, role);
@@ -533,7 +543,17 @@ fn step(
             if state.position >= arguments.len() {
                 return Vec::new();
             }
+            if matches!(kind, ArgSchemaKind::CacheEntry)
+                && !arguments[state.position]
+                    .strip_prefix("CACHE{")
+                    .is_some_and(|tail| tail.ends_with('}') && tail.len() > 1)
+            {
+                return Vec::new();
+            }
             let mut next = state;
+            if matches!(kind, ArgSchemaKind::CacheEntry) {
+                next.keywords += 1;
+            }
             if matches_role(kind, role)
                 && (!prefix_mode(role) || next.position + 1 == arguments.len())
             {

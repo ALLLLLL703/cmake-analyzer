@@ -20,6 +20,12 @@ enable = true
 [completion]
 reserve_arg = false
 
+[format]
+on_save = true
+indent_width = 2
+insert_spaces = true
+line_width = 100
+
 [modules]
 enable = true
 search_paths = ["cmake/modules", "/opt/company/cmake"]
@@ -59,6 +65,26 @@ explicit `false` overrides a lower-layer `true`. Shared files require all owners
 to enable it. Successful explicit reload applies the setting to subsequent
 completion queries; invalid types/unknown fields reject reload without changing
 live settings. There is no configuration watcher. See [completion](../server/completion/README.md).
+
+## Formatting
+
+`format.on_save` defaults to true and controls pre-save LSP edits for the current
+open document. Set false to disable automatic save formatting; explicit formatting
+and the project CLI remain available. No save request formats other project files
+or writes the editor's disk file directly. Clients need willSaveWaitUntil support
+or a pre-save hook.
+
+`indent_width` defaults to 2 columns and accepts 1–255. `insert_spaces` defaults to
+true; false selects one tab per indentation level, with indent_width as its tab
+stop width. `line_width` defaults to 100 positive Unicode scalar columns; atomic
+literals are never split to enforce it. These settings apply to CLI/pre-save
+formatting. Explicit LSP formatting uses client tabSize/insertSpaces instead of
+configured indentation and keeps the configured line width.
+
+All fields follow user/project/explicit precedence and omission-preserving reload.
+Invalid values/types/fields reject reload without changing live settings. Shared
+owners must agree on effective style; any owner disabling on_save suppresses save
+edits. See [formatting and client setup](../format/README.md).
 
 ## Process limits
 

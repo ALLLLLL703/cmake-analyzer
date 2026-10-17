@@ -14,6 +14,14 @@ pub(super) struct DocumentSymbolsPatch {
 }
 #[derive(Default, Deserialize)]
 #[serde(default, deny_unknown_fields)]
+pub(super) struct FormatPatch {
+    pub on_save: Option<bool>,
+    pub insert_spaces: Option<bool>,
+    pub indent_width: Option<std::num::NonZeroU8>,
+    pub line_width: Option<NonZeroUsize>,
+}
+#[derive(Default, Deserialize)]
+#[serde(default, deny_unknown_fields)]
 pub(super) struct CompletionPatch {
     pub reserve_arg: Option<bool>,
 }
@@ -51,6 +59,7 @@ pub(super) enum RuntimeModePatch {
 #[derive(Default, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub(super) struct SettingsPatch {
+    pub format: FormatPatch,
     pub completion: CompletionPatch,
     pub limits: Option<LimitsPatch>,
     pub diagnostics: DiagnosticsPatch,

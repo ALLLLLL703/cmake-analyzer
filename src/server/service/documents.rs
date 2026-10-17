@@ -133,7 +133,8 @@ impl Service {
                     self.ensure_owners(&path).await?;
                 }
             }
-            ServiceCommand::Symbols { .. }
+            ServiceCommand::Format { .. }
+            | ServiceCommand::Symbols { .. }
             | ServiceCommand::Hover { .. }
             | ServiceCommand::Navigate { .. }
             | ServiceCommand::Complete { .. }

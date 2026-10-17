@@ -98,11 +98,12 @@ impl CmakeAnalyzer {
                         open_close: Some(true),
                         change: Some(TextDocumentSyncKind(2)),
                         will_save: None,
-                        will_save_wait_until: None,
+                        will_save_wait_until: Some(true),
                         save: Some(TextDocumentSyncSaveOptions::Supported(true)),
                     },
                 )),
                 document_symbol_provider: Some(OneOf::Left(true)),
+                document_formatting_provider: Some(OneOf::Left(true)),
                 hover_provider: Some(HoverProviderCapability::Simple(true)),
                 completion_provider: Some(CompletionOptions {
                     resolve_provider: Some(false),

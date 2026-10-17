@@ -154,8 +154,8 @@ async fn scalar_values_opaque_tails_comments_expansions_and_native_shadows_do_no
     for (index, source) in [
         "add_library(Core source.c ST|)",
         "file(READ input OUT OFFSET HE|)",
-        "file(GLOB OUT CON|)",
-        "project(Core LA|)",
+        "file(GLOB OUT CONFIGURE_DEPENDS RELATIVE CON|)",
+        "project(Core DESCRIPTION LA|)",
         "unknown_function(PU|)",
         "add_library(Core st|)",
         "message(\"text ST|\")",

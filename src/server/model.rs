@@ -82,6 +82,13 @@ pub(super) enum ServiceCommand {
         request: super::action::model::ActionRequest,
         reply: oneshot::Sender<ServerResult<Option<Data>>>,
     },
+    Format {
+        uri: Uri,
+        options: Option<FormattingOptions>,
+        save: bool,
+        cancel: Cancellation,
+        reply: oneshot::Sender<ServerResult<Option<Vec<TextEdit>>>>,
+    },
     Complete {
         uri: Uri,
         position: Position,

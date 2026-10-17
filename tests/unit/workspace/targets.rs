@@ -108,7 +108,8 @@ async fn global_aliases_are_visible_above_their_declaration_directory_and_duplic
         .iter()
         .find(|target| target.name.text == "CoreAlias")
         .unwrap();
-    assert_eq!(alias.references.len(), 2);
+    // The now-modeled TARGET predicate also references the alias guarded below it.
+    assert_eq!(alias.references.len(), 3);
     assert_eq!(
         targets
             .iter()

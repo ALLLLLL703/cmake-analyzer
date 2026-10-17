@@ -124,8 +124,8 @@ impl ILanguageServer for CmakeAnalyzer {
         context: Context,
         params: WillSaveTextDocumentParams,
     ) -> ServerResult<Option<Vec<TextEdit>>> {
-        let _ = (context, params);
-        Err(ServerError::unsupported())
+        self.query_formatting(context, params.text_document.uri, None, true)
+            .await
     }
     async fn code_action_request(
         &self,
@@ -179,8 +179,13 @@ impl ILanguageServer for CmakeAnalyzer {
         context: Context,
         params: DocumentFormattingParams,
     ) -> ServerResult<Option<Vec<TextEdit>>> {
-        let _ = (context, params);
-        Err(ServerError::unsupported())
+        self.query_formatting(
+            context,
+            params.text_document.uri,
+            Some(params.options),
+            false,
+        )
+        .await
     }
     async fn range_formatting(
         &self,

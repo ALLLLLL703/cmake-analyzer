@@ -31,7 +31,11 @@ fn literal_keywords_follow_prefix_operations_required_slots_and_opaque_tails() {
         ("file", vec!["READ", "input", "OUT", "OFFSET", ""], vec![]),
         ("file", vec!["COPY", "input", "D"], vec!["DESTINATION"]),
         ("file", vec!["READ", ""], vec![]),
-        ("file", vec!["GLOB", "OUT", "CON"], vec![]),
+        (
+            "file",
+            vec!["GLOB", "OUT", "CON"],
+            vec!["CONFIGURE_DEPENDS"],
+        ),
         ("file", vec!["unmodeled", ""], vec![]),
         ("list", vec!["AP"], vec!["APPEND"]),
         ("list", vec!["APPEND", "VAR", "R"], vec![]),
@@ -50,7 +54,10 @@ fn literal_keywords_follow_prefix_operations_required_slots_and_opaque_tails() {
         completion_keywords(&schemas["include_guard"], &["G"], || false),
         vec!["GLOBAL"]
     );
-    assert!(completion_keywords(&schemas["cmake_language"], &["CA"], || false).is_empty());
+    assert_eq!(
+        completion_keywords(&schemas["cmake_language"], &["CA"], || false),
+        vec!["CALL"]
+    );
 }
 fn schema(kinds: Vec<K>) -> CommandSchema {
     CommandSchema {

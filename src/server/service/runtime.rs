@@ -70,7 +70,8 @@ async fn drive(
             };
             if matches!(
                 current,
-                ServiceCommand::Symbols { .. }
+                ServiceCommand::Format { .. }
+                    | ServiceCommand::Symbols { .. }
                     | ServiceCommand::Hover { .. }
                     | ServiceCommand::Navigate { .. }
                     | ServiceCommand::Complete { .. }
@@ -99,6 +100,16 @@ async fn drive(
             return;
         }
         match query {
+            Some(ServiceCommand::Format {
+                uri,
+                options,
+                save,
+                cancel,
+                reply,
+            }) if !reply.is_closed() => {
+                let result = service.format_document(uri, options, save, cancel).await;
+                let _ = reply.send(result);
+            }
             Some(ServiceCommand::Complete {
                 uri,
                 position,

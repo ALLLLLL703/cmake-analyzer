@@ -54,6 +54,24 @@ impl Default for DocumentSymbols {
         Self { enable: true }
     }
 }
+#[derive(Clone, Debug)]
+pub struct Format {
+    pub on_save: bool,
+    pub insert_spaces: bool,
+    pub indent_width: usize,
+    pub line_width: usize,
+}
+impl Default for Format {
+    fn default() -> Self {
+        let options = crate::format::Options::default();
+        Self {
+            on_save: true,
+            insert_spaces: options.insert_spaces,
+            indent_width: options.indent_width,
+            line_width: options.line_width,
+        }
+    }
+}
 #[derive(Clone, Debug, Default)]
 pub struct Completion {
     pub reserve_arg: bool,
@@ -112,6 +130,7 @@ impl Default for Runtime {
 
 #[derive(Clone, Debug, Default)]
 pub struct Settings {
+    pub format: Format,
     pub completion: Completion,
     pub diagnostics: Diagnostics,
     pub document_symbols: DocumentSymbols,

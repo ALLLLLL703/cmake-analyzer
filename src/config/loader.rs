@@ -167,6 +167,18 @@ fn parse_layer(text: &str, path: &Path, cwd: &Path) -> io::Result<Layer> {
     Ok(Layer { patch, commands })
 }
 fn apply(settings: &mut Settings, layer: &Layer) {
+    if let Some(value) = layer.patch.format.on_save {
+        settings.format.on_save = value;
+    }
+    if let Some(value) = layer.patch.format.insert_spaces {
+        settings.format.insert_spaces = value;
+    }
+    if let Some(value) = layer.patch.format.indent_width {
+        settings.format.indent_width = usize::from(value.get());
+    }
+    if let Some(value) = layer.patch.format.line_width {
+        settings.format.line_width = value.get();
+    }
     if let Some(value) = layer.patch.completion.reserve_arg {
         settings.completion.reserve_arg = value;
     }

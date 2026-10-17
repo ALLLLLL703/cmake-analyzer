@@ -13,6 +13,8 @@ mod configuration;
 mod discovery;
 #[path = "server/documentation.rs"]
 mod documentation;
+#[path = "server/formatting.rs"]
+mod formatting;
 #[path = "server/hovers.rs"]
 mod hovers;
 #[path = "server/lifecycle.rs"]

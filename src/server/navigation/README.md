@@ -59,9 +59,10 @@ includeDeclaration, and keeps names inside ${...} on variable navigation. Cached
 references are rebound after incremental edits; graph aggregation never mutates shared
 snapshots. Shared-owner results remain qualified and deduplicate physical locations.
 
-These are static structural candidates, not proof of execution. Dynamic target names,
-generator-expression target uses, condition-language TARGET predicates, IMPORTED_GLOBAL
-promotion, and runtime caller-directory evaluation are not modeled.
+Top-level condition TARGET operands also use the schema target role. These are static
+structural candidates, not proof of execution. Dynamic target names, generator-expression
+target uses, general recursive condition parsing, IMPORTED_GLOBAL promotion, and runtime
+caller-directory evaluation are not modeled.
 
 ## Dependency paths
 

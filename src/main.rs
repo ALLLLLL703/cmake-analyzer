@@ -1,4 +1,4 @@
-// AI-authored executable assembly; stdout belongs exclusively to LSP.
+// AI-authored executable assembly; LSP transport keeps stdout protocol-only.
 use clap::Parser;
 use cmake_analyzer::cli::{self, Args};
 use lspally::server::ExitStatus;

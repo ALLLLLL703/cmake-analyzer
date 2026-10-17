@@ -1,4 +1,11 @@
 // AI-generated implementation.
+mod all_build;
+mod all_lookup;
+mod all_process;
+mod all_transform;
+mod find_package;
+mod keyword_schemas;
+mod project;
 use super::{ArgSchema, ArgSchemaKind, CommandSchema, CommandSchemaFrom};
 use crate::parser::semanticer::model::{BuiltinCommand, CommandKind};
 use ArgSchemaKind::{
@@ -570,24 +577,25 @@ pub(crate) fn schema_layers(
     if !matches!((major, minor), (3, 0..=31) | (4, 0..=4)) {
         return None;
     }
-    Some(
-        BASE_SCHEMAS
-            .iter()
-            .chain(
-                CMAKE_3_ADDITIONS
-                    .iter()
-                    .filter_map(move |(introduced, schema)| {
-                        ((3, *introduced) <= (major, minor)).then_some(schema)
-                    }),
-            )
-            .chain(
-                CMAKE_4_ADDITIONS
-                    .iter()
-                    .filter_map(move |(introduced, schema)| {
-                        ((4, *introduced) <= (major, minor)).then_some(schema)
-                    }),
-            ),
-    )
+    Some(native_layers(major, minor).chain(keyword_schemas::get(major, minor).iter()))
+}
+fn native_layers(major: u32, minor: u32) -> impl Iterator<Item = &'static CommandSchema> {
+    BASE_SCHEMAS
+        .iter()
+        .chain(
+            CMAKE_3_ADDITIONS
+                .iter()
+                .filter_map(move |(introduced, schema)| {
+                    ((3, *introduced) <= (major, minor)).then_some(schema)
+                }),
+        )
+        .chain(
+            CMAKE_4_ADDITIONS
+                .iter()
+                .filter_map(move |(introduced, schema)| {
+                    ((4, *introduced) <= (major, minor)).then_some(schema)
+                }),
+        )
 }
 pub fn schemas_for_version(major: u32, minor: u32) -> Option<HashMap<String, CommandSchema>> {
     let layers = schema_layers(major, minor)?;

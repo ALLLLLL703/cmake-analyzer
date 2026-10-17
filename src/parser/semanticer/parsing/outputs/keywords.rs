@@ -9,7 +9,8 @@ fn words<'a>(kind: &'a ArgSchemaKind, result: &mut BTreeSet<&'a str>) {
         }
         ArgSchemaKind::Optional(args)
         | ArgSchemaKind::Repeat { args, .. }
-        | ArgSchemaKind::AllOf(args) => {
+        | ArgSchemaKind::AllOf(args)
+        | ArgSchemaKind::Grammar { args, .. } => {
             for arg in args {
                 words(arg, result);
             }
@@ -33,11 +34,27 @@ pub(crate) fn completion_keywords<'a>(
         return Vec::new();
     };
     let position = arguments.len() - 1;
+    if stop() {
+        return Vec::new();
+    }
+    let roots: Vec<_> = schema.args.iter().map(|argument| &argument.kind).collect();
+    // Preserve the strongest completed branch even when a proposed word cannot enter its next slot.
+    let Some(specificity) = sequence(
+        &roots,
+        vec![OutputMatch::default()],
+        &arguments[..position],
+        MatchRole::CompletedPrefix,
+    )
+    .into_iter()
+    .filter(|state| state.position == position)
+    .map(|state| state.keywords)
+    .max() else {
+        return Vec::new();
+    };
     let mut catalog = BTreeSet::new();
     for argument in &schema.args {
         words(&argument.kind, &mut catalog);
     }
-    let roots: Vec<_> = schema.args.iter().map(|argument| &argument.kind).collect();
     let mut result = Vec::new();
     for word in catalog.into_iter().filter(|word| word.starts_with(*prefix)) {
         if stop() {
@@ -51,8 +68,11 @@ pub(crate) fn completion_keywords<'a>(
             MatchRole::Keyword(word),
         )
         .iter()
-        .any(|state| state.position == arguments.len() && state.indices.contains(&position))
-        {
+        .any(|state| {
+            state.position == arguments.len()
+                && state.keywords >= specificity
+                && state.indices.contains(&position)
+        }) {
             result.push(word);
         }
     }

@@ -1,4 +1,6 @@
 // AI-generated command completion integration tests.
+#[path = "completion/catalog.rs"]
+mod catalog;
 #[path = "completion/keywords.rs"]
 mod keywords;
 #[path = "completion/names.rs"]

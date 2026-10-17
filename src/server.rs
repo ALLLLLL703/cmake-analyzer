@@ -3,6 +3,7 @@ mod action;
 pub mod completion;
 mod configuration;
 mod diagnostics;
+mod formatting;
 mod handlers;
 pub mod hovers;
 pub mod model;

@@ -211,7 +211,10 @@ impl<'a> Lexer<'a> {
             match bytes[length] {
                 b'\\' => {
                     length += 1;
-                    if length < bytes.len() {
+                    if bytes.get(length) == Some(&b'\r') && bytes.get(length + 1) == Some(&b'\n') {
+                        // CRLF is one escaped newline, just like LF.
+                        length += 2;
+                    } else if length < bytes.len() {
                         length += 1;
                     }
                 }

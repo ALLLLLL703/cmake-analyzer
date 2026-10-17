@@ -41,6 +41,8 @@ pub enum ArgSchemaKind {
     Variable,
     List,
     Out,
+    /// A literal CACHE{name} token, not an ordinary variable output.
+    CacheEntry,
     Unset,
     BindValue {
         var_place: usize,
@@ -63,6 +65,11 @@ pub enum ArgSchemaKind {
     Expression,
     Value,
     Keyword(String),
+    /// Structured multi-token operand rendered as one argument placeholder in snippets.
+    Grammar {
+        placeholder: String,
+        args: Vec<ArgSchemaKind>,
+    },
     Optional(Vec<ArgSchemaKind>),
     Repeat {
         args: Vec<ArgSchemaKind>,

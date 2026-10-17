@@ -43,12 +43,17 @@ Explicit schema Keyword nodes use Keyword icons and case-sensitive prefix matchi
 including canonical lowercase words such as debug. outputs/keywords.rs borrows and
 sorts schema words, then probes reachable active slots through the shared matcher.
 Optional/Repeat/Choice/AllOf branches and unfinished required suffixes are supported;
-probes use the canonical replacement rather than the partial spelling. Completed
-arguments constrain candidates; required scalar slots and Unmodeled tails do not
-invent keywords. Matching stops cooperatively when the request is cancelled.
+probes use the canonical replacement rather than the partial spelling. An exact
+completed-prefix pass preserves the strongest branch before probing; proposed words
+do not add specificity. Required scalar/enum slots cannot inherit options from weaker
+opaque-repeat interpretations. Matching stops cooperatively when the request is cancelled.
 
-Examples include add_library(Core ST...) -> STATIC, target_link_libraries(App PU...)
--> PUBLIC, and file(READ input OUT HE...) -> HEX. Version selection and native user
+Versioned structured schemas now cover the registered builtin catalogue, including
+find_package(Qt RE...) -> REQUIRED and project(Core LA...) -> LANGUAGES, plus file,
+string, list, install/export, process/CTest, property, control, and modern meta-command
+branches. See [schema coverage and limits](../../parser/semanticer/schema/README.md).
+Other examples include add_library(Core ST...) -> STATIC, target_link_libraries(App
+PU...) -> PUBLIC, and file(READ input OUT HE...) -> HEX. Version selection and native user
 shadows follow the same rules as name roles. Explicit external schemas retain their
 own keywords. Variable references offer only variable names, not keywords.
 

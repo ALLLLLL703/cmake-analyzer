@@ -6,6 +6,8 @@
 cmake-analyzer --stdio
 cmake-analyzer --root /path/to/project --root /path/to/another/project
 cmake-analyzer --unix-socket /tmp/cmake-analyzer.sock
+cmake-analyzer format /path/to/project
+cmake-analyzer format /path/to/project --check
 ```
 
 Stdio is the default. Unix sockets accept one client per process and use the same Content-Length framing, not raw newline-delimited JSON. The socket path must not already exist. Normal completion removes the bound path; forced process termination can leave it behind.
@@ -14,7 +16,7 @@ TOML settings merge user, project, and explicit `--config PATH.toml` files. Modu
 
 ## Reading order
 
-- `src/cli/{args,transport}.rs`: clap arguments, stream creation, Wrapper startup, and worker cleanup.
+- `src/cli/{args,transport}.rs`: clap arguments, stream creation, Wrapper startup, and worker cleanup. `cli/format_project/` performs static dependency-graph project formatting and atomic file replacement.
 - `roots.rs`: explicit root validation and nearest-ancestor CMakeLists.txt discovery. No recursive child scan.
 - `model.rs`: CmakeAnalyzer, service state, and message/analysis models.
 - `handlers.rs`: initialization, capabilities, and initial roots. CLI roots override initial client folders; otherwise workspaceFolders, rootUri/rootPath, then startup directory are used.
@@ -22,6 +24,7 @@ TOML settings merge user, project, and explicit `--config PATH.toml` files. Modu
 - `service/runtime.rs`: one bounded actor owns all Workspaces, batches ready edits, and treats hover/navigation/symbol/reload queries as ordering barriers.
 - `hovers/`: builtin command/variable help and source-comment documentation alongside per-reference possible values; `hovers.rs` dispatches requests. See [hover documentation](hovers/README.md).
 - `navigation/`: definition and references over qualified reference indexes; see [navigation](navigation/README.md).
+- `formatting.rs`: document formatting and configurable default pre-save edits through the ordered actor; shared pure formatter under `src/format/`.
 - `paths/`: schema input-path candidates, asynchronous metadata checks, and cached warnings. Output/generated/unknown paths are excluded.
 - `service/automatic.rs`: globally authorized on-save scheduling through the action entrypoints, coalesced per entry/profile.
 - `configuration.rs`, `service/configuration.rs`: custom reload RPC and staged configuration/Workspace replacement.
@@ -53,6 +56,15 @@ The service has a 64-message queue and a 64-edit batch policy, both named static
 - Document symbols use SemanticedBuffer root symbols and direct block membership. Nested blocks assemble bottom-up; clients without hierarchical support receive SymbolInformation records. No builtin-variable catalogue dump or CMake execution is involved.
 
 Interpreter commands select -S/-B project or -P script entries without executing during parsing. Configured scripts can subsequently run through their manual action. Default module paths include entry-relative cmake, cmake/Modules, and cmake/modules. Builtin modules are discovered once per configuration generation from PATH CMake's executable location and version for standard installation layouts; explicit configuration takes precedence. Detection never runs configure or project scripts. Pull diagnostics and filesystem watching are not implemented. Other LSP features remain unadvertised.
+
+## Formatting
+
+`cmake-analyzer format [PROJECT]` formats only resolved project-local dependency
+visits; --check reports changes without writing. The LSP supports document formatting
+and willSaveWaitUntil with format.on_save enabled by default. Save edits affect only
+the current editor document; no didSave disk rewrite or project execution occurs.
+Client pre-save support or a save hook is required. See [formatting](../format/README.md)
+for layout, configuration, excluded files, limits, and a Neovim fallback hook.
 
 ## Completion
 
