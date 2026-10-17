@@ -1,4 +1,5 @@
 // AI-authored symbols from semantic root symbols and direct block membership.
+mod workspace;
 use super::{model::SymbolInput, text::TextIndex};
 use crate::{model::TextSpan, parser::semanticer::model::*};
 use lspally::server::model::*;

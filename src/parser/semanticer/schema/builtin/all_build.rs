@@ -1,7 +1,7 @@
 // AI-generated implementation.
 use super::{
     ArgSchemaKind, Boolean, Command, Expression, InputDirectory, InputFile, InputPath, Integer,
-    Language, Out, OutputPath, PackageName, Path, Target, TargetExe, TargetLib, TestName, Text,
+    LanguageType, Out, OutputPath, PackageName, Path, Target, TargetExe, TargetLib, TestName, Text,
     Url, Value, Variable, Version, choice, flags, k, many, one_of, optional, options, some,
 };
 
@@ -138,7 +138,7 @@ fn custom_options(version: VersionPair, output: bool, target: bool) -> Vec<Vec<A
             vec![k("MAIN_DEPENDENCY"), InputFile],
             vec![
                 k("IMPLICIT_DEPENDS"),
-                some(choice(vec![vec![Language, InputFile]])),
+                some(choice(vec![vec![LanguageType, InputFile]])),
             ],
             vec![k("APPEND")],
         ]);
@@ -790,7 +790,7 @@ fn compile_options(version: VersionPair, running: bool, modern: bool) -> Vec<Vec
         args.push(vec![k("LINK_OPTIONS"), many(Value)]);
     }
     if version >= (3, 29) {
-        args.push(vec![k("LINKER_LANGUAGE"), Language]);
+        args.push(vec![k("LINKER_LANGUAGE"), LanguageType]);
     }
     if version >= (3, 8) {
         let mut languages = vec!["C", "CXX", "CUDA"];

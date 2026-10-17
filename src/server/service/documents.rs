@@ -134,6 +134,7 @@ impl Service {
                 }
             }
             ServiceCommand::Format { .. }
+            | ServiceCommand::WorkspaceSymbols { .. }
             | ServiceCommand::Symbols { .. }
             | ServiceCommand::Hover { .. }
             | ServiceCommand::Navigate { .. }

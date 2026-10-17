@@ -10,7 +10,7 @@ use super::{ArgSchema, ArgSchemaKind, CommandSchema, CommandSchemaFrom};
 use crate::parser::semanticer::model::{BuiltinCommand, CommandKind};
 use ArgSchemaKind::{
     Action, BindValue, Boolean, Command, Condition, Expression, InputDirectory, InputFile,
-    InputPath, Integer, Language, List, ModulePath, Number, Out, OutputPath, PackageName, Path,
+    InputPath, Integer, LanguageType, List, ModulePath, Number, Out, OutputPath, PackageName, Path,
     Property, String as Text, Target, TargetExe, TargetLib, TestName, Unmodeled, Unset, Url, Value,
     Variable, Version,
 };
@@ -164,7 +164,7 @@ pub static BASE_SCHEMAS: LazyLock<Vec<CommandSchema>> = LazyLock::new(|| {
         ("elseif", vec![some(Condition)]),
         (
             "enable_language",
-            vec![some(Language), optional(vec![k("OPTIONAL")])],
+            vec![some(LanguageType), optional(vec![k("OPTIONAL")])],
         ),
         ("enable_testing", vec![]),
         ("endforeach", vec![optional(vec![Variable])]),

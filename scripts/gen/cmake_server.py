@@ -25,6 +25,7 @@ handlers = {
     "goto_definition": "self.query_definition(context, params).await",
     "references": "self.query_references(context, params).await",
     "document_symbol_request": "self.query_symbols(context, params.text_document.uri).await",
+    "workspace_symbol_request": "let _ = params; self.query_workspace_symbols(context).await",
     "code_action_request": "self.code_actions(context, params).await",
     "execute_command": "self.execute_action(context, params).await",
     "cancel": "let _ = (context, params); Ok(())",

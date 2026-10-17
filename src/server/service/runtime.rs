@@ -71,6 +71,7 @@ async fn drive(
             if matches!(
                 current,
                 ServiceCommand::Format { .. }
+                    | ServiceCommand::WorkspaceSymbols { .. }
                     | ServiceCommand::Symbols { .. }
                     | ServiceCommand::Hover { .. }
                     | ServiceCommand::Navigate { .. }
@@ -137,6 +138,10 @@ async fn drive(
                 reply,
             }) if !reply.is_closed() => {
                 let result = service.variable_hover(uri, position, cancel).await;
+                let _ = reply.send(result);
+            }
+            Some(ServiceCommand::WorkspaceSymbols { cancel, reply }) if !reply.is_closed() => {
+                let result = service.workspace_symbols(cancel).await;
                 let _ = reply.send(result);
             }
             Some(ServiceCommand::Symbols { uri, reply }) if !reply.is_closed() => {

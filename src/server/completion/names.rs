@@ -160,7 +160,7 @@ fn targets<'a>(
                     | TargetKind::InterfaceLibrary
                     | TargetKind::UnknownLibrary
             ),
-            NameRole::Variable => false,
+            NameRole::Variable | NameRole::LanguageType => false,
         }) {
             add(out, &target.name.text, prefix, Kind::EnumMember);
         }
@@ -197,7 +197,20 @@ pub(super) fn collect(
         if accepted.contains(&NameRole::Variable) {
             variables(input, argument.command, prefix, &mut out, cancel)?;
         }
-        if accepted.iter().any(|role| *role != NameRole::Variable) {
+        if accepted.contains(&NameRole::LanguageType) {
+            for language in crate::parser::semanticer::schema::languages::supported(
+                input.snapshot.semantics.version,
+            ) {
+                add(&mut out, language, prefix, Kind::EnumMember);
+            }
+            if argument.command.name.eq_ignore_ascii_case("project") {
+                add(&mut out, "NONE", prefix, Kind::EnumMember);
+            }
+        }
+        if accepted
+            .iter()
+            .any(|role| !matches!(role, NameRole::Variable | NameRole::LanguageType))
+        {
             targets(
                 input,
                 &input.snapshot,

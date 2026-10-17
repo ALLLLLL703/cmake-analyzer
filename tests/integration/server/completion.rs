@@ -3,6 +3,8 @@
 mod catalog;
 #[path = "completion/keywords.rs"]
 mod keywords;
+#[path = "completion/languages.rs"]
+mod languages;
 #[path = "completion/names.rs"]
 mod names;
 use super::session::{HEADER, Project, Session, uri};

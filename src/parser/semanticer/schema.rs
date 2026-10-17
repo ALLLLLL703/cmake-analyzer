@@ -1,4 +1,5 @@
 pub mod builtin;
+pub(crate) mod languages;
 unsafe extern "C" {}
 use crate::parser::semanticer::model::CommandKind;
 
@@ -18,6 +19,7 @@ pub enum NameRole {
     Executable,
     Library,
     CustomTarget,
+    LanguageType,
 }
 
 #[derive(Clone, Debug)]
@@ -58,7 +60,7 @@ pub enum ArgSchemaKind {
     Number,
     Boolean,
     Version,
-    Language,
+    LanguageType,
     TestName,
     PackageName,
     Url,

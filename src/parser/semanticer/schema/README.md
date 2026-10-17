@@ -4,7 +4,7 @@
 
 `builtin.rs` registers the 132 command names present in the CMake 4.4 command
 catalogue, including legacy commands, with version additions for CMake 3.0–3.31
-and 4.0–4.4. Scalar operands remain roles, not enumerated completion guesses.
+and 4.0–4.4. Scalar operands remain roles; LanguageType has an explicit supported-language catalogue.
 
 The final version layer supplies structured keyword grammars:
 
@@ -42,6 +42,16 @@ slot from a stronger completed branch. Only the current payload is replaced.
 Search hints, runtime dependency directories, installed paths, and mixed system
 header tokens are not universally required existing source inputs. Their generic
 Path/Value roles avoid speculative missing-file diagnostics.
+
+## Language names
+
+LanguageType marks project LANGUAGES/legacy language lists, enable_language, and
+existing compile/link language operands. It remains an open scalar for custom
+language modules; it does not reject unrecognized language names. languages.rs
+supplies C, CXX, CSharp, CUDA, OBJC, OBJCXX, Fortran, HIP, ISPC, Swift, ASM,
+ASM_NASM, ASM_MARMASM, ASM_MASM, ASM_POASM, and ASM-ATT, filtered by introduction
+version. Project language slots also suggest NONE. Completion uses plain-text
+EnumMember items and retains argument delimiters; it never probes compilers.
 
 ## Evidence and limits
 

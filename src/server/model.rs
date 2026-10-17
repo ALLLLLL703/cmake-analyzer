@@ -109,6 +109,10 @@ pub(super) enum ServiceCommand {
         position: Position,
         reply: oneshot::Sender<ServerResult<Option<Hover>>>,
     },
+    WorkspaceSymbols {
+        cancel: Cancellation,
+        reply: oneshot::Sender<ServerResult<Option<WorkspaceSymbolResponse>>>,
+    },
     Symbols {
         uri: Uri,
         reply: oneshot::Sender<ServerResult<Option<DocumentSymbolResponse>>>,

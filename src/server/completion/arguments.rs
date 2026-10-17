@@ -80,7 +80,7 @@ fn append(arg: &Arg, out: &mut Vec<Parameter>) -> bool {
         Arg::Number => "number",
         Arg::Boolean => "boolean",
         Arg::Version => "version",
-        Arg::Language => "language",
+        Arg::LanguageType => "language",
         Arg::TestName => "test_name",
         Arg::PackageName => "package",
         Arg::Url => "url",

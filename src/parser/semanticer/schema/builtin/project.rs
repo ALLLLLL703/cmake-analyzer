@@ -1,9 +1,9 @@
-use super::{ArgSchemaKind, Language, Text, Version, choice, k, many, options};
+use super::{ArgSchemaKind, LanguageType, Text, Version, choice, k, many, options};
 
 pub(super) fn args(version: (u32, u32)) -> Vec<ArgSchemaKind> {
     let mut named = vec![
         vec![k("VERSION"), Version],
-        vec![k("LANGUAGES"), many(Language)],
+        vec![k("LANGUAGES"), many(LanguageType)],
     ];
     if version >= (3, 9) {
         named.push(vec![k("DESCRIPTION"), Text]);
@@ -21,6 +21,6 @@ pub(super) fn args(version: (u32, u32)) -> Vec<ArgSchemaKind> {
     // Legacy positional languages and named options are separate signatures.
     vec![
         Text,
-        choice(vec![vec![many(Language)], vec![options(named)]]),
+        choice(vec![vec![many(LanguageType)], vec![options(named)]]),
     ]
 }

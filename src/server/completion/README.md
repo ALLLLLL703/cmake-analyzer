@@ -2,6 +2,11 @@
 
 # Completion
 
+LanguageType schema slots complete all builtin CMake language names available at
+the document version, plus NONE for project. These are plain-text EnumMember
+items, including in quoted/bracket arguments. No compiler detection or project
+execution is performed. See [language catalogue](../../parser/semanticer/schema/README.md#language-names).
+
 - `query.rs` dispatches command-name or argument-name completion on a joined worker.
 - `inputs.rs` captures owner snapshots/indexes and unique dependency snapshots,
   retaining directory-scope ancestry for inherited names.

@@ -170,6 +170,7 @@ pub(crate) fn completion_roles(
     let roots: Vec<_> = schema.args.iter().map(|argument| &argument.kind).collect();
     [
         NameRole::Variable,
+        NameRole::LanguageType,
         NameRole::Target,
         NameRole::Executable,
         NameRole::Library,
@@ -373,6 +374,7 @@ fn matches_role(kind: &ArgSchemaKind, role: MatchRole) -> bool {
                 | (ArgSchemaKind::TargetExe, NameRole::Executable)
                 | (ArgSchemaKind::TargetLib, NameRole::Library)
                 | (ArgSchemaKind::CustomTarget(_), NameRole::CustomTarget)
+                | (ArgSchemaKind::LanguageType, NameRole::LanguageType)
         );
     }
     matches!(

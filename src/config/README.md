@@ -42,7 +42,7 @@ When modules are enabled and `builtin_directory` is omitted, the server locates 
 
 Discovery results, including failures, are cached once per ConfigStore and retried after explicit configuration reload. Explicit builtin overrides and disabled modules skip discovery. Disabling `modules` disables both custom/default search directories and builtin lookup; literal include paths and subdirectories are still analyzed.
 
-Disabling diagnostics clears previously published reports and suppresses new ones. Disabling document symbols returns null; capability advertisement remains stable for multiple projects and later reloads. Shared files receive diagnostics from enabled owners.
+Disabling diagnostics clears previously published reports and suppresses new ones. Disabling document symbols returns null for document queries and omits that owner's buffers from workspace/symbol; capability advertisement remains stable for multiple projects and later reloads. Shared files receive diagnostics from enabled owners.
 
 ## Completion
 
@@ -58,7 +58,8 @@ Variable names are completed in schema Variable/Out/Unset positions and ordinary
 ${...} references. Target names are completed in schema target positions with
 EnumMember icons. Explicit schema keywords are completed in reachable argument
 positions with Keyword icons. These features do not require reserve_arg; arbitrary
-values, scalar enums, and paths are not completed.
+values, other scalar enums, and paths are not completed. LanguageType slots offer
+version-supported CMake languages as EnumMember items, plus NONE in project.
 
 The field follows user/project/explicit precedence. Missing values inherit; an
 explicit `false` overrides a lower-layer `true`. Shared files require all owners

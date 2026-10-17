@@ -33,3 +33,5 @@ mod references;
 mod scripts;
 #[path = "server/session.rs"]
 mod session;
+#[path = "server/workspace_symbols.rs"]
+mod workspace_symbols;

@@ -101,8 +101,8 @@ impl ILanguageServer for CmakeAnalyzer {
         context: Context,
         params: WorkspaceSymbolParams,
     ) -> ServerResult<Option<WorkspaceSymbolResponse>> {
-        let _ = (context, params);
-        Err(ServerError::unsupported())
+        let _ = params;
+        self.query_workspace_symbols(context).await
     }
     async fn workspace_symbol_resolve(
         &self,

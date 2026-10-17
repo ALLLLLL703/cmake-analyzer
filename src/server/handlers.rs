@@ -103,6 +103,7 @@ impl CmakeAnalyzer {
                     },
                 )),
                 document_symbol_provider: Some(OneOf::Left(true)),
+                workspace_symbol_provider: Some(OneOf::Left(true)),
                 document_formatting_provider: Some(OneOf::Left(true)),
                 hover_provider: Some(HoverProviderCapability::Simple(true)),
                 completion_provider: Some(CompletionOptions {
