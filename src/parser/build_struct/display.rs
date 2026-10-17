@@ -1,3 +1,6 @@
+//! Stream escaped, optionally colored build facts and borrowed diagnostics to a formatter.
+//! Formatting does not load dependencies, evaluate CMake, or write files directly.
+// Contains AI-generated documentation additions.
 // AI-generated implementation.
 use super::model::{Argument, BuildDisplay, BuildEffect, BuildFact, BuildStruct};
 use crate::{
@@ -7,20 +10,47 @@ use crate::{
 use owo_colors::{OwoColorize, Style};
 use std::fmt::{self, Display, Formatter};
 
+/// Report title style; ignored when color output is disabled.
 const TITLE: Style = Style::new().bright_magenta().bold();
+/// Section heading style; ignored when color output is disabled.
 const HEADING: Style = Style::new().bright_blue().bold();
+/// File, command and visit identifiers style; ignored when color output is disabled.
 const ID: Style = Style::new().bright_cyan();
+/// Declared names style; ignored when color output is disabled.
 const NAME: Style = Style::new().cyan().bold();
+/// Literal metadata values style; ignored when color output is disabled.
 const VALUE: Style = Style::new().bright_green();
+/// Source paths and block labels style; ignored when color output is disabled.
 const PATH: Style = Style::new().blue().bold();
+/// Possible variable output names style; ignored when color output is disabled.
 const WRITE: Style = Style::new().green().bold();
+/// Scope and deferred-context labels style; ignored when color output is disabled.
 const SCOPE: Style = Style::new().magenta();
+/// Unresolved or conditional metadata style; ignored when color output is disabled.
 const UNKNOWN: Style = Style::new().bright_yellow().bold();
+/// Error labels style; ignored when color output is disabled.
 const ERROR: Style = Style::new().bright_red().bold();
+/// Coordinates and tree guides style; ignored when color output is disabled.
 const MUTED: Style = Style::new().bright_black();
+/// Successful or local-state labels style; ignored when color output is disabled.
 const GOOD: Style = Style::new().green();
 
 impl BuildStruct {
+    /// Create a borrowed build-fact display adapter with no attached semantic diagnostics. Does not
+    /// render, copy facts or perform I/O.
+    ///
+    /// # Arguments
+    /// - `self` `[in]`: Build output borrowed for the adapter lifetime.
+    /// - `colored` `[in]`: Whether later formatting uses terminal styles.
+    ///
+    /// # Returns
+    /// BuildDisplay borrowing this output; use Display formatting to render it.
+    ///
+    /// # Examples
+    /// ```
+    /// use cmake_analyzer::parser::build_struct::model::BuildStruct;
+    /// fn render(build: &BuildStruct) -> String { build.display(false).to_string() }
+    /// ```
     pub fn display(&self, colored: bool) -> BuildDisplay<'_> {
         BuildDisplay {
             buffer: self,
@@ -32,14 +62,71 @@ impl BuildStruct {
 }
 impl<'a> BuildDisplay<'a> {
     /// Include errors from earlier passes without copying them.
+    /// Attach borrowed semantic errors to the display adapter without copying them or writing
+    /// output.
+    ///
+    /// # Arguments
+    /// - `self` `[in,out]` : Consumed adapter; its semantic error slice is overwritten in the
+    ///   returned value.
+    /// - `diagnostics` `[in]`: Borrowed errors that outlive the adapter.
+    ///
+    /// # Returns
+    /// Updated adapter retaining the same build facts and color setting.
+    ///
+    /// # Examples
+    /// ```
+    /// use cmake_analyzer::parser::build_struct::model::BuildStruct;
+    /// use cmake_analyzer::{model::Spanned, parser::semanticer::model::SemanticError};
+    /// fn render(build: &BuildStruct, errors: &[Spanned<SemanticError>]) -> String {
+    ///     build.display(false).with_semantic_diagnostics(errors).to_string()
+    /// }
+    /// ```
     pub fn with_semantic_diagnostics(mut self, diagnostics: &'a [Spanned<SemanticError>]) -> Self {
         self.semantic_diagnostics = diagnostics;
         self
     }
+    /// Attach borrowed semantic warnings without copying them or writing output.
+    ///
+    /// # Arguments
+    /// - `self` `[in,out]` : Consumed adapter; its warning slice is overwritten in the returned
+    ///   value.
+    /// - `warnings` `[in]`: Borrowed warnings that outlive the adapter.
+    ///
+    /// # Returns
+    /// Updated adapter retaining build facts, errors and color setting.
+    ///
+    /// # Examples
+    /// ```
+    /// use cmake_analyzer::parser::build_struct::model::BuildStruct;
+    /// use cmake_analyzer::{model::Spanned, parser::semanticer::model::SemanticWarn};
+    /// fn render(build: &BuildStruct, warnings: &[Spanned<SemanticWarn>]) -> String {
+    ///     build.display(false).with_semantic_warnings(warnings).to_string()
+    /// }
+    /// ```
     pub fn with_semantic_warnings(mut self, warnings: &'a [Spanned<SemanticWarn>]) -> Self {
         self.semantic_warnings = warnings;
         self
     }
+    /// Append a styled or plain value according to the view's color flag. No filesystem/network
+    /// access.
+    ///
+    /// # Arguments
+    /// - `self` `[in]`: Borrowed build view and style policy.
+    /// - `f` `[in,out]`: Formatter; appends rendered text without clearing earlier output.
+    /// - `style` `[in]`: Terminal style applied only when colored is true.
+    /// - `text` `[in]`: Display value written once to the formatter.
+    ///
+    /// # Returns
+    /// Ok(()) after appending the requested text; Err(fmt::Error) on formatter failure.
+    ///
+    /// # Errors
+    /// Returns fmt::Error if writing any fragment to the formatter fails; already appended output
+    /// is not rolled back.
+    ///
+    /// # Examples
+    /// ```text
+    /// view.paint(f, MUTED, "scope")?;
+    /// ```
     fn paint(&self, f: &mut Formatter<'_>, style: Style, text: impl Display) -> fmt::Result {
         if self.colored {
             write!(f, "{}", text.style(style))
@@ -47,6 +134,25 @@ impl<'a> BuildDisplay<'a> {
             write!(f, "{text}")
         }
     }
+    /// Append one-based row/column plus the original half-open byte range. No analysis mutation or
+    /// I/O beyond formatter output.
+    ///
+    /// # Arguments
+    /// - `self` `[in]`: Borrowed build view and style policy.
+    /// - `f` `[in,out]`: Formatter; appends rendered text without clearing earlier output.
+    /// - `span` `[in]`: Source coordinates; row/column are converted from zero-based for display.
+    ///
+    /// # Returns
+    /// Ok(()) after appending the requested text; Err(fmt::Error) on formatter failure.
+    ///
+    /// # Errors
+    /// Returns fmt::Error if writing any fragment to the formatter fails; already appended output
+    /// is not rolled back.
+    ///
+    /// # Examples
+    /// ```text
+    /// view.span(f, fact.source.span)?;
+    /// ```
     fn span(&self, f: &mut Formatter<'_>, span: TextSpan) -> fmt::Result {
         self.paint(
             f,
@@ -60,6 +166,26 @@ impl<'a> BuildDisplay<'a> {
             ),
         )
     }
+    /// Append debug-escaped operand text and mark nonliteral values unresolved. No source mutation
+    /// or filesystem access.
+    ///
+    /// # Arguments
+    /// - `self` `[in]`: Borrowed build view and style policy.
+    /// - `f` `[in,out]`: Formatter; appends rendered text without clearing earlier output.
+    /// - `arg` `[in]`: Operand whose text is escaped to prevent terminal-control injection.
+    /// - `style` `[in]`: Requested literal style; unresolved operands use warning style instead.
+    ///
+    /// # Returns
+    /// Ok(()) after appending the requested text; Err(fmt::Error) on formatter failure.
+    ///
+    /// # Errors
+    /// Returns fmt::Error if writing any fragment to the formatter fails; already appended output
+    /// is not rolled back.
+    ///
+    /// # Examples
+    /// ```text
+    /// view.argument(f, &target.name, NAME)?;
+    /// ```
     fn argument(&self, f: &mut Formatter<'_>, arg: &Argument, style: Style) -> fmt::Result {
         // Escape source text so a filename or expression cannot inject terminal controls.
         self.paint(
@@ -73,6 +199,27 @@ impl<'a> BuildDisplay<'a> {
         }
         Ok(())
     }
+    /// Append a labeled bracketed argument list and newline. No analysis mutation or filesystem
+    /// access.
+    ///
+    /// # Arguments
+    /// - `self` `[in]`: Borrowed build view and style policy.
+    /// - `f` `[in,out]`: Formatter; appends rendered text without clearing earlier output.
+    /// - `label` `[in]`: Trusted field label.
+    /// - `args` `[in]`: Ordered operands formatted with escaping and unresolved markers.
+    /// - `style` `[in]`: Style requested for literal operands.
+    ///
+    /// # Returns
+    /// Ok(()) after appending the requested text; Err(fmt::Error) on formatter failure.
+    ///
+    /// # Errors
+    /// Returns fmt::Error if writing any fragment to the formatter fails; already appended output
+    /// is not rolled back.
+    ///
+    /// # Examples
+    /// ```text
+    /// view.arguments(f, "sources", &target.sources, PATH)?;
+    /// ```
     fn arguments(
         &self,
         f: &mut Formatter<'_>,
@@ -89,6 +236,26 @@ impl<'a> BuildDisplay<'a> {
         }
         writeln!(f, "]")
     }
+    /// Append a labeled optional operand and newline, or nothing for None. No analysis mutation or
+    /// filesystem access.
+    ///
+    /// # Arguments
+    /// - `self` `[in]`: Borrowed build view and style policy.
+    /// - `f` `[in,out]`: Formatter; appends rendered text without clearing earlier output.
+    /// - `label` `[in]`: Trusted field label.
+    /// - `value` `[in]`: Optional operand to print with the value style.
+    ///
+    /// # Returns
+    /// Ok(()) after appending the requested text; Err(fmt::Error) on formatter failure.
+    ///
+    /// # Errors
+    /// Returns fmt::Error if writing any fragment to the formatter fails; already appended output
+    /// is not rolled back.
+    ///
+    /// # Examples
+    /// ```text
+    /// view.field(f, "version", project.version.as_ref())?;
+    /// ```
     fn field(&self, f: &mut Formatter<'_>, label: &str, value: Option<&Argument>) -> fmt::Result {
         if let Some(value) = value {
             write!(f, "    {label}=")?;
@@ -97,6 +264,46 @@ impl<'a> BuildDisplay<'a> {
         }
         Ok(())
     }
+    /// Append one fact's source context and effect-specific payload. Escapes source text; never
+    /// loads dependencies or changes analysis.
+    ///
+    /// # Arguments
+    /// - `self` `[in]`: Borrowed build view and style policy.
+    /// - `f` `[in,out]`: Formatter; appends rendered text without clearing earlier output.
+    /// - `fact` `[in]`: Ordered structural fact with qualified command origin.
+    ///
+    /// # Returns
+    /// Ok(()) after appending the requested text; Err(fmt::Error) on formatter failure.
+    ///
+    /// # Errors
+    /// Returns fmt::Error if writing any fragment to the formatter fails; already appended output
+    /// is not rolled back.
+    ///
+    /// # Algorithm
+    /// Print command/scope/block IDs, conditional/deferred markers and source coordinates, then
+    /// dispatch by effect kind to typed metadata, raw operands or possible writes. Nested source
+    /// sections/file sets retain order.
+    ///
+    /// # Flow
+    /// ```text
+    /// [fact origin]
+    ///        |
+    ///  [IDs/context/span]
+    ///        |
+    ///   <effect kind>
+    ///    /       |        \
+    ///  project  target   sources/links/dependency/writes
+    ///    |       |                 |
+    ///  [fields] [flags/args] [ordered groups/operands]
+    ///    +-------+-----------------+
+    ///                 |
+    ///           [formatter output]
+    /// ```
+    ///
+    /// # Examples
+    /// ```text
+    /// view.fact(f, &build.facts[0])?;
+    /// ```
     fn fact(&self, f: &mut Formatter<'_>, fact: &BuildFact) -> fmt::Result {
         let label = match fact.effect {
             BuildEffect::Project(_) => "PROJECT",
@@ -233,6 +440,41 @@ impl<'a> BuildDisplay<'a> {
         }
         Ok(())
     }
+    /// Append semantic errors, build errors and semantic warnings with a total count. Prints a
+    /// clean marker when empty; no analysis mutation or filesystem access.
+    ///
+    /// # Arguments
+    /// - `self` `[in]`: Borrowed build view and style policy.
+    /// - `f` `[in,out]`: Formatter; appends rendered text without clearing earlier output.
+    ///
+    /// # Returns
+    /// Ok(()) after appending the requested text; Err(fmt::Error) on formatter failure.
+    ///
+    /// # Errors
+    /// Returns fmt::Error if writing any fragment to the formatter fails; already appended output
+    /// is not rolled back.
+    ///
+    /// # Algorithm
+    /// Count borrowed and build diagnostics, write each category in order with spans and escaped
+    /// messages, then emit No diagnostics only if all categories are empty.
+    ///
+    /// # Flow
+    /// ```text
+    /// [semantic errors]   [build errors]   [warnings]
+    ///         |                  |             |
+    ///         +-----> [total + heading] <------+
+    ///                           |
+    ///                   [render categories]
+    ///                           |
+    ///                      <empty?>
+    ///                       /    \
+    ///                  clean     done
+    /// ```
+    ///
+    /// # Examples
+    /// ```text
+    /// view.diagnostics(f)?;
+    /// ```
     fn diagnostics(&self, f: &mut Formatter<'_>) -> fmt::Result {
         writeln!(f)?;
         self.paint(f, HEADING, "DIAGNOSTICS")?;
@@ -283,6 +525,43 @@ impl<'a> BuildDisplay<'a> {
     }
 }
 impl Display for BuildDisplay<'_> {
+    /// Append the full build-structure report through Display. Does not execute CMake, load
+    /// dependencies or change facts.
+    ///
+    /// # Arguments
+    /// - `self` `[in]`: Borrowed build view and style policy.
+    /// - `f` `[in,out]`: Formatter; appends rendered text without clearing earlier output.
+    ///
+    /// # Returns
+    /// Ok(()) after appending the requested text; Err(fmt::Error) on formatter failure.
+    ///
+    /// # Errors
+    /// Returns fmt::Error if writing any fragment to the formatter fails; already appended output
+    /// is not rolled back.
+    ///
+    /// # Algorithm
+    /// Write identity and static-analysis notice, then ordered facts and all attached diagnostics.
+    ///
+    /// # Flow
+    /// ```text
+    /// [header + revision]
+    ///           |
+    ///       [fact loop] <---+
+    ///           |          |
+    ///        <more?> -- yes-+
+    ///           | no
+    ///      [diagnostics]
+    ///           |
+    ///        [return]
+    /// ```
+    ///
+    /// # Examples
+    /// ```
+    /// use cmake_analyzer::parser::build_struct::model::BuildStruct;
+    /// fn report(build: &BuildStruct) -> String {
+    ///     format!("{}", build.display(false))
+    /// }
+    /// ```
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         self.paint(f, TITLE, "CMAKE BUILD STRUCTURE")?;
         writeln!(

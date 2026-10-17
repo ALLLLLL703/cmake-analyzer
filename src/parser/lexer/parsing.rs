@@ -1,13 +1,67 @@
+//! Full and resumable lexical scanning; advances bytes, never edits source or performs I/O.
+//! Complete token spans include wrappers. Malformed literals stop scanning; unexpected
+//! closing parentheses produce errors and scanning continues.
+//! Contains AI-generated documentation additions.
+
 use crate::{
     model::{Spanned, TextSpan},
     parser::lexer::model::{LexContent, LexError, LexResult, LexedBuffer, Lexer, RawBuffer},
 };
 
 impl<'a> Lexer<'a> {
+    /// Own a raw buffer wrapper without scanning or other side effects.
+    ///
+    /// # Arguments
+    /// - `buffer` `[in]`: borrowed source and initial cursor moved into the scanner.
+    ///
+    /// # Returns
+    /// Lexer at the supplied byte offset.
+    ///
+    /// # Examples
+    /// ```
+    /// use cmake_analyzer::parser::lexer::model::{Lexer, RawBuffer};
+    /// let lexer = Lexer::new(RawBuffer::new("f()"));
+    /// assert_eq!(lexer.buffer.cursor.offset, 0);
+    /// ```
     pub fn new(buffer: RawBuffer<'a>) -> Self {
         Lexer { buffer }
     }
 
+    /// Scan from the current cursor to EOF, advancing only that cursor; no I/O.
+    /// Each call starts parenthesis depth at zero; use a fresh lexer for a full parse.
+    ///
+    /// # Arguments
+    /// - `self` `[in,out]`: scanner whose byte cursor advances through complete units or to EOF.
+    ///
+    /// # Returns
+    /// New tokens, comments, errors and checkpoints for this scan. Normal EOF emits no EOF error; unterminated literals stop scanning.
+    ///
+    /// # Algorithm
+    /// Initialize the scalar position at the cursor and delegate to the resumable scanner
+    /// with a predicate that never stops early.
+    ///
+    /// # Flow
+    /// ```text
+    ///  [current cursor]     [depth = 0]
+    ///          +----------------+
+    ///                   |
+    ///              [parse_until]
+    ///                   |
+    ///              <terminated?>
+    ///               /         \
+    ///         [normal EOF]   [literal error]
+    ///               \         /
+    ///                [return output]
+    /// ```
+    ///
+    /// # Examples
+    /// ```
+    /// use cmake_analyzer::parser::lexer::model::{Lexer, RawBuffer};
+    /// let mut lexer = Lexer::new(RawBuffer::new(r#"f("中") # note"#));
+    /// let result = lexer.parse();
+    /// assert_eq!(result.lex.len(), 4);
+    /// assert_eq!(result.comments.len(), 1);
+    /// ```
     pub fn parse(&mut self) -> LexedBuffer {
         let state = super::model::LexState {
             position: self.buffer.current_byte_to_span(),
@@ -17,6 +71,52 @@ impl<'a> Lexer<'a> {
     }
 
     // AI-authored resumable scan. Stop only between whole tokens/comments, before whitespace.
+    /// Resume whole-unit scanning, advancing the byte cursor and invoking stop at boundaries; no I/O.
+    ///
+    /// # Arguments
+    /// - `self` `[in,out]`: scanner whose cursor must agree with state.position; advanced in place.
+    /// - `state` `[in]`: starting point, parenthesis depth and most recent opener.
+    /// - `stop` `[in,out]`: callback invoked before whitespace at every checkpoint; may mutate captured alignment state.
+    ///
+    /// # Returns
+    /// New chunk of tokens/comments/errors and chunk-relative checkpoint counts. A true stop suppresses final unmatched-opening diagnostics.
+    ///
+    /// # Algorithm
+    /// Record checkpoint state before whitespace. Skip ASCII whitespace, then consume one
+    /// whole token/comment and advance LF/scalar coordinates. Parentheses in payloads do
+    /// not affect depth. Unexpected closes emit errors without tokens; malformed literals
+    /// emit errors and stop. Only a non-stopped scan reports outstanding opening depth.
+    ///
+    /// # Flow
+    /// ```text
+    ///            [checkpoint]
+    ///                  |
+    ///              <stop?> ---- yes ---> [return chunk]
+    ///                  | no
+    ///           [skip whitespace]
+    ///                  |
+    ///              <unit?>
+    ///         /        |         \
+    ///    [EOF/error] [comment]  [token]
+    ///         |        |         |
+    ///  [final depth]   |    [update nesting]
+    ///         |        +----+----+
+    ///      [return]         |
+    ///                 [advance position]
+    ///                       |
+    ///                       +----> [checkpoint]
+    /// ```
+    ///
+    /// # Panics
+    /// An inconsistent starting state or manually corrupted byte cursor can make source
+    /// slices invalid. Supply whole-unit checkpoints from the same source prefix.
+    ///
+    /// # Examples
+    /// ```text
+    /// let state = LexState::default();
+    /// let mut lexer = Lexer::new(RawBuffer::new("f()"));
+    /// let chunk = lexer.parse_until(state, |s| s.position.start_byte >= 3);
+    /// ```
     pub(super) fn parse_until(
         &mut self,
         state: super::model::LexState,
@@ -160,7 +260,25 @@ impl<'a> Lexer<'a> {
         result
     }
 
-    /// Offset will stay at the first non-whitespace character.
+    /// Skip ASCII space, tab, LF and CR, leaving the cursor at the first other byte; no I/O.
+    ///
+    /// # Arguments
+    /// - `self` `[in,out]`: scanner whose byte offset increases by skipped bytes; source unchanged.
+    ///
+    /// # Returns
+    /// `Ok(())` even at normal EOF; `Err` if the current suffix cannot be sliced.
+    ///
+    /// # Errors
+    /// Returns `ReachTheEof` without changing the cursor for an invalid slice boundary or
+    /// offset beyond the source; a valid empty suffix succeeds.
+    ///
+    /// # Examples
+    /// ```
+    /// use cmake_analyzer::parser::lexer::model::{Lexer, RawBuffer};
+    /// let mut lexer = Lexer::new(RawBuffer::new(" \t中"));
+    /// lexer.skip_whitespace().unwrap();
+    /// assert_eq!(lexer.buffer.cursor.offset, 2);
+    /// ```
     pub fn skip_whitespace(&mut self) -> LexResult<()> {
         let rest = self
             .buffer
@@ -175,7 +293,24 @@ impl<'a> Lexer<'a> {
         Ok(())
     }
 
-    /// Returns the current character before advancing.
+    /// Read and consume one Unicode scalar value; no I/O or source mutation.
+    ///
+    /// # Arguments
+    /// - `self` `[in,out]`: scanner whose offset advances by the character UTF-8 width on success.
+    ///
+    /// # Returns
+    /// `Ok(character)` read before advancing; `Err` when no character is available.
+    ///
+    /// # Errors
+    /// Returns located `ReachTheEof` at EOF or an invalid cursor boundary; the offset is unchanged on error.
+    ///
+    /// # Examples
+    /// ```
+    /// use cmake_analyzer::parser::lexer::model::{Lexer, RawBuffer};
+    /// let mut lexer = Lexer::new(RawBuffer::new("中"));
+    /// assert_eq!(lexer.advance().unwrap(), '中');
+    /// assert_eq!(lexer.buffer.cursor.offset, 3);
+    /// ```
     pub fn advance(&mut self) -> LexResult<char> {
         let ch = self
             .buffer
@@ -187,6 +322,24 @@ impl<'a> Lexer<'a> {
         Ok(ch)
     }
 
+    /// Read the next Unicode scalar without advancing; no side effects.
+    ///
+    /// # Arguments
+    /// - `self` `[in]`: scanner whose source/cursor are inspected; unchanged.
+    ///
+    /// # Returns
+    /// `Ok(character)` at a readable boundary; `Err` when no character is available.
+    ///
+    /// # Errors
+    /// Returns located `ReachTheEof` for EOF, an invalid UTF-8 boundary or an out-of-range cursor.
+    ///
+    /// # Examples
+    /// ```
+    /// use cmake_analyzer::parser::lexer::model::{Lexer, RawBuffer};
+    /// let lexer = Lexer::new(RawBuffer::new("中"));
+    /// assert_eq!(lexer.peek().unwrap(), '中');
+    /// assert_eq!(lexer.buffer.cursor.offset, 0);
+    /// ```
     pub fn peek(&self) -> LexResult<char> {
         self.buffer
             .text
@@ -195,7 +348,48 @@ impl<'a> Lexer<'a> {
             .ok_or_else(|| self.eof_error())
     }
 
-    /// Does not skip the identifier's first character.
+    /// Consume an unquoted word starting at the current byte, retaining escapes and embedded quotes; no I/O.
+    ///
+    /// # Arguments
+    /// - `self` `[in,out]`: scanner advanced to the first unescaped separator outside embedded quotes; source unchanged.
+    ///
+    /// # Returns
+    /// `Ok(())` after scanning (possibly zero bytes at a separator); `Err` if no nonempty valid suffix exists.
+    ///
+    /// # Errors
+    /// Returns `ReachTheEof` without advancing for EOF or an invalid suffix. Unclosed
+    /// legacy embedded quotes are not diagnosed by this helper.
+    ///
+    /// # Algorithm
+    /// Scan bytes, toggling embedded-quote state. Backslash shields the next byte, or
+    /// both CRLF bytes. Stop at whitespace, parentheses or `#` only outside quotes.
+    /// Normal callers start at a non-separator UTF-8 boundary.
+    ///
+    /// # Flow
+    /// ```text
+    ///              [next byte]
+    ///                   |
+    ///               <kind?>
+    ///       /           |            \
+    ///  [backslash]    [quote]     [separator]
+    ///       |           |             |
+    ///  [skip escape] [toggle quoted] <outside?>
+    ///       |           |         /       \
+    ///       +-----------+       yes       no
+    ///                   |        |        |
+    ///                   |     [stop]      |
+    ///                   +<----------------+
+    ///                   |
+    ///               [next byte]
+    /// ```
+    ///
+    /// # Examples
+    /// ```
+    /// use cmake_analyzer::parser::lexer::model::{Lexer, RawBuffer};
+    /// let mut lexer = Lexer::new(RawBuffer::new("hello world"));
+    /// lexer.advance_identifier().unwrap();
+    /// assert_eq!(lexer.buffer.cursor.offset, 5);
+    /// ```
     pub fn advance_identifier(&mut self) -> LexResult<()> {
         let rest = self
             .buffer
@@ -230,7 +424,48 @@ impl<'a> Lexer<'a> {
         Ok(())
     }
 
-    /// Called after consuming the opening quote; consumes the closing quote.
+    /// Consume quoted content after its opening quote, including the closing quote; no I/O.
+    ///
+    /// # Arguments
+    /// - `self` `[in,out]`: scanner positioned after an opening quote; advances past close or to EOF.
+    ///
+    /// # Returns
+    /// `Ok(())` after the closing quote; `Err` with opening-to-EOF span if not closed.
+    ///
+    /// # Errors
+    /// Invalid suffix returns `ReachTheEof` without advancing. Missing closing quote
+    /// returns `UnclosedStringLiteral` after setting the cursor to source EOF.
+    ///
+    /// # Algorithm
+    /// Walk scalars while tracking whether the previous backslash shields this character.
+    /// The first unescaped quote ends the unit; escapes remain in the source unchanged.
+    ///
+    /// # Flow
+    /// ```text
+    ///              [next scalar]
+    ///                    |
+    ///                <escaped?>
+    ///              yes /    \ no
+    ///        [clear flag]    <kind?>
+    ///              |        /      \
+    ///              |    [slash]  [quote]
+    ///              |        |      |
+    ///              |   [set flag] [return Ok]
+    ///              +--------+
+    ///                       |
+    ///                  [next scalar]
+    ///                       | EOF
+    ///              [cursor = EOF; Err]
+    /// ```
+    ///
+    /// # Examples
+    /// ```
+    /// use cmake_analyzer::parser::lexer::model::{Lexer, RawBuffer};
+    /// let mut lexer = Lexer::new(RawBuffer::new("\"hi\""));
+    /// lexer.advance().unwrap();
+    /// lexer.advance_string_literal().unwrap();
+    /// assert_eq!(lexer.buffer.cursor.offset, 4);
+    /// ```
     pub fn advance_string_literal(&mut self) -> LexResult<()> {
         let start = self.buffer.cursor.offset;
         let rest = self
@@ -265,6 +500,20 @@ impl<'a> Lexer<'a> {
         })
     }
 
+    /// Construct a point-located EOF signal without advancing; no side effects.
+    ///
+    /// # Arguments
+    /// - `self` `[in]`: source/cursor used to reconstruct the location; unchanged.
+    ///
+    /// # Returns
+    /// Spanned `ReachTheEof` at the current byte offset.
+    ///
+    /// # Examples
+    /// ```text
+    /// let lexer = Lexer::new(RawBuffer::new(""));
+    /// let error = lexer.eof_error();
+    /// assert!(matches!(error.content, LexError::ReachTheEof));
+    /// ```
     fn eof_error(&self) -> Spanned<LexError> {
         Spanned {
             content: LexError::ReachTheEof,
@@ -274,6 +523,21 @@ impl<'a> Lexer<'a> {
 }
 
 // Track only newly consumed text instead of rescanning the source for every token.
+/// Advance scalar coordinates over newly consumed text; no I/O.
+///
+/// # Arguments
+/// - `position` `[in,out]`: point overwritten with advanced byte offset, LF row and scalar column.
+/// - `consumed` `[in]`: exact newly consumed source slice; not retained or changed.
+///
+/// # Returns
+/// `()`; end_byte is overwritten to equal the new start_byte.
+///
+/// # Examples
+/// ```text
+/// let mut position = TextSpan::default();
+/// advance_position(&mut position, "中\nx");
+/// assert_eq!((position.start_byte, position.row, position.column), (5, 1, 1));
+/// ```
 fn advance_position(position: &mut TextSpan, consumed: &str) {
     for ch in consumed.chars() {
         if ch == '\n' {

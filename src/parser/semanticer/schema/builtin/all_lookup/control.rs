@@ -1,5 +1,47 @@
+//! Control expressions, loop slots, cache setting and miscellaneous lookup syntax.
+//! Trees allocate metadata only; they never evaluate conditions, iterate loops,
+//! load caches or execute projects. [`ArgSchemaKind::Grammar`] gives a structured
+//! condition one snippet placeholder while preserving internal target roles:
+//! `if(TARGET core)` can bind `core`, but nested parenthesized conditions are not
+//! recursively evaluated. Scalar predicates and flags remain structural intent.
+
 use super::super::*;
 
+/// Describe linear conditions with unary predicates, comparisons and logical continuations.
+/// Allocates grammar data only; no external side effects.
+///
+/// # Arguments
+/// - `v` `[in]`: requested CMake major/minor controlling syntax additions.
+///
+/// # Returns
+/// One Grammar root labeled condition, containing an atom and repeated binary/logical groups; no
+/// recursive parentheses evaluator.
+///
+/// # Algorithm
+/// Build versioned unary and binary vocabularies. An atom allows repeated NOT before a
+/// predicate/value; continuations allow comparison-plus-value or AND/OR plus another atom. Wrap
+/// the sequence for one snippet placeholder.
+///
+/// # Flow
+/// ```text
+///                            [condition inputs]
+///                                     |
+///                  +------------------+------------------+
+///                  v                                     v
+/// +--------------------------------+    +--------------------------------+
+/// |   NOT + predicate/value atom   |    |      Comparison / logical      |
+/// |                                |    |         continuations          |
+/// +----------------+---------------+    +----------------+---------------+
+///                  |                                     |
+///                  +------------------+------------------+
+///                                     v
+///                              [Owned grammar]
+/// ```
+///
+/// # Examples
+/// ```text
+/// let roots = condition((3, 29)); // TARGET has a Target role; IS_READABLE uses Path.
+/// ```
 fn condition(v: (u32, u32)) -> Vec<ArgSchemaKind> {
     let mut unary = vec![
         vec![one_of(&["COMMAND", "POLICY", "DEFINED"]), Text],
@@ -61,6 +103,39 @@ fn condition(v: (u32, u32)) -> Vec<ArgSchemaKind> {
         args: result,
     }]
 }
+/// Describe range, list/item and versioned zipped foreach iteration slots.
+/// Allocates grammar data only; no external side effects.
+///
+/// # Arguments
+/// - `v` `[in]`: requested CMake major/minor controlling syntax additions.
+///
+/// # Returns
+/// Choice of full loop-header sequences with Out iteration variables and Variable list names;
+/// ZIP_LISTS appears from 3.17.
+///
+/// # Algorithm
+/// Keep RANGE, IN LISTS/ITEMS and positional-value forms separate; append the multi-output
+/// ZIP_LISTS sequence only from 3.17.
+///
+/// # Flow
+/// ```text
+///                             [foreach inputs]
+///                                     |
+///                  +------------------+------------------+
+///                  v                                     v
+/// +--------------------------------+    +--------------------------------+
+/// |RANGE / IN LISTS/ITEMS / values |    |       Eligible ZIP_LISTS       |
+/// +----------------+---------------+    +----------------+---------------+
+///                  |                                     |
+///                  +------------------+------------------+
+///                                     v
+///                              [Owned grammar]
+/// ```
+///
+/// # Examples
+/// ```text
+/// let args = foreach((3, 17)); // Multiple Out slots may precede IN ZIP_LISTS.
+/// ```
 fn foreach(v: (u32, u32)) -> Vec<ArgSchemaKind> {
     let mut variants = vec![
         vec![
@@ -84,6 +159,39 @@ fn foreach(v: (u32, u32)) -> Vec<ArgSchemaKind> {
     }
     vec![choice(variants)]
 }
+/// Describe get_filename_component modes, program-argument output and cache flag.
+/// Allocates grammar data only; no external side effects.
+///
+/// # Arguments
+/// - `v` `[in]`: requested CMake major/minor controlling syntax additions.
+///
+/// # Returns
+/// Out, generic path, mode choice and optional CACHE, with versioned extension and base-directory
+/// options.
+///
+/// # Algorithm
+/// Choose component keywords by version; keep absolute/realpath optional BASE_DIR and PROGRAM
+/// optional PROGRAM_ARGS output in separate alternatives.
+///
+/// # Flow
+/// ```text
+///                             [filename inputs]
+///                                     |
+///                  +------------------+------------------+
+///                  v                                     v
+/// +--------------------------------+    +--------------------------------+
+/// |   Component / absolute modes   |    | PROGRAM + optional args output |
+/// +----------------+---------------+    +----------------+---------------+
+///                  |                                     |
+///                  +------------------+------------------+
+///                                     v
+///                              [Owned grammar]
+/// ```
+///
+/// # Examples
+/// ```text
+/// let args = filename((3, 14)); // LAST_EXT and NAME_WLE are literal modes.
+/// ```
 fn filename(v: (u32, u32)) -> Vec<ArgSchemaKind> {
     let mut modes = vec!["DIRECTORY", "NAME", "EXT", "NAME_WE", "PATH"];
     if v >= (3, 14) {
@@ -104,6 +212,39 @@ fn filename(v: (u32, u32)) -> Vec<ArgSchemaKind> {
         optional(vec![k("CACHE")]),
     ]
 }
+/// Describe legacy in-place and modern separate_arguments command-line splitting.
+/// Allocates grammar data only; no external side effects.
+///
+/// # Arguments
+/// - `v` `[in]`: requested CMake major/minor controlling syntax additions.
+///
+/// # Returns
+/// Choice of one Variable slot or Out/platform/[PROGRAM flags]/text; NATIVE_COMMAND and program
+/// controls are version-filtered.
+///
+/// # Algorithm
+/// Retain the single-variable legacy branch, then form modern output/mode/text with optional
+/// program flags from 3.19.
+///
+/// # Flow
+/// ```text
+///                             [separate inputs]
+///                                     |
+///                  +------------------+------------------+
+///                  v                                     v
+/// +--------------------------------+    +--------------------------------+
+/// |    Legacy variable operand     |    |     Modern platform + text     |
+/// +----------------+---------------+    +----------------+---------------+
+///                  |                                     |
+///                  +------------------+------------------+
+///                                     v
+///                              [Owned grammar]
+/// ```
+///
+/// # Examples
+/// ```text
+/// let args = separate((3, 19)); // Modern PROGRAM may include SEPARATE_ARGS.
+/// ```
 fn separate(v: (u32, u32)) -> Vec<ArgSchemaKind> {
     let mut modes = vec!["UNIX_COMMAND", "WINDOWS_COMMAND"];
     if v >= (3, 9) {
@@ -119,6 +260,19 @@ fn separate(v: (u32, u32)) -> Vec<ArgSchemaKind> {
     modern.push(Text);
     vec![choice(vec![vec![Variable], modern])]
 }
+/// Describe message severity/check modes and arbitrary text without emitting messages.
+/// Allocates grammar data only; no external side effects.
+///
+/// # Arguments
+/// - `v` `[in]`: requested CMake major/minor controlling syntax additions.
+///
+/// # Returns
+/// Optional literal mode followed by zero-or-more text operands; later modes are version-filtered.
+///
+/// # Examples
+/// ```text
+/// let args = message((3, 26)); // Includes CONFIGURE_LOG.
+/// ```
 fn message(v: (u32, u32)) -> Vec<ArgSchemaKind> {
     let mut modes = vec![
         "FATAL_ERROR",
@@ -139,6 +293,40 @@ fn message(v: (u32, u32)) -> Vec<ArgSchemaKind> {
     }
     vec![optional(vec![one_of(&modes)]), many(Text)]
 }
+/// Preserve ordinary set syntax and add the 4.2 cache-namespace alternative.
+/// Allocates grammar data and may initialize the shared base catalogue; no project commands or I/O.
+///
+/// # Arguments
+/// - `v` `[in]`: requested CMake major/minor controlling syntax additions.
+///
+/// # Returns
+/// Ordinary base roots before 4.2; afterward a choice including CacheEntry/options/VALUE/values,
+/// without an ordinary Out for the cache entry.
+///
+/// # Algorithm
+/// Clone the set seed from BASE_SCHEMAS, defaulting to empty if absent. From 4.2 add
+/// cache-namespace dispatch with TYPE/HELP/FORCE groups and required VALUE; ordinary assignment
+/// remains a separate branch.
+///
+/// # Flow
+/// ```text
+///                               [set inputs]
+///                                     |
+///                  +------------------+------------------+
+///                  v                                     v
+/// +--------------------------------+    +--------------------------------+
+/// |       Ordinary set roots       |    |    4.2 CACHE{name} + VALUE     |
+/// +----------------+---------------+    +----------------+---------------+
+///                  |                                     |
+///                  +------------------+------------------+
+///                                     v
+///                              [Owned grammar]
+/// ```
+///
+/// # Examples
+/// ```text
+/// let args = set((4, 2)); // CACHE{MODE} VALUE fast is not an ordinary output write.
+/// ```
 fn set(v: (u32, u32)) -> Vec<ArgSchemaKind> {
     let normal = BASE_SCHEMAS
         .iter()
@@ -171,6 +359,41 @@ fn set(v: (u32, u32)) -> Vec<ArgSchemaKind> {
         ],
     ])]
 }
+/// Collect include, loops, miscellaneous lookup and structured condition overrides.
+/// Allocates grammar data only; no external side effects.
+///
+/// # Arguments
+/// - `v` `[in]`: requested CMake major/minor controlling syntax additions.
+///
+/// # Returns
+/// Owned (name, roots) pairs including versioned source-group/block options and condition roots
+/// for opening/closing control commands.
+///
+/// # Algorithm
+/// Build source_group/include options and miscellaneous commands, append block from 3.25, then
+/// reuse condition roots for if/elseif/while and optional condition roots for
+/// else/endif/endwhile.
+///
+/// # Flow
+/// ```text
+///                             [schemas inputs]
+///                                     |
+///                  +------------------+------------------+
+///                  v                                     v
+/// +--------------------------------+    +--------------------------------+
+/// |Include / loop / lookup commands|    |   Block + condition command    |
+/// |                                |    |            families            |
+/// +----------------+---------------+    +----------------+---------------+
+///                  |                                     |
+///                  +------------------+------------------+
+///                                     v
+///                              [Owned grammar]
+/// ```
+///
+/// # Examples
+/// ```text
+/// let overrides = schemas((4, 4)); // Includes block diagnostics scope and include NO_DIAGNOSTIC_SCOPE.
+/// ```
 pub(super) fn schemas(v: (u32, u32)) -> Vec<(&'static str, Vec<ArgSchemaKind>)> {
     let mut source_group = vec![vec![
         Text,

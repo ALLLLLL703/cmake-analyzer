@@ -1,3 +1,8 @@
+//! Decode captured JSON command events and infer observed dependencies in memory.
+//! No file reads/writes or process launches; paths are normalized lexically. Frame
+//! depth describes execution nesting, not lexical variable scopes.
+//!
+//! Contains AI-generated documentation additions.
 // AI-authored bounded trace decoding. Frames identify execution nesting, not lexical scopes.
 use super::model::*;
 use crate::parser::build_struct::model::DependencyKind;
@@ -6,6 +11,60 @@ use std::{
     path::{Path, PathBuf},
     sync::Arc,
 };
+/// Decode JSON command lines and infer dependency targets without loading sources or executing anything.
+/// Ignores non-JSON and JSON without cmd; recognized command records must be well formed.
+/// Path normalization is lexical (cwd lookup only if supplied cwd is relative).
+///
+/// # Arguments
+/// - `run` `[in]`: identity attached unchanged to the trace.
+/// - `bytes` `[in]`: captured stderr including trace and ordinary diagnostics.
+/// - `cwd` `[in]`: child working/source directory used as initial path context.
+/// - `build` `[in]`: configure build context, or None for a script; only copied into the result.
+/// - `cancel` `[in]`: shared token checked once per captured input line.
+///
+/// # Returns
+/// `Ok(Trace)` contains ordered events and dependency observations; `Err` discards partial in-memory records.
+/// Resolved dependency candidates are not existence-checked.
+///
+/// # Errors
+/// Interrupted at a line checkpoint; InvalidData for malformed command fields, missing global_frame
+/// (JSON trace v1 minor 2 required), or no command events; path normalization may fail.
+///
+/// # Algorithm
+/// First decode records, assign event IDs and mark names shadowed after observed function/macro declarations.
+/// Then replay events with a source-directory stack keyed by execution depth. Infer dependency targets
+/// from the next deeper event; fall back only for conservative include/subdirectory paths. Packages
+/// and optional empty includes without evidence stay unresolved. Check cancellation during decoding,
+/// not during the second dependency-inference pass.
+///
+/// # Flow
+/// ```text
+///  [stderr lines] ---> <JSON command?> --no--> [skip]
+///                            | yes
+///                    [validate + assign EventId]
+///                            |
+///                 [declaration/name classification]
+///                            |
+///                     [ordered events]
+///                            |
+///                  [replay directory stack] <--------+
+///                            |                       |
+///                      <dependency?> --no------------+
+///                            | yes                   |
+///                  <next deeper event?>              |
+///                       /         \                 |
+///                  [target] [safe path fallback]      |
+///                       \         /                 |
+///                   [observed dependency] ------------+
+///                            | done
+///                          [Trace]
+/// ```
+///
+/// # Examples
+/// ```text
+/// let bytes = br#"{"cmd":"set","file":"/work/CMakeLists.txt","line":1,"args":["A","1"],"global_frame":1}"#;
+/// let trace = parse(RunId::new(1), bytes, std::path::Path::new("/work"), None, &lspally::server::model::Cancellation::default())?;
+/// ```
 pub(super) fn parse(
     run: RunId,
     bytes: &[u8],

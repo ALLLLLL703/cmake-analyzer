@@ -1,9 +1,27 @@
+//! Read source-bound function/macro comments across static owners and recorded runtime calls; no I/O.
+
 use super::{documentation, model::Target, render};
 use crate::{
     parser::semanticer::model::{ReferenceKind, ReferenceLocation},
     server::model::Service,
 };
 use std::{collections::HashSet, path::Path};
+/// Compare command and byte-name identity within an explicitly supplied owner-local file; no side
+/// effects.
+///
+/// # Arguments
+/// - `reference` `[in]`: candidate definition/call/reference.
+/// - `target` `[in]`: hover location; its file field is not compared directly.
+/// - `file` `[in]`: current snapshot FileId that the candidate must belong to.
+///
+/// # Returns
+/// True for equal command and span endpoints in file, regardless of reference role.
+///
+/// # Examples
+/// Local server context:
+/// ```text
+/// let matched = same(&reference, &target.location, snapshot.semantics.id);
+/// ```
 fn same(
     reference: &ReferenceLocation,
     target: &ReferenceLocation,
@@ -14,6 +32,44 @@ fn same(
         && reference.span.start_byte == target.span.start_byte
         && reference.span.end_byte == target.span.end_byte
 }
+/// Resolve source-bound function or macro documentation, suppressing native-help fallback for known user
+/// commands; no I/O.
+///
+/// # Arguments
+/// - `service` `[in]`: owner workspaces and installed runtime layers.
+/// - `path` `[in]`: document path for ownership and source-command matching.
+/// - `target` `[in]`: hover spelling and selected reference.
+/// - `limit` `[in]`: byte cap for appended comments or fallback heading.
+///
+/// # Returns
+/// Some(text) for a known source/runtime function even without comments; None when no bound user
+/// definition/call matches. A zero budget can yield Some(empty).
+///
+/// # Algorithm
+/// Match owner-local static function references and their definitions, then recorded function
+/// calls/declarations mapped to the same source command. Read bound comments from owning snapshots and
+/// deduplicate them. If known but undocumented, emit a Function heading.
+///
+/// # Flow
+/// ```text
+///  [Each owner]
+///       |
+///  [Static bound function]   [Mapped runtime call]
+///       |                            |
+///       +--------------+-------------+
+///                      v
+///              [Read/deduplicate comments]
+///                      |
+///               [Known definition?] --no--> [None]
+///                      | yes
+///               [Comments or heading]
+/// ```
+///
+/// # Examples
+/// Local server context (requires the initialized service and its client):
+/// ```text
+/// let user_doc = commands::content(service, &path, &target, 4096);
+/// ```
 pub(super) fn content(
     service: &Service,
     path: &Path,

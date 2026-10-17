@@ -1,4 +1,7 @@
 // AI-generated command completion integration tests.
+//! Command-name completion and shared argument-completion helpers.
+//! [`complete`] translates header-free fixture lines into protocol lines; child modules
+//! check argument roles. Tests use temporary projects and gracefully stop clients.
 #[path = "completion/catalog.rs"]
 mod catalog;
 #[path = "completion/imports.rs"]
@@ -13,6 +16,26 @@ use super::session::{HEADER, Project, Session, uri};
 use cmake_analyzer::server::ServerOptions;
 use serde_json::{Value, json};
 use std::path::Path;
+/// Request completion at a header-free fixture position and require a successful response.
+///
+/// # Arguments
+/// - `client` `[in,out]`: writes the request and consumes its reply; unrelated messages append
+///   to pending.
+/// - `path` `[in]`: document path converted to a fixture URI.
+/// - `line` `[in]`: zero-based body line; one is added for HEADER.
+/// - `character` `[in]`: zero-based UTF-16 column, passed unchanged.
+/// - `id` `[in]`: request/response correlation ID.
+///
+/// # Returns
+/// An owned clone of result, normally the completion-item array; envelope is consumed.
+///
+/// # Panics
+/// Panics if the response has error or the session transport fails.
+///
+/// # Examples
+/// ```text
+/// let items = complete(&mut client, &root, 0, 6, 10).await;
+/// ```
 async fn complete(
     client: &mut Session,
     path: &Path,
@@ -25,6 +48,22 @@ async fn complete(
     assert!(response.get("error").is_none(), "{response}");
     response["result"].clone()
 }
+/// Borrow the first completion item with an exact label; no side effects.
+///
+/// # Arguments
+/// - `items` `[in]`: JSON completion array borrowed for the returned reference lifetime.
+/// - `name` `[in]`: case-sensitive label to find.
+///
+/// # Returns
+/// A borrowed item from items; duplicates are not rejected.
+///
+/// # Panics
+/// Panics if items is not an array or the label is absent (prints the array).
+///
+/// # Examples
+/// ```text
+/// let library = item(&items, "add_library");
+/// ```
 fn item<'a>(items: &'a Value, name: &str) -> &'a Value {
     items
         .as_array()
@@ -33,6 +72,24 @@ fn item<'a>(items: &'a Value, name: &str) -> &'a Value {
         .find(|item| item["label"] == name)
         .unwrap_or_else(|| panic!("Missing {name}: {items}"))
 }
+/// Start a completion session rooted at a temporary project without user configuration.
+/// Starts a service/task; does not write project files.
+///
+/// # Arguments
+/// - `p` `[in]`: fixture directory copied into startup options.
+/// - `snippets` `[in]`: client snippet support, independent of reserve_arg configuration.
+///
+/// # Returns
+/// An initialized session with hierarchical symbols and plaintext hover.
+///
+/// # Panics
+/// Panics if session initialization fails.
+///
+/// # Examples
+/// ```text
+/// let client = start(&p, true).await;
+/// client.finish().await;
+/// ```
 async fn start(p: &Project, snippets: bool) -> Session {
     let mut options = ServerOptions::new(p.0.clone());
     options.config.user_file = None;
@@ -40,6 +97,44 @@ async fn start(p: &Project, snippets: bool) -> Session {
 }
 
 #[tokio::test]
+/// Check command ordering, kinds and replacement spans without completing strings or comments.
+/// Creates temporary files and an analyzer session; successful completion stops the session and
+/// removes fixtures.
+///
+/// # Arguments
+/// None.
+///
+/// # Returns
+/// `()` if every assertion passes; no output parameter.
+///
+/// # Panics
+/// Panics on any failed assertion or unwrapped fixture/transport/process failure.
+/// Cleanup is explicit on the success path; a panic may leave a fixture tree.
+///
+/// # Algorithm
+/// Include a helper and declare functions/macros; query blank, mixed-case and block sites.
+/// Require strictly sorted case-folded labels, builtin/user kinds, no cmake_diagnostic,
+/// name-only edits in existing calls, and empty string/comment results.
+///
+/// # Flow
+/// ```text
+/// [Temporary sources + settings]      [Expected: command kinds + edit ranges]
+///              |                              |
+///              v                              |
+/// [LSP scenario messages]                 |
+///              |                              |
+///              +-------------+----------------+
+///                            v
+///                  [Compare assertions]
+///                            |
+///                            v
+///             [Finish session + remove tree]
+/// ```
+///
+/// # Examples
+/// ```text
+/// outer_names_are_sorted_deduplicated_versioned_and_classified_without_touching_arguments(); // #[tokio::test] supplies the runtime
+/// ```
 async fn outer_names_are_sorted_deduplicated_versioned_and_classified_without_touching_arguments() {
     let p = Project::new().await;
     p.write(
@@ -104,6 +199,44 @@ async fn outer_names_are_sorted_deduplicated_versioned_and_classified_without_to
     p.remove().await;
 }
 #[tokio::test]
+/// Check reserve_arg snippets require client support and never replace existing arguments.
+/// Creates temporary files and an analyzer session; successful completion stops the session and
+/// removes fixtures.
+///
+/// # Arguments
+/// None.
+///
+/// # Returns
+/// `()` if every assertion passes; no output parameter.
+///
+/// # Panics
+/// Panics on any failed assertion or unwrapped fixture/transport/process failure.
+/// Cleanup is explicit on the success path; a panic may leave a fixture tree.
+///
+/// # Algorithm
+/// Enable reserve_arg and query builtin/user signatures with snippet support. Compare exact
+/// placeholders, then restart without snippet support and require plain names. Existing
+/// add_library parentheses always receive a plain name edit.
+///
+/// # Flow
+/// ```text
+/// [Temporary sources + settings]      [Expected: snippet / plain-name edits]
+///              |                              |
+///              v                              |
+/// [LSP scenario messages]                 |
+///              |                              |
+///              +-------------+----------------+
+///                            v
+///                  [Compare assertions]
+///                            |
+///                            v
+///             [Finish session + remove tree]
+/// ```
+///
+/// # Examples
+/// ```text
+/// reserve_arg_uses_snippets_only_for_capable_clients_and_preserves_existing_parentheses(); // #[tokio::test] supplies the runtime
+/// ```
 async fn reserve_arg_uses_snippets_only_for_capable_clients_and_preserves_existing_parentheses() {
     let p = Project::new().await;
     tokio::fs::write(
@@ -152,6 +285,45 @@ async fn reserve_arg_uses_snippets_only_for_capable_clients_and_preserves_existi
     p.remove().await;
 }
 #[tokio::test]
+/// Check reload success enables snippets, reload failure retains them and pending edits use
+/// UTF-16.
+/// Creates temporary files and an analyzer session; successful completion stops the session and
+/// removes fixtures.
+///
+/// # Arguments
+/// None.
+///
+/// # Returns
+/// `()` if every assertion passes; no output parameter.
+///
+/// # Panics
+/// Panics on any failed assertion or unwrapped fixture/transport/process failure.
+/// Cleanup is explicit on the success path; a panic may leave a fixture tree.
+///
+/// # Algorithm
+/// Query plain completion, enable reserve_arg, reload, then write invalid TOML and require an
+/// error with the old snippet policy intact. Replace text with an emoji-containing line and
+/// check the set replacement range at UTF-16 columns 14..16.
+///
+/// # Flow
+/// ```text
+/// [Temporary sources + settings]      [Expected: reload state + UTF-16 range]
+///              |                              |
+///              v                              |
+/// [LSP scenario messages]                 |
+///              |                              |
+///              +-------------+----------------+
+///                            v
+///                  [Compare assertions]
+///                            |
+///                            v
+///             [Finish session + remove tree]
+/// ```
+///
+/// # Examples
+/// ```text
+/// completion_observes_pending_edits_and_transactional_configuration_reload(); // #[tokio::test] supplies the runtime
+/// ```
 async fn completion_observes_pending_edits_and_transactional_configuration_reload() {
     let p = Project::new().await;
     let text = "# 😀\nadd_li";
@@ -198,6 +370,44 @@ async fn completion_observes_pending_edits_and_transactional_configuration_reloa
     p.remove().await;
 }
 #[tokio::test]
+/// Check a user add_library shadows the builtin kind and snippet signature.
+/// Creates temporary files and an analyzer session; successful completion stops the session and
+/// removes fixtures.
+///
+/// # Arguments
+/// None.
+///
+/// # Returns
+/// `()` if every assertion passes; no output parameter.
+///
+/// # Panics
+/// Panics on any failed assertion or unwrapped fixture/transport/process failure.
+/// Cleanup is explicit on the success path; a panic may leave a fixture tree.
+///
+/// # Algorithm
+/// Enable reserve_arg in a standalone file, declare add_library(special), and complete its
+/// prefix. Require Function kind 3 and the special formal placeholder rather than a native
+/// signature.
+///
+/// # Flow
+/// ```text
+/// [Temporary sources + settings]      [Expected: user kind + special placeholder]
+///              |                              |
+///              v                              |
+/// [LSP scenario messages]                 |
+///              |                              |
+///              +-------------+----------------+
+///                            v
+///                  [Compare assertions]
+///                            |
+///                            v
+///             [Finish session + remove tree]
+/// ```
+///
+/// # Examples
+/// ```text
+/// known_user_shadows_keep_function_icons_and_formal_parameter_placeholders(); // #[tokio::test] supplies the runtime
+/// ```
 async fn known_user_shadows_keep_function_icons_and_formal_parameter_placeholders() {
     let p = Project::new().await;
     tokio::fs::write(
@@ -223,6 +433,45 @@ async fn known_user_shadows_keep_function_icons_and_formal_parameter_placeholder
 }
 
 #[tokio::test]
+/// Check shared-source completion stays plain when owner policies or signatures disagree.
+/// Creates temporary files and an analyzer session; successful completion stops the session and
+/// removes fixtures.
+///
+/// # Arguments
+/// None.
+///
+/// # Returns
+/// `()` if every assertion passes; no output parameter.
+///
+/// # Panics
+/// Panics on any failed assertion or unwrapped fixture/transport/process failure.
+/// Cleanup is explicit on the success path; a panic may leave a fixture tree.
+///
+/// # Algorithm
+/// Create two roots declaring Choose with different formals and opposite reserve_arg settings.
+/// Query the shared prefix and require one plain Choose item. Enable both policies through
+/// reload, then require a plain Choose edit because signatures conflict; no post-reload count
+/// is asserted.
+///
+/// # Flow
+/// ```text
+/// [Temporary sources + settings]      [Expected: plain Choose edit]
+///              |                              |
+///              v                              |
+/// [LSP scenario messages]                 |
+///              |                              |
+///              +-------------+----------------+
+///                            v
+///                  [Compare assertions]
+///                            |
+///                            v
+///             [Finish session + remove tree]
+/// ```
+///
+/// # Examples
+/// ```text
+/// shared_owners_require_agreement_for_snippets_and_keep_conflicting_signatures_plain(); // #[tokio::test] supplies the runtime
+/// ```
 async fn shared_owners_require_agreement_for_snippets_and_keep_conflicting_signatures_plain() {
     let p = Project::new().await;
     let a = p

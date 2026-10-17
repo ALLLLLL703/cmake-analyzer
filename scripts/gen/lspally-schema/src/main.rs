@@ -2,6 +2,7 @@
 //! Generate lsp-types 0.97 seed declarations, adapters, and inventory.
 //! Args: lsp-types source directory, output directory outside target/.
 //! Outputs need review; do not overwrite the adapted production files.
+//! Incoming-hook docs are copied from the tracked, adapted `ILanguageServer` trait.
 use quote::ToTokens;
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -10,19 +11,160 @@ use std::{
 };
 use syn::{Fields, GenericArgument, Item, PathArguments, Type};
 
+/// Parsed upstream declaration with its source module, used by dependency discovery.
+/// Cloning copies the syntax tree; it does not read files. [`types`] reads its
+/// payload types and [`domain_type`] selects business-model spellings.
+///
+/// # Examples
+/// ```text
+/// let entry = Entry { module: "document".into(), item: syn::parse_quote!(pub struct Position { pub line: u32 }) };
+/// assert_eq!(types(&entry).len(), 1);
+/// ```
 #[derive(Clone)]
 struct Entry {
+    /// Source filename without `.rs`; selects the seed output group. Example: `entry.module == "completion"`.
     module: String,
+    /// Parsed struct, enum or alias, including upstream attributes. Example: `matches!(entry.item, Item::Struct(_))`.
     item: Item,
 }
+/// Render syntax tokens as Rust source text without I/O.
+///
+/// # Arguments
+/// - `t` `[in]`: syntax node to consume into a token stream.
+/// # Returns
+/// Source text with token-stream spacing; not original formatting.
+/// # Examples
+/// ```text
+/// let code = text(syn::parse_str::<syn::ItemStruct>("struct Empty;").unwrap());
+/// ```
 fn text(t: impl ToTokens) -> String {
     t.into_token_stream().to_string()
 }
+/// Render only Rust documentation attributes for a seed declaration; no I/O.
+/// Serialization, conditional-compilation and representation attributes are not copied.
+/// Upstream examples and links still need review after business-type adaptations.
+///
+/// # Arguments
+/// - `attrs` `[in]`: upstream declaration, field or variant attributes to inspect.
+/// # Returns
+/// Rust `#[doc = ...]` source text in original order, empty when no docs exist.
+/// No caller state or output parameter is changed.
+/// # Examples
+/// ```text
+/// let item: syn::ItemStruct = syn::parse_quote!(#[doc = "A flag."] struct Flag;);
+/// assert!(documentation(&item.attrs).contains("A flag."));
+/// ```
+fn documentation(attrs: &[syn::Attribute]) -> String {
+    attrs
+        .iter()
+        .filter(|attribute| attribute.path().is_ident("doc"))
+        .map(|attribute| format!("{}\n", text(attribute)))
+        .collect()
+}
+/// Copy authored incoming-hook docs from the adapted production trait; no runtime I/O.
+/// Only documentation attributes are retained, never signatures or implementation code.
+/// This keeps reviewed business contracts/examples in seed declarations without
+/// regenerating production models or overwriting custom hook behavior.
+///
+/// # Arguments
+/// None. The tracked `crates/lspally/src/server/model.rs` is embedded at compile time.
+/// # Returns
+/// Method-name keys mapped to rendered documentation attributes from `ILanguageServer`.
+/// An absent trait or undocumented method contributes no entry; other item kinds
+/// are ignored. There are no output parameters or shared state changes.
+/// # Panics
+/// Panics if the embedded production source is not valid Rust syntax. Its dependency
+/// on application types need not resolve: this helper parses syntax only.
+/// # Algorithm
+/// Parse the embedded source, select `ILanguageServer`, then collect docs from its
+/// function declarations. The emission loops use matching handler names for incoming
+/// methods and retain upstream descriptions as fallback for unknown seed methods.
+/// # Flow
+/// ```text
+/// [embedded model.rs]       [upstream method names]
+///          |                          |
+///     [parse syntax]                  |
+///          |                          |
+/// [ILanguageServer function docs]     |
+///          +------------+-------------+
+///                       v
+///                 <name match?>
+///                 /           \
+///               yes           no
+///                |             |
+///       [authored hook docs] [upstream fallback]
+///                |             |
+///                +------+------+
+///                       v
+///             [seed declaration docs]
+/// ```
+/// # Examples
+/// ```text
+/// let docs = incoming_trait_documentation();
+/// assert!(docs["did_change_text_document"].contains("ordered batch"));
+/// ```
+fn incoming_trait_documentation() -> BTreeMap<String, String> {
+    let source = include_str!("../../../../crates/lspally/src/server/model.rs");
+    let syntax = syn::parse_file(source).expect("production handler trait must parse");
+    syntax
+        .items
+        .iter()
+        .filter_map(|item| match item {
+            Item::Trait(item) if item.ident == "ILanguageServer" => Some(item),
+            _ => None,
+        })
+        .flat_map(|item| item.items.iter())
+        .filter_map(|item| match item {
+            syn::TraitItem::Fn(method) => {
+                let docs = documentation(&method.attrs);
+                (!docs.is_empty()).then(|| (method.sig.ident.to_string(), docs))
+            }
+            _ => None,
+        })
+        .collect()
+}
+/// Recognize upstream conditional attributes mentioning proposed protocol features; no I/O.
+///
+/// # Arguments
+/// - `attrs` `[in]`: attributes to inspect without changing them.
+/// # Returns
+/// `true` when a `cfg` attribute contains `proposed`; otherwise `false`.
+/// # Examples
+/// ```text
+/// assert!(!proposed(&[]));
+/// ```
 fn proposed(attrs: &[syn::Attribute]) -> bool {
     attrs
         .iter()
         .any(|a| a.path().is_ident("cfg") && text(a).contains("proposed"))
 }
+/// Remove upstream attributes and expose struct fields in a seed syntax tree; no I/O.
+/// This helper is currently unused by the emission path.
+///
+/// # Arguments
+/// - `item` `[in]`: owned declaration to clean; the caller's syntax tree is not mutated.
+/// # Returns
+/// Cleaned struct, enum or alias; other item kinds are returned unchanged.
+/// # Algorithm
+/// Match the declaration kind. Clear declaration and nested field/variant attributes;
+/// only struct fields have their visibility replaced with public visibility.
+/// # Flow
+/// ```text
+///                <item kind?>
+///           /        |        \
+///       struct      enum     alias/other
+///          |          |          |
+/// [clear attributes] [clear] [clear alias attrs]
+/// [publish fields]    |     [or keep other item]
+///          |          |          |
+///          +----------+----------+
+///                     v
+///                [owned item]
+/// ```
+/// # Examples
+/// ```text
+/// let item = clean(syn::parse_quote!(struct Flag(bool);));
+/// ```
 fn clean(mut item: Item) -> Item {
     match &mut item {
         Item::Struct(s) => {
@@ -46,6 +188,16 @@ fn clean(mut item: Item) -> Item {
     }
     item
 }
+/// Read the last path component of a Rust type; no mutation or I/O.
+///
+/// # Arguments
+/// - `t` `[in]`: type syntax to inspect.
+/// # Returns
+/// `Some(name)` for a nonempty path; `None` for other type forms or an empty path.
+/// # Examples
+/// ```text
+/// assert_eq!(name(&syn::parse_quote!(Vec<String>)), Some("Vec".into()));
+/// ```
 fn name(t: &Type) -> Option<String> {
     if let Type::Path(p) = t {
         p.path.segments.last().map(|s| s.ident.to_string())
@@ -53,6 +205,42 @@ fn name(t: &Type) -> Option<String> {
         None
     }
 }
+/// Collect names mentioned by supported type shapes; no I/O.
+/// Generic type arguments, tuple members and array elements are visited recursively.
+///
+/// # Arguments
+/// - `t` `[in]`: type whose named dependencies are needed.
+/// - `out` `[in,out]`: set extended with discovered names; existing entries are retained and duplicates collapse.
+/// # Returns
+/// `()` after extending `out`. Unsupported type forms add nothing.
+/// # Algorithm
+/// For paths, insert each segment name and recurse into its type arguments. Recurse into tuple
+/// members and array elements; other type shapes leave the set unchanged.
+/// # Flow
+/// ```text
+///                    [input type]
+///                          |
+///                       <shape>
+///           +--------------+-------------+-------------+
+///           v              v             v             v
+///         path           tuple         array         other
+///           |              |             |             |
+///   [insert segments] [each member] [element type] [skip]
+///           |              |             |             |
+///   [type arguments]       |             |             |
+///           +--------------+-------------+             |
+///                          v                           |
+///                  [recurse into types]                |
+///                          +---------------------------+
+///                          v
+///                  [extended shared set]
+/// ```
+/// # Examples
+/// ```text
+/// let mut names = BTreeSet::new();
+/// references(&syn::parse_quote!(Vec<String>), &mut names);
+/// assert!(names.contains("String"));
+/// ```
 fn references(t: &Type, out: &mut BTreeSet<String>) {
     match t {
         Type::Path(p) => {
@@ -76,6 +264,17 @@ fn references(t: &Type, out: &mut BTreeSet<String>) {
         _ => {}
     }
 }
+/// Extract payload type syntax from a declaration; no I/O or shared mutation.
+///
+/// # Arguments
+/// - `e` `[in]`: entry whose fields or alias target are inspected.
+/// # Returns
+/// Cloned struct field types, enum payload types, or a single alias target; empty for other items.
+/// # Examples
+/// ```text
+/// let entry = Entry { module: "common".into(), item: syn::parse_quote!(type Names = Vec<String>;) };
+/// assert_eq!(types(&entry).len(), 1);
+/// ```
 fn types(e: &Entry) -> Vec<Type> {
     match &e.item {
         Item::Struct(s) => s.fields.iter().map(|f| f.ty.clone()).collect(),
@@ -88,6 +287,39 @@ fn types(e: &Entry) -> Vec<Type> {
         _ => vec![],
     }
 }
+/// Spell an upstream type using business payload types; no I/O.
+/// JSON values become `Data`; maps, owned strings and nested containers are mapped recursively.
+///
+/// # Arguments
+/// - `t` `[in]`: upstream type syntax, normally a path, tuple or array.
+/// # Returns
+/// Rust type text for seed declarations; unsupported syntax keeps its token spelling.
+/// # Panics
+/// Panics on a malformed path with no segments; parsed upstream Rust paths are nonempty.
+/// # Algorithm
+/// Map Value, Map and Cow paths to their fixed business spellings. For other paths, map type
+/// arguments recursively; map tuple members and array elements likewise. Keep other syntax as text.
+/// # Flow
+/// ```text
+///                     [input type]
+///                           |
+///                        <shape>
+///          +----------------+----------------+---------------+
+///          v                v                v               v
+///        path             tuple            array           other
+///          |                |                |               |
+///   <Value/Map/Cow?>  [map members]   [map element; keep len]  |
+///     /        \            |                |               |
+/// [fixed text] [last name; map type args]     |               |
+///     |                 |   |                |               |
+///     +-----------------+---+----------------+------[token text]
+///                           v
+///                  [business type spelling]
+/// ```
+/// # Examples
+/// ```text
+/// assert_eq!(domain_type(&syn::parse_quote!(Option<Value>)), "Option<Data>");
+/// ```
 fn domain_type(t: &Type) -> String {
     match t {
         Type::Path(p) => {
@@ -131,6 +363,44 @@ fn domain_type(t: &Type) -> String {
         _ => text(t),
     }
 }
+/// Build a fallible seed conversion expression, not execute a conversion or perform I/O.
+/// Containers recurse into their members. Aliases resolve through the declaration table;
+/// remaining named types call generated adapters. These seeds still require manual review.
+///
+/// # Arguments
+/// - `t` `[in]`: upstream field type to convert.
+/// - `x` `[in]`: source expression text, which may be moved by the emitted expression.
+/// - `to_wire` `[in]`: `true` for business-to-LSP output; `false` for incoming LSP data.
+/// - `entries` `[in]`: declarations used to resolve type aliases.
+/// # Returns
+/// Rust expression text that propagates `ServerError` with `?` where needed.
+/// # Panics
+/// Panics for malformed empty paths or containers lacking the expected type arguments; expects valid upstream declarations.
+/// # Algorithm
+/// Keep primitive expressions and emit direction-specific Cow conversions. For known containers,
+/// emit wrapping, iteration or matching around recursive member conversions. Keep unit values,
+/// emit JSON conversion calls, resolve aliases recursively, or emit a named adapter call.
+/// # Flow
+/// ```text
+/// [type + source expression]
+///             |
+///     <primitive or Cow?> ---- yes ---> [keep / emit ownership conversion]
+///             | no                                      |
+///     <known container?> ---- yes ---> [recurse on members; emit wrapper]
+///             | no                                      |
+///       <unit or Value?> ---- yes ---> [keep unit / emit JSON conversion]
+///             | no                                      |
+///       <declared alias?> ---- yes ---> [recurse into alias target]
+///             | no                                      |
+///   [emit named adapter call]                           |
+///             +-----------------------------------------+
+///             v
+///    [Rust expression text; nothing executed]
+/// ```
+/// # Examples
+/// ```text
+/// assert_eq!(convert(&syn::parse_quote!(u32), "v.line", true, &BTreeMap::new()), "v.line");
+/// ```
 fn convert(t: &Type, x: &str, to_wire: bool, entries: &BTreeMap<String, Entry>) -> String {
     let n = name(t).unwrap_or_default();
     if [
@@ -249,6 +519,17 @@ fn convert(t: &Type, x: &str, to_wire: bool, entries: &BTreeMap<String, Entry>) 
     let function = if to_wire { "to_wire" } else { "from_wire" };
     format!("{function}_{n}({x})?")
 }
+/// Insert underscores before uppercase characters for generated method names; no I/O.
+/// Consecutive capitals each receive an underscore, so this is not a general acronym formatter.
+///
+/// # Arguments
+/// - `s` `[in]`: upstream request or notification marker name.
+/// # Returns
+/// Lowercase ASCII spelling with inserted underscores.
+/// # Examples
+/// ```text
+/// assert_eq!(snake("ShowDocument"), "show_document");
+/// ```
 fn snake(s: &str) -> String {
     let mut out = String::new();
     for (i, c) in s.chars().enumerate() {
@@ -259,6 +540,38 @@ fn snake(s: &str) -> String {
     }
     out
 }
+/// Collect non-module declarations from nested inline modules; no I/O.
+/// Out-of-line modules are skipped rather than opened.
+///
+/// # Arguments
+/// - `items` `[in]`: owned parsed declarations to flatten recursively.
+/// # Returns
+/// Declarations in traversal order, with inline module wrappers removed.
+/// # Algorithm
+/// Visit items in order. Append non-module items; recurse into inline module bodies and append
+/// their flattened items. Skip out-of-line modules without opening files.
+/// # Flow
+/// ```text
+///                 [next item] <-------------------------+
+///                      |                                |
+///                  <module?>                            |
+///               /             \                         |
+///             no              yes                       |
+///              |               |                        |
+///       [append item]     <inline body?>                 |
+///              |           /          \                 |
+///              |         yes           no               |
+///              |          |             |               |
+///              | [recurse; append] [skip external file]  |
+///              +----------+-------------+---------------+
+///                      |
+///                 [return ordered items when exhausted]
+/// ```
+/// # Examples
+/// ```text
+/// let items = flatten(vec![syn::parse_quote!(mod inner { struct Flag; })]);
+/// assert_eq!(items.len(), 1);
+/// ```
 fn flatten(items: Vec<Item>) -> Vec<Item> {
     let mut out = Vec::new();
     for item in items {
@@ -272,7 +585,50 @@ fn flatten(items: Vec<Item>) -> Vec<Item> {
     }
     out
 }
+/// Read upstream LSP declarations and write review-only seed models, adapters and inventories.
+/// Reads `.rs` files, creates output directories, overwrites seed outputs and runs `rustfmt`.
+/// Never point this command at the adapted production tree.
+///
+/// # Arguments
+/// No Rust parameters. Command-line arguments 1 and 2 are the upstream source
+/// directory and the seed destination, respectively.
+/// # Returns
+/// `()` after writing and formatting all seed outputs; prints inventory counts to stdout.
+/// # Panics
+/// Panics on missing arguments, a destination containing a `target` component, failed file access, malformed upstream syntax, incomplete method markers or failed formatting.
+/// # Algorithm
+/// Parse stable declarations and method markers, compute the reachable type set,
+/// then emit grouped models and adapters in both directions. Read embedded production
+/// hook documentation for incoming trait fragments. Emit method fragments
+/// and a direction inventory separately. Pass every `.rs` file in both model and conversion output
+/// directories to `rustfmt`, including pre-existing files.
+/// # Flow
+/// ```text
+/// [upstream .rs files]       [CLI destination]
+///          |                        |
+///    [parse and filter]      [reject target/]
+///          |                        |
+///          v                        |
+/// [method roots + type closure]     |
+///          |                        |
+///          +-----------+------------+
+///                      v
+///           [write model/adapter seeds]
+///                      |
+///          +-----------+-------------+
+///          v                         v
+///   [method fragments]        [inventory table]
+///          |                         |
+///          +------------+------------+
+///                       v
+///              [rustfmt seed files]
+/// ```
+/// # Examples
+/// ```sh
+/// cargo run --manifest-path scripts/gen/lspally-schema/Cargo.toml --bin lspally-schema-gen -- /path/to/lsp-types/src /tmp/lsp-seeds
+/// ```
 fn main() {
+    let incoming_docs = incoming_trait_documentation();
     let base = PathBuf::from(std::env::args().nth(1).expect("lsp-types source directory"));
     let dest = PathBuf::from(std::env::args().nth(2).expect("seed output directory"));
     assert!(
@@ -413,7 +769,11 @@ fn main() {
                 models
                     .entry("common".into())
                     .or_default()
-                    .push_str(&format!("pub type {n} = {};\n", domain_type(&a.ty)));
+                    .push_str(&format!(
+                        "{}pub type {n} = {};\n",
+                        documentation(&a.attrs),
+                        domain_type(&a.ty)
+                    ));
             }
             continue;
         }
@@ -425,11 +785,16 @@ fn main() {
         let out = models.entry(module.into()).or_default();
         let c = conversions.entry(module.into()).or_default();
         match &e.item {
-            Item::Type(a) => out.push_str(&format!("pub type {n} = {};\n", domain_type(&a.ty))),
+            Item::Type(a) => out.push_str(&format!(
+                "{}pub type {n} = {};\n",
+                documentation(&a.attrs),
+                domain_type(&a.ty)
+            )),
             Item::Struct(s) => {
+                out.push_str(&documentation(&s.attrs));
                 if n == "TagSupport" {
                     out.push_str(
-                        "#[derive(Debug)]\npub struct TagSupport<T> {pub value_set:Vec<T>}\n",
+                        "#[derive(Debug)]\npub struct TagSupport<T> {\n/// Tags supported by the client. Example: `support.value_set.len()`.\npub value_set:Vec<T>}\n",
                     );
                     continue;
                 }
@@ -439,7 +804,8 @@ fn main() {
                         out.push_str(&format!("pub struct {n} {{\n"));
                         for f in &f.named {
                             out.push_str(&format!(
-                                "pub {}: {},\n",
+                                "{}pub {}: {},\n",
+                                documentation(&f.attrs),
                                 f.ident.as_ref().unwrap(),
                                 domain_type(&f.ty)
                             ));
@@ -451,7 +817,11 @@ fn main() {
                             "pub struct {n}({});\n",
                             f.unnamed
                                 .iter()
-                                .map(|f| format!("pub {}", domain_type(&f.ty)))
+                                .map(|f| format!(
+                                    "{}pub {}",
+                                    documentation(&f.attrs),
+                                    domain_type(&f.ty)
+                                ))
                                 .collect::<Vec<_>>()
                                 .join(",")
                         ));
@@ -471,7 +841,7 @@ fn main() {
                             for item in &i.items {
                                 if let syn::ImplItem::Const(k) = item {
                                     let mut k = k.clone();
-                                    k.attrs.clear();
+                                    k.attrs.retain(|attribute| attribute.path().is_ident("doc"));
                                     if name(ty).as_deref() == Some("Cow") {
                                         continue;
                                     }
@@ -521,8 +891,10 @@ fn main() {
                 }
             }
             Item::Enum(en) => {
+                out.push_str(&documentation(&en.attrs));
                 out.push_str(&format!("#[derive(Debug)]\npub enum {n} {{\n"));
                 for v in &en.variants {
+                    out.push_str(&documentation(&v.attrs));
                     out.push_str(&v.ident.to_string());
                     match &v.fields {
                         Fields::Unnamed(f) => {
@@ -530,7 +902,9 @@ fn main() {
                             out.push_str(
                                 &f.unnamed
                                     .iter()
-                                    .map(|f| domain_type(&f.ty))
+                                    .map(|f| {
+                                        format!("{}{}", documentation(&f.attrs), domain_type(&f.ty))
+                                    })
                                     .collect::<Vec<_>>()
                                     .join(","),
                             );
@@ -540,7 +914,8 @@ fn main() {
                             out.push('{');
                             for f in &f.named {
                                 out.push_str(&format!(
-                                    "{}:{},",
+                                    "{}{}:{},",
+                                    documentation(&f.attrs),
                                     f.ident.as_ref().unwrap(),
                                     domain_type(&f.ty)
                                 ));
@@ -602,14 +977,14 @@ fn main() {
     let mut modelmods = String::new();
     let mut convertmods = String::new();
     for (module, body) in models {
-        fs::write(model.join(format!("{module}.rs")),format!("// Script-generated by scripts/gen/lspally-schema/src/main.rs.\nuse super::*;\n{body}")).unwrap();
+        fs::write(model.join(format!("{module}.rs")),format!("// Script-generated by scripts/gen/lspally-schema/src/main.rs.\n//! Review-only protocol seeds; adapt upstream links and examples before production use.\nuse super::*;\n{body}")).unwrap();
         modelmods.push_str(&format!("mod {module};\npub use {module}::*;\n"));
     }
     for (module, body) in conversions {
         let body = body
             .replace("pub(super) fn", "pub(in crate::server::wrapper) fn")
             .replace("Ok(", "Ok::<_,ServerError>(");
-        fs::write(conversion.join(format!("{module}.rs")),format!("// Script-generated by scripts/gen/lspally-schema/src/main.rs.\nuse super::*;\n{body}")).unwrap();
+        fs::write(conversion.join(format!("{module}.rs")),format!("// Script-generated by scripts/gen/lspally-schema/src/main.rs.\n//! Review-only protocol seeds; adapt upstream links and examples before production use.\nuse super::*;\n{body}")).unwrap();
         convertmods.push_str(&format!("mod {module};\nuse {module}::*;\n"));
     }
     fs::write(model.join("modules.inc"), modelmods).unwrap();
@@ -644,6 +1019,13 @@ fn main() {
         "> Script-generated content. Generator: scripts/gen/lspally-schema/src/main.rs\n\n# Stable method inventory\n\n| Method | Direction | Kind | Seed input | Seed result | Rust handler |\n| --- | --- | --- | --- | --- | --- |\n",
     );
     for (n, p, r, m) in &requests {
+        let method_docs = entries
+            .get(n)
+            .map(|entry| match &entry.item {
+                Item::Enum(marker) => documentation(&marker.attrs),
+                _ => String::new(),
+            })
+            .unwrap_or_default();
         let handler = snake(n);
         let domp = domain_type(p);
         let domr = domain_type(r);
@@ -658,8 +1040,11 @@ fn main() {
             }
         ));
         if outbound.contains(&n.as_str()) {
-            client.push_str(&format!("pub async fn {handler}(&self,params:{domp})->ServerResult<{domr}>{{let params={};let result=self.request::<{wiremarker}>(params).await?;Ok({})}}\n",convert(p,"params",true,&entries),convert(r,"result",false,&entries)));
+            // Normalize generated expressions, not the upstream documentation text.
+            client.push_str(&method_docs);
+            client.push_str(&format!("pub async fn {handler}(&self,params:{domp})->ServerResult<{domr}>{{let params={};let result=self.request::<{wiremarker}>(params).await?;Ok({})}}\n",convert(p,"params",true,&entries),convert(r,"result",false,&entries)).replace("Ok(", "Ok::<_,ServerError>("));
         } else {
+            traittext.push_str(incoming_docs.get(&handler).unwrap_or(&method_docs));
             traittext.push_str(&format!("fn {handler}(&self, context:Context, params:{domp})->impl Future<Output=ServerResult<{domr}>>+Send;\n"));
             routing.push_str(&format!("name if name==<{wiremarker} as lsp_types::request::Request>::METHOD=>{{let params=request.take_params::<{wiremarker}>().map_err(invalid_params)?;let params={};let result=server.{handler}(context,params).await?;let result={};Response::success::<{wiremarker}>(request.id,result).map_err(codec_error)}},\n",convert(p,"params",false,&entries),convert(r,"result",true,&entries)));
         }
@@ -670,15 +1055,18 @@ fn main() {
         routing.replace("Ok(", "Ok::<_,ServerError>("),
     )
     .unwrap();
-    fs::write(
-        dest.join("client-requests.inc"),
-        client.replace("Ok(", "Ok::<_,ServerError>("),
-    )
-    .unwrap();
+    fs::write(dest.join("client-requests.inc"), client).unwrap();
     traittext = String::new();
     routing = String::new();
     client = String::new();
     for (n, p, m) in &notifications {
+        let method_docs = entries
+            .get(n)
+            .map(|entry| match &entry.item {
+                Item::Enum(marker) => documentation(&marker.attrs),
+                _ => String::new(),
+            })
+            .unwrap_or_default();
         let handler = snake(n);
         let domp = domain_type(p);
         let marker = format!("lsp_types::notification::{n}");
@@ -692,8 +1080,11 @@ fn main() {
             }
         ));
         if outnotif.contains(&n.as_str()) {
-            client.push_str(&format!("pub async fn {handler}(&self, params:{domp})->ServerResult<()>{{let params={};self.notify::<{marker}>(params).await}}\n",convert(p,"params",true,&entries)));
+            // Normalize generated expressions, not the upstream documentation text.
+            client.push_str(&method_docs);
+            client.push_str(&format!("pub async fn {handler}(&self, params:{domp})->ServerResult<()>{{let params={};self.notify::<{marker}>(params).await}}\n",convert(p,"params",true,&entries)).replace("Ok(", "Ok::<_,ServerError>("));
         } else {
+            traittext.push_str(incoming_docs.get(&handler).unwrap_or(&method_docs));
             traittext.push_str(&format!("fn {handler}(&self,context:Context,params:{domp})->impl Future<Output=ServerResult<()>>+Send;\n"));
             routing.push_str(&format!("name if name==<{marker} as lsp_types::notification::Notification>::METHOD=>{{let params=notification.take_params::<{marker}>().map_err(invalid_params)?;let params={};server.{handler}(context,params).await}},\n",convert(p,"params",false,&entries)));
         }
@@ -704,11 +1095,7 @@ fn main() {
         routing.replace("Ok(", "Ok::<_,ServerError>("),
     )
     .unwrap();
-    fs::write(
-        dest.join("client-notifications.inc"),
-        client.replace("Ok(", "Ok::<_,ServerError>("),
-    )
-    .unwrap();
+    fs::write(dest.join("client-notifications.inc"), client).unwrap();
     fs::write(dest.join("inventory.md"), inventory).unwrap();
     for folder in [&dest, &model, &conversion] {
         for entry in fs::read_dir(folder).unwrap() {

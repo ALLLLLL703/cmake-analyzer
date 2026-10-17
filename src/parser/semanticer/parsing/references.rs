@@ -1,3 +1,7 @@
+//! Extract simple variable reads and schema path roles before binding names.
+//!
+//! Nested/dynamic variable names are not resolved; escaped and bracket text stays literal.
+// Contains AI-generated documentation additions.
 // AI-authored variable-reference extraction before binding.
 use super::outputs::variable_arguments;
 use crate::{
@@ -5,6 +9,19 @@ use crate::{
     parser::{lexer::model::LexContent, semanticer::model::*},
 };
 
+/// Remove lexical argument delimiters from a source name range when possible. No side effects.
+///
+/// # Arguments
+/// - `source` `[in]`: owning source snapshot.
+/// - `arg` `[in]`: semantic argument with raw span and lexical form.
+///
+/// # Returns
+/// Payload span for quoted/bracket names; original raw span if payload extraction fails or no delimiters apply.
+///
+/// # Examples
+/// ```text
+/// let span = argument_name_span(source, &command.args[0]);
+/// ```
 pub(crate) fn argument_name_span(source: &str, arg: &SemanticArg) -> TextSpan {
     let content = match arg.form {
         SemanticArgForm::Quoted => LexContent::StringLiteral,
@@ -15,6 +32,41 @@ pub(crate) fn argument_name_span(source: &str, arg: &SemanticArg) -> TextSpan {
         .payload_span(source)
         .unwrap_or(arg.span)
 }
+/// Overwrite unbound variable reads/path roles and refresh ReferencingVar flags. Scans only simple source substitutions and explicit schema-variable inputs; no I/O or execution.
+///
+/// # Arguments
+/// - `source` `[in]`: source matching command/argument spans.
+/// - `file` `[in]`: owning file identity.
+/// - `command` `[in,out]`: replaces variable_references/paths and removes/readds ReferencingVar flags; other roles remain.
+///
+/// # Returns
+/// () after extraction. Unclosed/declaration commands keep expansion reads but skip explicit schema-variable inputs.
+///
+/// # Algorithm
+/// Classify schema paths, then scan quoted/unquoted raw bytes for unescaped simple ${name} forms. Skip empty/dynamic names and translate local offsets into source spans. Finally add literal schema-variable reads unless an earlier unquoted dynamic/list argument could change slot correspondence.
+///
+/// # Flow
+/// ```text
+///  [raw args]             [schema]
+///      |                      |
+///      v                      v
+///  <quoted/unquoted?>    [path/variable slots]
+///    /          \             |
+///  [skip] [simple ${name}]      |
+///              |               |
+///       [source read spans]    |
+///              +-------+-------+
+///                      v
+///        [filter unstable source slots]
+///                      |
+///                      v
+///            [reads + role flags]
+/// ```
+///
+/// # Examples
+/// ```text
+/// scan_command(source, FileId { id: 1 }, &mut command);
+/// ```
 pub(super) fn scan_command(source: &str, file: FileId, command: &mut SemanticCommandRepresent) {
     command.variable_references.clear();
     command.paths = super::outputs::path_arguments(command);

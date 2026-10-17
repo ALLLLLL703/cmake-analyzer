@@ -1,9 +1,51 @@
+//! Structured file, string, list, path and arithmetic operation trees.
+//! Building a tree allocates metadata only: `file(DOWNLOAD ...)` does not fetch
+//! anything, and `math(EXPR ...)` does not evaluate an expression here.
+//! [`ArgSchemaKind`] scalar roles guide binding, missing-input checks and
+//! completion; they do not validate numbers, regular expressions or JSON.
+//! For example `string(LENGTH text count)` makes `count` an output name,
+//! while `cmake_path(GET path FILENAME out)` reads the variable named `path`.
+//! `schemas` supplies final cached overrides rather than new command registrations.
+
 use super::{
     ArgSchemaKind, Boolean, Command, Expression, InputFile, InputPath, Integer, Number, Out,
     OutputPath, Path, Target, Text, Url, Value, Variable, choice, flags, k, many, one_of, optional,
     options, some,
 };
 
+/// Collect transform-operation overrides and the eligible cmake_path grammar.
+/// Allocates grammar data only; no external side effects.
+///
+/// # Arguments
+/// - `version` `[in]`: requested CMake major/minor selecting documented syntax additions.
+///
+/// # Returns
+/// Owned (command name, ordered roots) pairs for file/string/list/math, plus cmake_path from 3.20.
+///
+/// # Algorithm
+/// Build the four always-registered operation trees, then append cmake_path only at or after its
+/// introduction. The caller still filters names against native registrations.
+///
+/// # Flow
+/// ```text
+///                             [schemas inputs]
+///                                     |
+///                  +------------------+------------------+
+///                  v                                     v
+/// +--------------------------------+    +--------------------------------+
+/// |  file / string / list / math   |    |     cmake_path if >= 3.20      |
+/// +----------------+---------------+    +----------------+---------------+
+///                  |                                     |
+///                  +------------------+------------------+
+///                                     v
+///                              [Owned grammar]
+/// ```
+///
+/// # Examples
+/// ```text
+/// let overrides = schemas((3, 20));
+/// assert!(overrides.iter().any(|(name, _)| *name == "cmake_path"));
+/// ```
 pub(super) fn schemas(version: (u32, u32)) -> Vec<(&'static str, Vec<ArgSchemaKind>)> {
     let mut result = vec![
         ("file", file(version)),
@@ -17,6 +59,19 @@ pub(super) fn schemas(version: (u32, u32)) -> Vec<(&'static str, Vec<ArgSchemaKi
     result
 }
 
+/// Describe supported literal digest algorithm names without hashing data.
+/// Allocates grammar data only; no external side effects.
+///
+/// # Arguments
+/// - `version` `[in]`: requested CMake major/minor selecting documented syntax additions.
+///
+/// # Returns
+/// One-keyword choice of MD5/SHA1/SHA2 names, with SHA3 variants from 3.8.
+///
+/// # Examples
+/// ```text
+/// let digest = hashes((3, 8)); // Includes SHA3_256.
+/// ```
 fn hashes(version: (u32, u32)) -> ArgSchemaKind {
     let mut words = vec!["MD5", "SHA1", "SHA224", "SHA256", "SHA384", "SHA512"];
     if version >= (3, 8) {
@@ -25,6 +80,19 @@ fn hashes(version: (u32, u32)) -> ArgSchemaKind {
     one_of(&words)
 }
 
+/// Describe a nonempty list of filesystem permission keywords without applying them.
+/// Allocates grammar data only; no external side effects.
+///
+/// # Arguments
+/// None.
+///
+/// # Returns
+/// One-or-more owner/group/world/special permission keywords.
+///
+/// # Examples
+/// ```text
+/// let mode = permissions(); // For PERMISSIONS OWNER_READ GROUP_READ.
+/// ```
 fn permissions() -> ArgSchemaKind {
     some(one_of(&[
         "OWNER_READ",
@@ -41,6 +109,19 @@ fn permissions() -> ArgSchemaKind {
     ]))
 }
 
+/// Describe a NEWLINE_STYLE option and its literal style vocabulary.
+/// Allocates grammar data only; no external side effects.
+///
+/// # Arguments
+/// None.
+///
+/// # Returns
+/// Two-node sequence requiring NEWLINE_STYLE then one of UNIX/DOS/WIN32/LF/CRLF.
+///
+/// # Examples
+/// ```text
+/// let style = newline(); // Describes NEWLINE_STYLE LF.
+/// ```
 fn newline() -> Vec<ArgSchemaKind> {
     vec![
         k("NEWLINE_STYLE"),
@@ -48,6 +129,41 @@ fn newline() -> Vec<ArgSchemaKind> {
     ]
 }
 
+/// Describe file operations with distinct input, output-path and output-variable roles.
+/// Allocates grammar data only; no external side effects.
+///
+/// # Arguments
+/// - `version` `[in]`: requested CMake major/minor selecting documented syntax additions.
+///
+/// # Returns
+/// One choice of version-eligible file operation sequences, including
+/// transfer/archive/runtime-dependency forms.
+///
+/// # Algorithm
+/// Build common read/write/hash/path forms. Generate INPUT/CONTENT and GLOB/GLOB_RECURSE variants
+/// in loops, then append operations/options by version. Keep search hints and possibly
+/// nonexistent symlink targets as generic Path; generated destinations use OutputPath.
+///
+/// # Flow
+/// ```text
+///                               [file inputs]
+///                                     |
+///                  +------------------+------------------+
+///                  v                                     v
+/// +--------------------------------+    +--------------------------------+
+/// |    Read/query: input + Out     |    |  Write/transfer/archive: path  |
+/// |                                |    |             roles              |
+/// +----------------+---------------+    +----------------+---------------+
+///                  |                                     |
+///                  +------------------+------------------+
+///                                     v
+///                              [Owned grammar]
+/// ```
+///
+/// # Examples
+/// ```text
+/// let args = file((4, 4)); // READ_SYMLINK supports RESULT <out>.
+/// ```
 fn file(version: (u32, u32)) -> Vec<ArgSchemaKind> {
     let mut strings_options = vec![
         vec![
@@ -290,6 +406,40 @@ fn file(version: (u32, u32)) -> Vec<ArgSchemaKind> {
     vec![choice(forms)]
 }
 
+/// Describe upload/download options without network access.
+/// Allocates grammar data only; no external side effects.
+///
+/// # Arguments
+/// - `version` `[in]`: requested CMake major/minor selecting documented syntax additions.
+/// - `download` `[in]`: enable download TLS controls before upload gained them in 3.18.
+///
+/// # Returns
+/// Option-group alternatives for timeouts, status/log outputs, authentication, NETRC and TLS
+/// settings; expected hashes are added by the file builder.
+///
+/// # Algorithm
+/// Collect common timeout/result flags, add credentials/NETRC by version, then select TLS
+/// availability from transfer direction and version. TLS_VERSION appears from 3.30.
+///
+/// # Flow
+/// ```text
+///                         [transfer_options inputs]
+///                                     |
+///                  +------------------+------------------+
+///                  v                                     v
+/// +--------------------------------+    +--------------------------------+
+/// |  Common timeout/result groups  |    | Version/direction TLS and auth |
+/// +----------------+---------------+    +----------------+---------------+
+///                  |                                     |
+///                  +------------------+------------------+
+///                                     v
+///                              [Owned grammar]
+/// ```
+///
+/// # Examples
+/// ```text
+/// let opts = transfer_options((3, 11), true); // NETRC_FILE and TLS_CAINFO are inputs.
+/// ```
 fn transfer_options(version: (u32, u32), download: bool) -> Vec<Vec<ArgSchemaKind>> {
     let mut opts = vec![
         vec![one_of(&["INACTIVITY_TIMEOUT", "TIMEOUT"]), Number],
@@ -320,6 +470,40 @@ fn transfer_options(version: (u32, u32), download: bool) -> Vec<Vec<ArgSchemaKin
     opts
 }
 
+/// Describe archive creation and extraction without reading or writing archives.
+/// Allocates grammar data only; no external side effects.
+///
+/// # Arguments
+/// - `version` `[in]`: requested CMake major/minor selecting documented syntax additions.
+///
+/// # Returns
+/// Two alternative sequences, ARCHIVE_CREATE and ARCHIVE_EXTRACT, for insertion into file
+/// operation choices.
+///
+/// # Algorithm
+/// Build compression/format/create options and destination/pattern/extract options separately.
+/// Gate levels, working directory, threads and encoding by version; encoding permits both known
+/// literals and arbitrary iconv names.
+///
+/// # Flow
+/// ```text
+///                             [archives inputs]
+///                                     |
+///                  +------------------+------------------+
+///                  v                                     v
+/// +--------------------------------+    +--------------------------------+
+/// |  CREATE output + input paths   |    |  EXTRACT input + destination   |
+/// +----------------+---------------+    +----------------+---------------+
+///                  |                                     |
+///                  +------------------+------------------+
+///                                     v
+///                              [Owned grammar]
+/// ```
+///
+/// # Examples
+/// ```text
+/// let forms = archives((4, 4)); // Both modes accept ENCODING.
+/// ```
 fn archives(version: (u32, u32)) -> Vec<Vec<ArgSchemaKind>> {
     let mut compression = vec!["None", "BZip2", "GZip", "XZ", "Zstd"];
     if version >= (4, 3) {
@@ -379,6 +563,39 @@ fn archives(version: (u32, u32)) -> Vec<Vec<ArgSchemaKind>> {
     ]
 }
 
+/// Describe GET_RUNTIME_DEPENDENCIES output variables, binaries and search filters.
+/// Allocates grammar data only; no external side effects.
+///
+/// # Arguments
+/// - `version` `[in]`: requested CMake major/minor selecting documented syntax additions.
+///
+/// # Returns
+/// Operation keyword followed by repeated option groups; directory/file filters are generic
+/// hints, not required input paths.
+///
+/// # Algorithm
+/// Collect result names, binary inputs and regex filters. Add post-filter file hints from 3.21
+/// without making them missing-input requirements.
+///
+/// # Flow
+/// ```text
+///                       [runtime_dependencies inputs]
+///                                     |
+///                  +------------------+------------------+
+///                  v                                     v
+/// +--------------------------------+    +--------------------------------+
+/// |  Result names + binary inputs  |    |      Search/filter hints       |
+/// +----------------+---------------+    +----------------+---------------+
+///                  |                                     |
+///                  +------------------+------------------+
+///                                     v
+///                              [Owned grammar]
+/// ```
+///
+/// # Examples
+/// ```text
+/// let args = runtime_dependencies((3, 21)); // Adds POST_INCLUDE_FILES / POST_EXCLUDE_FILES.
+/// ```
 fn runtime_dependencies(version: (u32, u32)) -> Vec<ArgSchemaKind> {
     let mut opts = vec![
         vec![
@@ -412,6 +629,19 @@ fn runtime_dependencies(version: (u32, u32)) -> Vec<ArgSchemaKind> {
     vec![k("GET_RUNTIME_DEPENDENCIES"), options(opts)]
 }
 
+/// Describe math EXPR output and optional formatting without evaluating arithmetic.
+/// Allocates grammar data only; no external side effects.
+///
+/// # Arguments
+/// - `version` `[in]`: requested CMake major/minor selecting documented syntax additions.
+///
+/// # Returns
+/// EXPR, Out and Expression sequence with optional OUTPUT_FORMAT from 3.13.
+///
+/// # Examples
+/// ```text
+/// let args = math((3, 13)); // Describes EXPR result "2+2" OUTPUT_FORMAT DECIMAL.
+/// ```
 fn math(version: (u32, u32)) -> Vec<ArgSchemaKind> {
     let mut args = vec![k("EXPR"), Out, Expression];
     if version >= (3, 13) {
@@ -423,6 +653,39 @@ fn math(version: (u32, u32)) -> Vec<ArgSchemaKind> {
     args
 }
 
+/// Describe path-variable queries and mutations without touching filesystem paths.
+/// Allocates grammar data only; no external side effects.
+///
+/// # Arguments
+/// None.
+///
+/// # Returns
+/// Choice of documented cmake_path operation sequences, distinguishing variable names from path
+/// values and optional output variables.
+///
+/// # Algorithm
+/// Separate GET component queries, predicates/hash, comparisons and mutations. Each branch fixes
+/// operand order; optional OUTPUT_VARIABLE remains a write role rather than a path.
+///
+/// # Flow
+/// ```text
+///                            [cmake_path inputs]
+///                                     |
+///                  +------------------+------------------+
+///                  v                                     v
+/// +--------------------------------+    +--------------------------------+
+/// |     Queries / comparisons      |    |Variable mutations / conversion |
+/// +----------------+---------------+    +----------------+---------------+
+///                  |                                     |
+///                  +------------------+------------------+
+///                                     v
+///                              [Owned grammar]
+/// ```
+///
+/// # Examples
+/// ```text
+/// let args = cmake_path(); // GET <variable> FILENAME <out> reads one variable name.
+/// ```
 fn cmake_path() -> Vec<ArgSchemaKind> {
     vec![choice(vec![
         vec![
@@ -538,6 +801,39 @@ fn cmake_path() -> Vec<ArgSchemaKind> {
     ])]
 }
 
+/// Describe list reads, mutations, transformations and sorting callbacks.
+/// Allocates grammar data only; no external side effects.
+///
+/// # Arguments
+/// - `version` `[in]`: requested CMake major/minor selecting documented syntax additions.
+///
+/// # Returns
+/// Choice of eligible list operation sequences with variable-name reads and explicit output slots.
+///
+/// # Algorithm
+/// Start with basic list operations. Gate FILTER, transform/selectors, sort modes and pop/prepend
+/// additions; from 4.4 add command callbacks. Sorting keeps one comparison/comparator choice
+/// between repeated case/order modifiers.
+///
+/// # Flow
+/// ```text
+///                               [list inputs]
+///                                     |
+///                  +------------------+------------------+
+///                  v                                     v
+/// +--------------------------------+    +--------------------------------+
+/// |   Read/mutate + output roles   |    | Versioned selectors / sorting  |
+/// +----------------+---------------+    +----------------+---------------+
+///                  |                                     |
+///                  +------------------+------------------+
+///                                     v
+///                              [Owned grammar]
+/// ```
+///
+/// # Examples
+/// ```text
+/// let args = list((4, 4)); // FILTER PREDICATE and SORT COMPARATOR take Command roles.
+/// ```
 fn list(version: (u32, u32)) -> Vec<ArgSchemaKind> {
     let mut filter_modes = vec![vec![k("REGEX"), Expression]];
     let mut actions = vec![
@@ -617,6 +913,40 @@ fn list(version: (u32, u32)) -> Vec<ArgSchemaKind> {
     vec![choice(forms)]
 }
 
+/// Describe text, regular-expression, hashing and JSON operations without evaluating them.
+/// Allocates grammar data only; no external side effects.
+///
+/// # Arguments
+/// - `version` `[in]`: requested CMake major/minor selecting documented syntax additions.
+///
+/// # Returns
+/// Choice of eligible string operation sequences with output-variable roles in operation-specific
+/// positions.
+///
+/// # Algorithm
+/// Build common text/regex/hash forms and gate comparison names and later operations. JSON has a
+/// common result and optional ERROR_VARIABLE prefix before operation-specific operands; new JSON
+/// operations are version-filtered.
+///
+/// # Flow
+/// ```text
+///                              [string inputs]
+///                                     |
+///                  +------------------+------------------+
+///                  v                                     v
+/// +--------------------------------+    +--------------------------------+
+/// |   Text / regex / hash forms    |    |   Versioned mutations / JSON   |
+/// +----------------+---------------+    +----------------+---------------+
+///                  |                                     |
+///                  +------------------+------------------+
+///                                     v
+///                              [Owned grammar]
+/// ```
+///
+/// # Examples
+/// ```text
+/// let args = string((4, 4)); // JSON PARTIAL_EQUAL has two text operands after its result.
+/// ```
 fn string(version: (u32, u32)) -> Vec<ArgSchemaKind> {
     let mut regex = vec![
         vec![one_of(&["MATCH", "MATCHALL"]), Expression, Out, some(Text)],
@@ -732,6 +1062,8 @@ fn string(version: (u32, u32)) -> Vec<ArgSchemaKind> {
     vec![choice(forms)]
 }
 
+// Contains AI-generated test-module documentation edits.
+/// Transform grammar regression tests loaded from the package test tree.
 #[cfg(test)]
 #[path = "../../../../../tests/unit/parser/semanticer/keyword_transform.rs"]
 mod keyword_transform;

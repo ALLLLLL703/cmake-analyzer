@@ -1,3 +1,10 @@
+//! Bind references in source order with conservative branch and deferred-body state.
+//!
+//! Workspace callers interleave resolved include/subdirectory visits through this collector.
+//! Function bodies are indexed as deferred source, not invoked. Calls invalidate value-state
+//! facts; conditional writes are merged as possibilities rather than selected by a condition.
+//! No filesystem/process access occurs here.
+// Contains AI-generated documentation additions.
 // AI-authored static reference binding and literal variable-state tracking.
 use super::{model::*, parsing::references::argument_name_span};
 use crate::model::Spanned;
@@ -10,12 +17,75 @@ use model::{
 };
 pub(crate) use model::{FileContext, ReferenceCollector};
 impl ReferenceCollector {
+    /// Read the variable identity owner of an environment. No side effects.
+    ///
+    /// # Arguments
+    /// - `self` `[in]`: collector and its current generation arenas, unchanged.
+    /// - `environment` `[in]`: valid environment ID from this collector generation.
+    ///
+    /// # Returns
+    /// Owner environment ID; conditional frames can share their parent owner.
+    ///
+    /// # Panics
+    /// Panics if an environment or source arena ID does not belong to its owning generation; parent chains must be acyclic.
+    ///
+    /// # Examples
+    /// ```text
+    /// let owner = collector.owner(root);
+    /// ```
     pub fn owner(&self, environment: ReferenceEnvironmentId) -> ReferenceEnvironmentId {
         self.environments[environment.index()].owner
     }
+    /// Read the next surrounding visibility environment. No side effects.
+    ///
+    /// # Arguments
+    /// - `self` `[in]`: collector and its current generation arenas, unchanged.
+    /// - `environment` `[in]`: valid environment ID from this collector generation.
+    ///
+    /// # Returns
+    /// Some parent ID for a child; None for a root.
+    ///
+    /// # Panics
+    /// Panics if an environment or source arena ID does not belong to its owning generation; parent chains must be acyclic.
+    ///
+    /// # Examples
+    /// ```text
+    /// assert!(collector.parent(root).is_none());
+    /// ```
     pub fn parent(&self, environment: ReferenceEnvironmentId) -> Option<ReferenceEnvironmentId> {
         self.environments[environment.index()].parent
     }
+    /// Consume the collector and attach unresolved deferred calls to any same-name source definitions collected later. This records static candidates, not body execution; no I/O.
+    ///
+    /// # Arguments
+    /// - `self` `[in,out]`: consumed collector; appends candidate call references and resolved-call locations, retaining unmatched uses.
+    ///
+    /// # Returns
+    /// Completed aggregate index; mutable environments and deduplication maps are discarded.
+    ///
+    /// # Algorithm
+    /// Group all source-defined functions by lowercase name. Revisit unresolved function calls marked deferred, attaching them to every same-name candidate and deduplicating function/location pairs. Leave other unresolved uses unchanged.
+    ///
+    /// # Flow
+    /// ```text
+    ///  [collected definitions]     [unresolved uses]
+    ///             |                       |
+    ///        [group by name]              |
+    ///             +-----------+-----------+
+    ///                         v
+    ///               <deferred matching call?>
+    ///                   /             \
+    ///            [append candidates] [retain unresolved]
+    ///                   |             |
+    ///                   +------+------+
+    ///                          v
+    ///                    [return index]
+    /// ```
+    ///
+    /// # Examples
+    /// ```text
+    /// let index = collector.finish();
+    /// ```
     pub fn finish(mut self) -> ReferenceIndex {
         // Deferred bodies can call declarations reached later; these remain static candidates.
         let mut functions: HashMap<String, Vec<IndexedFunctionId>> = HashMap::new();
@@ -52,6 +122,19 @@ impl ReferenceCollector {
         }
         self.index
     }
+    /// Append an independent root visibility environment. Mutates collector arena only; no I/O.
+    ///
+    /// # Arguments
+    /// - `self` `[in,out]`: collector state updated as described; document snapshots remain unchanged.
+    ///
+    /// # Returns
+    /// New environment ID owning its own variable identities, with no parent or deferred state.
+    ///
+    /// # Examples
+    /// ```text
+    /// let mut collector = ReferenceCollector::default();
+    /// let root = collector.root();
+    /// ```
     pub fn root(&mut self) -> ReferenceEnvironmentId {
         let id = ReferenceEnvironmentId::new(self.environments.len());
         self.environments.push(Environment {
@@ -60,6 +143,24 @@ impl ReferenceCollector {
         });
         id
     }
+    /// Append a child visibility environment with its own variable owner. Inherits deferred status but not copied binding maps; no I/O.
+    ///
+    /// # Arguments
+    /// - `self` `[in,out]`: collector state updated as described; document snapshots remain unchanged.
+    /// - `parent` `[in]`: valid surrounding environment in this collector.
+    /// - `deferred` `[in]`: whether this child belongs to deferred source even if its parent does not.
+    ///
+    /// # Returns
+    /// New child ID whose parent is supplied and owner initially equals itself.
+    ///
+    /// # Panics
+    /// Panics if an environment or source arena ID does not belong to its owning generation; parent chains must be acyclic.
+    ///
+    /// # Examples
+    /// ```text
+    /// let child = collector.fork(root, false);
+    /// assert_eq!(collector.parent(child), Some(root));
+    /// ```
     pub fn fork(
         &mut self,
         parent: ReferenceEnvironmentId,
@@ -71,6 +172,20 @@ impl ReferenceCollector {
             deferred || self.environments[parent.index()].deferred;
         id
     }
+    /// Initialize per-visit structural maps and register builtin variable names. Does not create environments or execute the file; no I/O.
+    ///
+    /// # Arguments
+    /// - `self` `[in,out]`: collector state updated as described; document snapshots remain unchanged.
+    /// - `buffer` `[in]`: immutable file snapshot providing scopes and declaration arenas.
+    /// - `root` `[in]`: caller-selected entry environment ID.
+    ///
+    /// # Returns
+    /// File context with empty lazy frames and snapshot-local definition lookup maps.
+    ///
+    /// # Examples
+    /// ```text
+    /// let context = collector.file(&buffer, root);
+    /// ```
     pub fn file(&mut self, buffer: &SemanticedBuffer, root: ReferenceEnvironmentId) -> FileContext {
         for variable in buffer.variables.iter().filter(|variable| variable.builtin) {
             if !self.builtins.contains(&variable.name) {
@@ -104,6 +219,23 @@ impl ReferenceCollector {
                 .collect(),
         }
     }
+    /// Find the nearest visible variable binding, weakening warning state after user-call invalidation. No mutation or I/O.
+    ///
+    /// # Arguments
+    /// - `self` `[in]`: collector and its current generation arenas, unchanged.
+    /// - `environment` `[in]`: valid environment ID from this collector generation.
+    /// - `name` `[in]`: exact case-sensitive variable spelling.
+    ///
+    /// # Returns
+    /// Some copied binding with Unknown state when its write clock predates any traversed invalidation; None when no ancestor binds the name.
+    ///
+    /// # Panics
+    /// Panics if an environment or source arena ID does not belong to its owning generation; parent chains must be acyclic.
+    ///
+    /// # Examples
+    /// ```text
+    /// let binding = collector.lookup(root, "answer");
+    /// ```
     fn lookup(&self, mut environment: ReferenceEnvironmentId, name: &str) -> Option<Binding> {
         // Call epochs invalidate value facts without copying every visible binding.
         let mut invalidated = 0;
@@ -119,6 +251,23 @@ impl ReferenceCollector {
             environment = self.environments[environment.index()].parent?;
         }
     }
+    /// Find the nearest visible candidate function list. No mutation or I/O.
+    ///
+    /// # Arguments
+    /// - `self` `[in]`: collector and its current generation arenas, unchanged.
+    /// - `environment` `[in]`: valid environment ID from this collector generation.
+    /// - `name` `[in]`: normalized lowercase command name.
+    ///
+    /// # Returns
+    /// Cloned candidate aggregate IDs at the first binding; empty if absent throughout the parent chain.
+    ///
+    /// # Panics
+    /// Panics if an environment or source arena ID does not belong to its owning generation; parent chains must be acyclic.
+    ///
+    /// # Examples
+    /// ```text
+    /// let candidates = collector.function(root, "helper");
+    /// ```
     fn function(
         &self,
         mut environment: ReferenceEnvironmentId,
@@ -134,6 +283,25 @@ impl ReferenceCollector {
             environment = parent;
         }
     }
+    /// Find or allocate an aggregate variable by owner environment and exact name. Existing records retain their original definition/scope; no I/O.
+    ///
+    /// # Arguments
+    /// - `self` `[in,out]`: collector state updated as described; document snapshots remain unchanged.
+    /// - `environment` `[in]`: valid environment ID from this collector generation.
+    /// - `name` `[in]`: case-sensitive name copied only for a new record.
+    /// - `scope` `[in]`: optional file-local scope stored for a new aggregate.
+    /// - `definition` `[in]`: optional source declaration consumed for a new aggregate.
+    ///
+    /// # Returns
+    /// Existing or newly appended aggregate variable ID, not a snapshot-local index.
+    ///
+    /// # Panics
+    /// Panics if an environment or source arena ID does not belong to its owning generation; parent chains must be acyclic.
+    ///
+    /// # Examples
+    /// ```text
+    /// let id = collector.variable(root, "answer", None, None);
+    /// ```
     fn variable(
         &mut self,
         environment: ReferenceEnvironmentId,
@@ -158,6 +326,23 @@ impl ReferenceCollector {
         self.variables.insert(key, id);
         id
     }
+    /// Append a source reference only once per variable/file/command/byte-range/kind key. No I/O.
+    ///
+    /// # Arguments
+    /// - `self` `[in,out]`: collector state updated as described; document snapshots remain unchanged.
+    /// - `variable` `[in]`: valid aggregate variable index.
+    /// - `location` `[in]`: consumed reference; duplicate keys are ignored.
+    ///
+    /// # Returns
+    /// () after inserting into the deduplication set and, if new, the variable reference list.
+    ///
+    /// # Panics
+    /// Panics for a new reference with an out-of-range aggregate variable ID.
+    ///
+    /// # Examples
+    /// ```text
+    /// collector.record(variable_id, location);
+    /// ```
     fn record(&mut self, variable: IndexedVariableId, location: ReferenceLocation) {
         if self.reference_seen.insert((
             variable,
@@ -172,7 +357,21 @@ impl ReferenceCollector {
                 .push(location);
         }
     }
-    /// Replay only unconditional declarations, preserving include order without variable/body effects.
+    /// Replay only top-level unconditional source declarations in a functions-only dependency visit. Preserves declaration order without variable or body effects; no I/O.
+    ///
+    /// # Arguments
+    /// - `self` `[in,out]`: collector state updated as described; document snapshots remain unchanged.
+    /// - `context` `[in]`: per-visit definition map and entry environment.
+    /// - `buffer` `[in]`: immutable declaration/block arenas.
+    /// - `command` `[in]`: source command being visited.
+    ///
+    /// # Returns
+    /// The context root environment, whether or not a definition was registered.
+    ///
+    /// # Examples
+    /// ```text
+    /// let environment = collector.function_command(&context, &buffer, command);
+    /// ```
     pub(crate) fn function_command(
         &mut self,
         context: &FileContext,
@@ -195,6 +394,23 @@ impl ReferenceCollector {
         }
         context.root
     }
+    /// Register a source definition as the current candidate for its lowercase name in one environment. Reuses aggregate identity across visits and initializes new references from the definition; no execution or I/O.
+    ///
+    /// # Arguments
+    /// - `self` `[in,out]`: collector state updated as described; document snapshots remain unchanged.
+    /// - `function` `[in]`: source function/macro; builtin records without a definition are ignored.
+    /// - `environment` `[in]`: valid environment ID from this collector generation.
+    ///
+    /// # Returns
+    /// () after overwriting this environment name binding with one candidate ID.
+    ///
+    /// # Panics
+    /// Panics if an environment or source arena ID does not belong to its owning generation; parent chains must be acyclic.
+    ///
+    /// # Examples
+    /// ```text
+    /// collector.define_function(&buffer.functions[0], root);
+    /// ```
     fn define_function(
         &mut self,
         function: &SemanticFunction,
@@ -218,6 +434,21 @@ impl ReferenceCollector {
             .functions
             .insert(function.name.to_ascii_lowercase(), vec![id]);
     }
+    /// Find/create an encountered builtin command identity and append a deduplicated call location. No execution or I/O.
+    ///
+    /// # Arguments
+    /// - `self` `[in,out]`: collector state updated as described; document snapshots remain unchanged.
+    /// - `buffer` `[in]`: owning file snapshot identity.
+    /// - `command` `[in]`: command-name span and command ID to record.
+    /// - `name` `[in]`: normalized builtin spelling copied for a new record.
+    ///
+    /// # Returns
+    /// () after ensuring a definition-free builtin function record exists.
+    ///
+    /// # Examples
+    /// ```text
+    /// collector.builtin_command(&buffer, command, "set");
+    /// ```
     fn builtin_command(
         &mut self,
         buffer: &SemanticedBuffer,
@@ -253,6 +484,47 @@ impl ReferenceCollector {
                 });
         }
     }
+    /// Find or lazily create the reference environment for one source command. May allocate body/branch frames and unknown-valued parameter bindings; does not run a body. No I/O.
+    ///
+    /// # Arguments
+    /// - `self` `[in,out]`: collector state updated as described; document snapshots remain unchanged.
+    /// - `context` `[in,out]`: appends missing block frames.
+    /// - `buffer` `[in]`: immutable block/function/scope arenas.
+    /// - `command` `[in]`: source location whose enclosing body is entered.
+    ///
+    /// # Returns
+    /// Current environment ID. Declaration openers use their surrounding environment except foreach, whose opener enters its loop frame.
+    ///
+    /// # Panics
+    /// Panics if an environment or source arena ID does not belong to its owning generation; parent chains must be acyclic.
+    ///
+    /// # Algorithm
+    /// Walk the command block ancestry from outermost to innermost, reusing existing frames. Fork for deferred, local or conditional bodies. Conditional nonlocal frames share parent variable identity ownership. For deferred function/macro bodies, seed literal parameters as unknown-valued definitions.
+    ///
+    /// # Flow
+    /// ```text
+    ///  [command ancestry]      [existing frames]
+    ///           |                      |
+    ///           +----------+-----------+
+    ///                      v
+    ///           <enter body, not opener?>
+    ///                 /             \
+    ///          [surrounding]    <frame exists?>
+    ///                            /         \
+    ///                         [reuse]    [fork]
+    ///                            |         |
+    ///                            |   [owner/deferred rules]
+    ///                            |         |
+    ///                            |   [seed parameters]
+    ///                            +----+----+
+    ///                                 v
+    ///                          [environment ID]
+    /// ```
+    ///
+    /// # Examples
+    /// ```text
+    /// let environment = collector.environment(&mut context, &buffer, command);
+    /// ```
     pub fn environment(
         &mut self,
         context: &mut FileContext,
@@ -337,6 +609,56 @@ impl ReferenceCollector {
         }
         environment
     }
+    /// Index one source command in the selected environment, recording reads, candidate calls and possible writes. Merges conditional closers without evaluating conditions or executing user bodies; no I/O.
+    ///
+    /// # Arguments
+    /// - `self` `[in,out]`: collector state updated as described; document snapshots remain unchanged.
+    /// - `context` `[in,out]`: creates/removes block frames and accumulates branch alternatives.
+    /// - `buffer` `[in]`: immutable file snapshot and arenas.
+    /// - `source` `[in]`: matching text for delimiter-free variable-name spans.
+    /// - `command` `[in]`: command visited in source/dependency order.
+    /// - `invocation` `[in]`: dependency visit identity attached to warnings.
+    ///
+    /// # Returns
+    /// Environment used for this command, including when a closing conditional frame has just been merged.
+    ///
+    /// # Panics
+    /// Panics if an environment or source arena ID does not belong to its owning generation; parent chains must be acyclic.
+    /// User-call clock overflow can also panic with overflow checks.
+    ///
+    /// # Algorithm
+    /// Select the environment; save/reset branch state at else/elseif. Read arguments before writes. Record native or user calls and declarations, invalidating older value-state facts for user calls. Apply closed-command writes, then merge a conditional frame on its matched closer.
+    ///
+    /// # Flow
+    /// ```text
+    ///  [command]             [visit context]
+    ///       |                       |
+    ///       +-----------+-----------+
+    ///                   v
+    ///         [environment / branch reset]
+    ///                   |
+    ///                   v
+    ///              [read bindings]
+    ///                   |
+    ///             <closed command?>
+    ///               /          \
+    ///            [skip]   [declaration/call + writes]
+    ///               |          |
+    ///               +-----+----+
+    ///                     v
+    ///             <conditional closer?>
+    ///                /            \
+    ///            [merge]        [keep frame]
+    ///                |            |
+    ///                +------+-----+
+    ///                       v
+    ///               [environment ID]
+    /// ```
+    ///
+    /// # Examples
+    /// ```text
+    /// let environment = collector.command(&mut context, &buffer, source, command, ReferenceInvocationId::new(0));
+    /// ```
     pub fn command(
         &mut self,
         context: &mut FileContext,
@@ -429,6 +751,42 @@ impl ReferenceCollector {
         }
         environment
     }
+    /// Bind an extracted variable read, lazily create builtin roots and append unset/empty warnings. Deferred outer values suppress unsafe warnings; no I/O.
+    ///
+    /// # Arguments
+    /// - `self` `[in,out]`: collector state updated as described; document snapshots remain unchanged.
+    /// - `reference` `[in]`: extracted name and source read location.
+    /// - `environment` `[in]`: valid environment ID from this collector generation.
+    /// - `invocation` `[in]`: dependency visit ID for any warning.
+    ///
+    /// # Returns
+    /// () after recording a bound read or appending an unresolved use; warnings are not deduplicated by navigation keys.
+    ///
+    /// # Panics
+    /// Panics if an environment or source arena ID does not belong to its owning generation; parent chains must be acyclic.
+    ///
+    /// # Algorithm
+    /// Look up the nearest binding, creating unknown-valued builtin bindings at the context root when needed. Record the read. Emit unset/empty/possibly-unset state warnings except for outer bindings read by deferred bodies; missing names stay unresolved.
+    ///
+    /// # Flow
+    /// ```text
+    ///  [read name]          [visible bindings/builtins]
+    ///       |                         |
+    ///       +------------+------------+
+    ///                    v
+    ///               <binding found?>
+    ///                 /         \
+    ///          [record read] [unresolved + possible warning]
+    ///                 |
+    ///        <deferred outer value?>
+    ///             /           \
+    ///        [suppress]    [state warning if known]
+    /// ```
+    ///
+    /// # Examples
+    /// ```text
+    /// collector.read(&command.variable_references[0], root, ReferenceInvocationId::new(0));
+    /// ```
     fn read(
         &mut self,
         reference: &ArgumentReference,
@@ -489,6 +847,49 @@ impl ReferenceCollector {
             });
         }
     }
+    /// Record possible local variable writes and update unset/empty warning states. Cache/environment writes are ignored; PARENT_SCOPE writes stay unresolved rather than mutating parent state. No execution or I/O.
+    ///
+    /// # Arguments
+    /// - `self` `[in,out]`: collector state updated as described; document snapshots remain unchanged.
+    /// - `buffer` `[in]`: owning file identity.
+    /// - `source` `[in]`: source matching argument spans.
+    /// - `command` `[in]`: closed command with schema/output classifications.
+    /// - `environment` `[in]`: valid environment ID from this collector generation.
+    ///
+    /// # Returns
+    /// () after appending definitions/writes and overwriting local binding entries. An unset may reveal a binding from a different owner.
+    ///
+    /// # Panics
+    /// Panics if an environment or source arena ID does not belong to its owning generation; parent chains must be acyclic.
+    ///
+    /// # Algorithm
+    /// Recognize native assignments and in-place mutations, reject cache/environment effects, then inspect literal output names. Nonlocal writes become unresolved locations. Local writes reuse/create owner-qualified identities; first non-unset writes establish definitions. Infer only simple empty/nonempty set states and let unset expose an inherited owner binding when available.
+    ///
+    /// # Flow
+    /// ```text
+    ///  [schema Out / native mutation slots]
+    ///                    |
+    ///           <cache/environment write?>
+    ///                /              \
+    ///             [skip]      <PARENT_SCOPE?>
+    ///                          /         \
+    ///                    [unresolved] [local identity]
+    ///                                     |
+    ///                           [definition/write location]
+    ///                                     |
+    ///                               <unset?>
+    ///                               /      \
+    ///                     [reveal parent] [infer simple state]
+    ///                               |      |
+    ///                               +--+---+
+    ///                                  v
+    ///                          [overwrite local map]
+    /// ```
+    ///
+    /// # Examples
+    /// ```text
+    /// collector.writes(&buffer, source, command, root);
+    /// ```
     fn writes(
         &mut self,
         buffer: &SemanticedBuffer,
@@ -633,6 +1034,43 @@ impl ReferenceCollector {
                 .insert(variable_name.to_owned(), binding);
         }
     }
+    /// Merge conditional alternatives into the surrounding environment conservatively. Appends candidate functions and weakens conflicting variable states; no branch selection or I/O.
+    ///
+    /// # Arguments
+    /// - `self` `[in,out]`: collector state updated as described; document snapshots remain unchanged.
+    /// - `frame` `[in]`: consumed conditional frame with accumulated writes/functions.
+    ///
+    /// # Returns
+    /// () after saving the final branch, propagating invalidation and overwriting possible parent bindings.
+    ///
+    /// # Panics
+    /// Panics if an environment or source arena ID does not belong to its owning generation; parent chains must be acyclic.
+    ///
+    /// # Algorithm
+    /// Drain the final branch into accumulated alternatives. Propagate the latest call invalidation. Preserve a write state only when it agrees with a visible parent binding; conflicting states become Unknown, missing parent names MaybeUnset. Extend parent function candidates.
+    ///
+    /// # Flow
+    /// ```text
+    ///  [prior branches]        [final branch]
+    ///          |                     |
+    ///          +----------+----------+
+    ///                     v
+    ///           [save/merge alternatives]
+    ///                     |
+    ///             <parent binding?>
+    ///              /             \
+    ///        [compare states]  [MaybeUnset]
+    ///           /       \          |
+    ///       [same]   [Unknown]      |
+    ///           +-------+----------+
+    ///                   v
+    ///        [parent maps + invalidation]
+    /// ```
+    ///
+    /// # Examples
+    /// ```text
+    /// collector.merge(frame);
+    /// ```
     fn merge(&mut self, mut frame: Frame) {
         let environment = frame.environment;
         save_branch(&mut frame, &mut self.environments[environment.index()]);
@@ -659,6 +1097,19 @@ impl ReferenceCollector {
         }
     }
 }
+/// Drain one branch into accumulated frame alternatives and reset its local maps. Conflicting write states become Unknown; no I/O.
+///
+/// # Arguments
+/// - `frame` `[in,out]`: appends/merges writes and extends function candidate lists.
+/// - `environment` `[in,out]`: drains variables/functions; parent/owner/clock fields are unchanged.
+///
+/// # Returns
+/// () after merging; old writes before invalidation are downgraded to Unknown.
+///
+/// # Examples
+/// ```text
+/// save_branch(&mut frame, &mut environment);
+/// ```
 fn save_branch(frame: &mut Frame, environment: &mut Environment) {
     for (name, mut binding) in std::mem::take(&mut environment.variables) {
         if binding.written_at < environment.invalidate_after {
@@ -678,6 +1129,22 @@ fn save_branch(frame: &mut Frame, environment: &mut Environment) {
         frame.functions.entry(name).or_default().extend(functions);
     }
 }
+/// Follow parent links to the topmost visibility environment. No side effects.
+///
+/// # Arguments
+/// - `environments` `[in]`: owning collector arena.
+/// - `environment` `[in]`: valid starting ID.
+///
+/// # Returns
+/// Root ancestor ID, or the input when already a root.
+///
+/// # Panics
+/// Invalid IDs panic; parent chains must be acyclic.
+///
+/// # Examples
+/// ```text
+/// let root = context_root(&collector.environments, child);
+/// ```
 fn context_root(
     environments: &[Environment],
     mut environment: ReferenceEnvironmentId,
@@ -688,7 +1155,22 @@ fn context_root(
     environment
 }
 
-/// Preserve environment identities when querying a file without a RootGraph.
+/// Build a standalone file reference index without a dependency graph. Uses one synthetic visit ID and preserves collector environment identities; no I/O or execution.
+///
+/// # Arguments
+/// - `buffer` `[in]`: immutable semantic snapshot.
+/// - `source` `[in]`: matching source text for name spans.
+///
+/// # Returns
+/// Completed index for source-order local commands only; external dependency declarations are not replayed.
+///
+/// # Panics
+/// Panics if an environment or source arena ID does not belong to its owning generation; parent chains must be acyclic.
+///
+/// # Examples
+/// ```text
+/// let index = local_index(&buffer, source);
+/// ```
 pub(crate) fn local_index(buffer: &SemanticedBuffer, source: &str) -> ReferenceIndex {
     let mut collector = ReferenceCollector::default();
     let root = collector.root();
@@ -705,6 +1187,46 @@ pub(crate) fn local_index(buffer: &SemanticedBuffer, source: &str) -> ReferenceI
     collector.finish()
 }
 impl Semanticer {
+    /// Overwrite local warnings/functions/unresolved uses and rebuild variable reference lists from a standalone index. Removes unknown-command diagnostics for bound user calls; no I/O or execution.
+    ///
+    /// # Arguments
+    /// - `self` `[in]`: analyzer, unchanged.
+    /// - `result` `[in,out]`: replaces warnings/functions/unresolved references, clears and extends variable references, appends newly discovered variables and filters resolved-call diagnostics.
+    /// - `source` `[in]`: text matching all source spans.
+    ///
+    /// # Returns
+    /// () after merging aggregate references back into file-local scope/name records; existing possible-write lists are retained.
+    ///
+    /// # Panics
+    /// Panics if an environment or source arena ID does not belong to its owning generation; parent chains must be acyclic.
+    ///
+    /// # Algorithm
+    /// Build the local index, transfer warning/function/unresolved outputs, map aggregate variables back to snapshot-local scope/name keys, then remove CommandNotFound diagnostics whose exact name spans match resolved user calls.
+    ///
+    /// # Flow
+    /// ```text
+    ///  [local reference index]       [existing scoped variables]
+    ///            |                              |
+    ///    [replace warning/function lists]       |
+    ///            |                              |
+    ///            +---------------+--------------+
+    ///                            v
+    ///                     <scope/name exists?>
+    ///                        /           \
+    ///                     [reuse]      [append]
+    ///                        |           |
+    ///                        +-----+-----+
+    ///                              v
+    ///                   [extend variable references]
+    ///                              |
+    ///                              v
+    ///                   [filter resolved-call errors]
+    /// ```
+    ///
+    /// # Examples
+    /// ```text
+    /// analyzer.collect_references(&mut buffer, source);
+    /// ```
     pub(crate) fn collect_references(&self, result: &mut SemanticedBuffer, source: &str) {
         let index = local_index(result, source);
         result.warnings = index

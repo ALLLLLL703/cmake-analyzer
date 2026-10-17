@@ -1,10 +1,54 @@
+//! Formatter regressions using overlay-only document snapshots. Tests compare rendered bytes,
+//! token/comment preservation, repeat formatting and refusal paths; they do not write formatted
+//! files.
+
+// Contains AI-generated documentation edits.
 // AI-generated tests.
 use cmake_analyzer::{
     format::{self, Error, Options},
     workspace::{Workspace, model::DocumentSnapshot},
 };
 use std::sync::Arc;
+/// Required-version prefix shared by formatter fixtures; keeps semantic analysis on CMake 3.31.
+/// Example: `format!("{HEADER}set(X x)\n")` adds a valid fixture body.
 const HEADER: &str = "cmake_minimum_required(VERSION 3.31)\n";
+/// Analyze an overlay under a process-specific temporary filename for formatter tests. Mutates a
+/// new local workspace and may read supporting paths, but does not write the source or execute
+/// CMake.
+///
+/// # Arguments
+/// - `source` `[in]`: CMake text installed as the entire file overlay, replacing any disk contents
+///   for analysis.
+///
+/// # Returns
+/// A shared immutable document snapshot containing text, tokens and semantics; remains usable after
+/// the local workspace is dropped.
+///
+/// # Panics
+/// If workspace creation, overlay installation, document flushing or snapshot lookup fails or
+/// returns no snapshot.
+///
+/// # Algorithm
+/// Create a workspace at a process-specific path, replace its source with an overlay, flush
+/// document analysis only and retain the resulting immutable snapshot.
+///
+/// # Flow
+/// ```text
+/// [source overlay]
+///         |
+/// [new local workspace] ----> [flush_documents]
+///                                  |
+///                         [immutable snapshot]
+///                                  |
+///                           [return Arc]
+/// ```
+///
+/// # Examples
+/// Local test-module context (await inside an async test):
+/// ```text
+/// let document = snapshot("cmake_minimum_required(VERSION 3.31)\nset(X x)\n").await;
+/// assert_eq!(document.semantics.commands.len(), 2);
+/// ```
 async fn snapshot(source: &str) -> Arc<DocumentSnapshot> {
     let root = std::env::temp_dir().join(format!("cmake-format-{}.cmake", std::process::id()));
     let mut workspace = Workspace::new(&root, None).unwrap();
@@ -12,6 +56,26 @@ async fn snapshot(source: &str) -> Arc<DocumentSnapshot> {
     workspace.flush_documents().await.unwrap();
     workspace.snapshot(&root).unwrap().unwrap()
 }
+/// Render an overlay snapshot with the supplied formatter options and cancellation disabled.
+/// Creates local analysis state through [`snapshot`]; does not write formatted text to disk or
+/// execute CMake.
+///
+/// # Arguments
+/// - `source` `[in]`: Complete CMake input to analyze and format.
+/// - `options` `[in]`: Indentation and line-width policy passed unchanged to the renderer.
+///
+/// # Returns
+/// The rendered replacement string, including the renderer's newline policy; input is not mutated.
+///
+/// # Panics
+/// If snapshot setup fails or rendering returns an error, including invalid source or options.
+///
+/// # Examples
+/// Local test-module context (await inside an async test):
+/// ```text
+/// let output = formatted("cmake_minimum_required(VERSION 3.31)\nset( X x )\n", Options::default()).await;
+/// assert!(output.ends_with("set(X x)\n"));
+/// ```
 async fn formatted(source: &str, options: Options) -> String {
     let snapshot = snapshot(source).await;
     format::render(
@@ -23,6 +87,43 @@ async fn formatted(source: &str, options: Options) -> String {
     )
     .unwrap()
 }
+/// Format an if/elseif/else fixture containing trailing/body comments, a bracket literal and an
+/// escaped space.
+///
+/// Mutates only local workspace overlays/snapshots and may read supporting paths; no source-file
+/// writes or CMake execution.
+///
+/// # Arguments
+/// None. The test builds its own fixture and expected results.
+///
+/// # Returns
+/// `()` after all checks pass; no data or output parameter is returned.
+///
+/// # Panics
+/// If a stated invariant fails or an unwrapped fixture/setup operation fails.
+///
+/// # Algorithm
+/// Require exact indentation, idempotence and identical token/comment bytes between old and new
+/// snapshots.
+///
+/// # Flow
+/// ```text
+///   [blocks/comments/literals]
+///    |
+///   [format + reformat]-----------------> [old/new snapshots]
+///                                        |
+///                                       [compare token + comment bytes]
+///                                        |
+///                                       < checks hold? >
+///                                        /         \
+///                                      [pass]     [panic]
+/// ```
+///
+/// # Examples
+/// Direct local call outside any Tokio runtime (the test attribute creates its runtime):
+/// ```text
+/// commands_blocks_branches_and_comments_keep_all_literal_bytes();
+/// ```
 #[tokio::test]
 async fn commands_blocks_branches_and_comments_keep_all_literal_bytes() {
     let input = format!(
@@ -62,6 +163,43 @@ async fn commands_blocks_branches_and_comments_keep_all_literal_bytes() {
     };
     assert_eq!(comments(&old), comments(&new));
 }
+/// Set a 60-column limit for nested conditions, an oversized quoted literal and interspersed
+/// line/block comments.
+///
+/// Mutates only local workspace overlays/snapshots and may read supporting paths; no source-file
+/// writes or CMake execution.
+///
+/// # Arguments
+/// None. The test builds its own fixture and expected results.
+///
+/// # Returns
+/// `()` after all checks pass; no data or output parameter is returned.
+///
+/// # Panics
+/// If a stated invariant fails or an unwrapped fixture/setup operation fails.
+///
+/// # Algorithm
+/// Require vertical wrapping without string reflow, repeat-format stability and identical token
+/// bytes.
+///
+/// # Flow
+/// ```text
+///   [60-column options]
+///    |
+///   [wrap calls, preserve literals]----------> [old/new snapshots]
+///                                             |
+///                                            [compare tokens + stability]
+///                                             |
+///                                            < checks hold? >
+///                                             /         \
+///                                           [pass]     [panic]
+/// ```
+///
+/// # Examples
+/// Direct local call outside any Tokio runtime (the test attribute creates its runtime):
+/// ```text
+/// long_calls_wrap_with_comments_and_nested_parentheses_without_reflowing_strings();
+/// ```
 #[tokio::test]
 async fn long_calls_wrap_with_comments_and_nested_parentheses_without_reflowing_strings() {
     let input = format!(
@@ -95,6 +233,42 @@ async fn long_calls_wrap_with_comments_and_nested_parentheses_without_reflowing_
     };
     assert_eq!(tokens(&old), tokens(&new));
 }
+/// Render a CRLF fixture with tab indentation and an escaped CRLF inside an unquoted argument.
+///
+/// Mutates only local workspace overlays/snapshots and may read supporting paths; no source-file
+/// writes or CMake execution.
+///
+/// # Arguments
+/// None. The test builds its own fixture and expected results.
+///
+/// # Returns
+/// `()` after all checks pass; no data or output parameter is returned.
+///
+/// # Panics
+/// If a stated invariant fails.
+///
+/// # Algorithm
+/// Require intact continuation bytes, no doubled carriage returns, idempotence and unchanged empty
+/// input.
+///
+/// # Flow
+/// ```text
+///   [CRLF + escaped newline]
+///    |
+///   [render with tabs]----------------> [second render / empty source]
+///                                      |
+///                                     [check stability + exact bytes]
+///                                      |
+///                                     < checks hold? >
+///                                      /         \
+///                                    [pass]     [panic]
+/// ```
+///
+/// # Examples
+/// Direct local call outside any Tokio runtime (the test attribute creates its runtime):
+/// ```text
+/// crlf_tabs_empty_files_and_escaped_newlines_are_preserved_safely();
+/// ```
 #[tokio::test]
 async fn crlf_tabs_empty_files_and_escaped_newlines_are_preserved_safely() {
     let input = "cmake_minimum_required(VERSION 3.31)\r\nif(TRUE)\r\nset(X foo\\\r\nbar) # comment\r\nendif()\r\n";
@@ -112,6 +286,26 @@ async fn crlf_tabs_empty_files_and_escaped_newlines_are_preserved_safely() {
     assert_eq!(formatted(&output, options).await, output);
     assert_eq!(formatted("", Options::default()).await, "");
 }
+/// Format a comment between command name and opening parenthesis and a comment inside an empty
+/// call. Require stable second formatting and preserve the name/comment/parenthesis ordering.
+///
+/// Mutates only local workspace overlays/snapshots and may read supporting paths; no source-file
+/// writes or CMake execution.
+///
+/// # Arguments
+/// None. The test builds its own fixture and expected results.
+///
+/// # Returns
+/// `()` after all checks pass; no data or output parameter is returned.
+///
+/// # Panics
+/// If a stated invariant fails.
+///
+/// # Examples
+/// Direct local call outside any Tokio runtime (the test attribute creates its runtime):
+/// ```text
+/// comments_before_parentheses_and_after_empty_calls_keep_token_order();
+/// ```
 #[tokio::test]
 async fn comments_before_parentheses_and_after_empty_calls_keep_token_order() {
     for body in [
@@ -126,6 +320,42 @@ async fn comments_before_parentheses_and_after_empty_calls_keep_token_order() {
         }
     }
 }
+/// Use an unfinished quoted set call to require invalid-syntax refusal, cancellation refusal and
+/// invalid-options refusal when indent width is zero.
+///
+/// Mutates only local workspace overlays/snapshots and may read supporting paths; no source-file
+/// writes or CMake execution.
+///
+/// # Arguments
+/// None. The test builds its own fixture and expected results.
+///
+/// # Returns
+/// `()` after all checks pass; no data or output parameter is returned.
+///
+/// # Panics
+/// If a stated invariant fails.
+///
+/// # Algorithm
+/// These paths return errors instead of replacement text.
+///
+/// # Flow
+/// ```text
+///   [unfinished set source]
+///    |
+///   [InvalidSyntax]------------------> [cancel / zero indent]
+///                                     |
+///                                    [Cancelled / InvalidOptions]
+///                                     |
+///                                    < checks hold? >
+///                                     /         \
+///                                   [pass]     [panic]
+/// ```
+///
+/// # Examples
+/// Direct local call outside any Tokio runtime (the test attribute creates its runtime):
+/// ```text
+/// invalid_syntax_invalid_settings_and_cancellation_never_return_rewrites();
+/// ```
 #[tokio::test]
 async fn invalid_syntax_invalid_settings_and_cancellation_never_return_rewrites() {
     let source = format!("{HEADER}set(X \"unfinished");

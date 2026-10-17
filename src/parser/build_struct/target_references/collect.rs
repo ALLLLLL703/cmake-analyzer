@@ -1,3 +1,6 @@
+//! Collect literal target declarations and schema operands; no I/O or CMake execution.
+//! Native command shadows and unstable unquoted expansions cannot supply guessed target uses.
+// Contains AI-generated documentation additions.
 use super::model::{Entry, TargetCollector, TargetDirectoryId, TargetEntryId, Use};
 use crate::parser::build_struct::model::{
     BuildEffect, BuildStruct, BuildStructAnalyzer, TargetKind, TargetReference,
@@ -11,6 +14,21 @@ use crate::parser::semanticer::{
     values::argument_value,
 };
 
+/// Collect calls bound to user functions so native target roles cannot leak through shadows. No
+/// mutation or I/O.
+///
+/// # Arguments
+/// - `index` `[in]` : Optional workspace reference index; used instead of local function references
+///   when supplied.
+/// - `buffer` `[in]`: Semantic file whose command IDs are selected.
+///
+/// # Returns
+/// Set of this file's resolved user-call command IDs.
+///
+/// # Examples
+/// ```text
+/// let shadowed = shadows(Some(index), buffer);
+/// ```
 fn shadows(
     index: Option<&ReferenceIndex>,
     buffer: &SemanticedBuffer,
@@ -32,6 +50,18 @@ fn shadows(
         .map(|reference| reference.command)
         .collect()
 }
+/// Classify native target constructors case-insensitively. No side effects.
+///
+/// # Arguments
+/// - `command` `[in]`: Command whose name is inspected.
+///
+/// # Returns
+/// True for add_library, add_executable or add_custom_target; false otherwise.
+///
+/// # Examples
+/// ```text
+/// let is_constructor = constructor(command);
+/// ```
 fn constructor(command: &SemanticCommandRepresent) -> bool {
     matches!(
         command.name.to_ascii_lowercase().as_str(),
@@ -39,11 +69,62 @@ fn constructor(command: &SemanticCommandRepresent) -> bool {
     )
 }
 impl TargetCollector {
+    /// Append a target directory with its optional parent. No I/O.
+    ///
+    /// # Arguments
+    /// - `self` `[in,out]`: Collector; appends one directory, retaining existing IDs.
+    /// - `parent` `[in]`: Ancestor in the same collector, or None for a root.
+    ///
+    /// # Returns
+    /// Fresh collector-local directory ID.
+    ///
+    /// # Examples
+    /// ```text
+    /// let root = collector.directory(None);
+    /// let child = collector.directory(Some(root));
+    /// ```
     pub(crate) fn directory(&mut self, parent: Option<TargetDirectoryId>) -> TargetDirectoryId {
         let id = TargetDirectoryId::new(self.directories.len());
         self.directories.push(parent);
         id
     }
+    /// Append literal target definitions and schema-identified reads from a file visit. Does not
+    /// mutate snapshots or perform I/O.
+    ///
+    /// # Arguments
+    /// - `self` `[in,out]`: Collector; appends deduplicated entries and pending uses.
+    /// - `build` `[in]`: Build facts from the same semantic revision.
+    /// - `buffer` `[in]`: Semantic commands used for spans, schemas and expansion safety.
+    /// - `directory` `[in]`: Use-site directory ID belonging to this collector.
+    /// - `index` `[in]` : Optional owner-qualified references/values for shadows and argument
+    ///   expansion.
+    ///
+    /// # Returns
+    /// () after staging eligible names; binding is deferred to finish.
+    ///
+    /// # Algorithm
+    /// Collect nonempty literal declarations unless shadowed, deduplicating global or
+    /// directory-local definition keys. Inspect closed schema-bearing commands, excluding native
+    /// shadows. Expand earlier operands only to select schema roles; uses themselves must be
+    /// literal, and unstable unquoted expansion suppresses later slots.
+    ///
+    /// # Flow
+    /// ```text
+    /// [build facts]              [semantic commands]
+    ///       |                           |
+    ///  [literal/unshadowed?]      [schema target slots]
+    ///       |                           |
+    ///  [deduplicate definitions] [stable literal operands]
+    ///       |                           |
+    ///       +----> [entries]      [pending uses]
+    ///                        \       /
+    ///                          [finish]
+    /// ```
+    ///
+    /// # Examples
+    /// ```text
+    /// collector.file(build, semantics, directory, Some(index));
+    /// ```
     pub(crate) fn file(
         &mut self,
         build: &BuildStruct,
@@ -175,6 +256,44 @@ impl TargetCollector {
         }
     }
 }
+/// Overwrite every target fact's reference list with bindings from this file alone. No I/O or
+/// semantic mutation.
+///
+/// # Arguments
+/// - `build` `[in,out]` : Build output; overwrites target references, including empty lists for
+///   unbound declarations.
+/// - `buffer` `[in]`: Matching semantic snapshot.
+///
+/// # Returns
+/// () after a fresh single-directory collection and resolution.
+///
+/// # Algorithm
+/// Collect this file in one root target directory and finish normal visibility lookup. Index each
+/// retained definition by command, then overwrite every target fact with that command's new
+/// reference list or an empty list.
+///
+/// # Flow
+/// ```text
+/// [one local directory]
+///           |
+///  [collect + finish targets]
+///           |
+///  [references by definition command]
+///           |
+///      [target fact loop]
+///        /           \
+///  matched          absent
+///     |                |
+///  overwrite list  clear list
+///     +--------+-------+
+///              |
+///      [updated build facts]
+/// ```
+///
+/// # Examples
+/// ```text
+/// bind_local(&mut build, semantics);
+/// ```
 pub(in crate::parser::build_struct) fn bind_local(
     build: &mut BuildStruct,
     buffer: &SemanticedBuffer,

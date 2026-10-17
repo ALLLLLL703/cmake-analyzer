@@ -1,6 +1,30 @@
+//! Cancel a matching queued or running configure/script profile without starting another child.
+
 // AI-authored explicit cancellation action entrypoint.
 use super::{Service, model::ActionRequest};
 use lspally::server::model::*;
+/// Remove matching queued saves and cancel the matching tracked configure/script job; never start a
+/// child.
+/// Cancelling signals the independent job token; background process cleanup kills and waits for the
+/// direct child. This call does not join cleanup or erase an already installed layer.
+///
+/// # Arguments
+/// - `service` `[in,out]`: saved_runs and running entries may be removed; a removed running token is
+///   cancelled.
+/// - `request` `[in]`: owner/root/profile selector; its own cancellation token is not inspected.
+///
+/// # Returns
+/// Ok(Some(Data::Bool(true))) if a queue entry or running job was removed; false if neither matched.
+/// Never None.
+///
+/// # Errors
+/// Invalid URI or no compatible active project owner.
+///
+/// # Examples
+/// Local server context (requires the initialized service and its client):
+/// ```text
+/// let cancelled = cancel_configure::run(service, request).await?;
+/// ```
 pub(super) async fn run(
     service: &mut Service,
     request: ActionRequest,

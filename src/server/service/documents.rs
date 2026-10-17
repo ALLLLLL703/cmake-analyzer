@@ -1,3 +1,8 @@
+//! Apply ordered editor notifications to service state.
+//! Editor `didChange` text is authoritative. Save invalidates disk caches and may
+//! schedule an authorized runtime run, but never overwrites editor text or disk files.
+//! Close releases overlays and queues an empty report only for previously published
+//! files. Query commands belong to the runtime loop, not this edit handler.
 // AI-authored editor document lifecycle.
 use super::{
     super::{model::*, roots, text, uri},
@@ -6,6 +11,43 @@ use super::{
 use lspally::server::model::*;
 
 impl Service {
+    /// Apply one ordered notification, invalidate affected runtime observations and synchronize overlays.
+    /// Reads metadata/settings for admission, joins edit conversion, and may queue save jobs or close-clear reports; never writes editor files.
+    ///
+    /// # Arguments
+    /// - `self` `[in,out]`: Open texts/versions, project caches, runtime markers, pending saves and diagnostic-clear state updated by the message.
+    /// - `command` `[in]`: Consumed edit/folder/runtime-refresh message; query variants are rejected.
+    ///
+    /// # Returns
+    /// `Ok(())` after final overlay synchronization; `Err` for invalid input or failed updates, with earlier invalidation/admission changes retained.
+    ///
+    /// # Errors
+    /// Invalid/local URI failures, duplicate/over-limit open, missing/nonincreasing changed document, invalid edit ranges, blocking-worker failures, ownership/cache/discovery failures, or a query sent to this handler.
+    ///
+    /// # Algorithm
+    /// Changes/saves/closes invalidate related runtime before validation; folders invalidate all runs and pending saves. Open admits owners/text; change computes all edits on a joined worker before replacing text/version; close removes overlays and publication keys; save ignores optional text, schedules authorized owners and invalidates disk; folders remove/add roots and reassign opens. Finally synchronize current overlays.
+    ///
+    /// # Flow
+    /// ```text
+    ///  [Notification]
+    ///         |
+    ///  [Invalidate runtime when affected]
+    ///         |
+    ///  <Kind?>
+    ///    +----+-------------+------------+
+    ///    |                  |            |
+    ///  [Open/change]    [Close/save]   [Folders]
+    ///    |                  |            |
+    ///  [Text/version] [Release/queue] [Reassign roots]
+    ///    +------------------+------------+
+    ///                       v
+    ///                 [Sync overlays]
+    /// ```
+    ///
+    /// # Examples
+    /// ```text
+    /// service.apply(ServiceCommand::Change(params)).await?;
+    /// ```
     pub(super) async fn apply(&mut self, command: ServiceCommand) -> ServerResult<()> {
         let affected = match &command {
             ServiceCommand::Change(params) => Some(&params.text_document.uri),

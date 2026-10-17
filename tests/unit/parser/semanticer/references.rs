@@ -1,9 +1,49 @@
+//! Reference identity, exact name spans, function/variable namespaces and conservative value
+//! warnings from in-memory CMake source. No project execution.
+
+// Contains AI-generated documentation edits.
 // AI-generated reference extraction, function, and warning tests.
 use super::analyze;
 use cmake_analyzer::parser::semanticer::model::{
     FunctionKind, ReferenceKind, ReferenceTarget, SemanticWarnKind,
 };
 
+/// Analyze ordinary, nested, escaped, bracket, environment and cache expansions plus a list read.
+///
+/// Only local values and analysis buffers are created or changed; no file, network or process side
+/// effects.
+///
+/// # Arguments
+/// None. The test builds its own fixture and expected results.
+///
+/// # Returns
+/// `()` after all checks pass; no data or output parameter is returned.
+///
+/// # Panics
+/// If a stated invariant fails or an unwrapped fixture/setup operation fails.
+///
+/// # Algorithm
+/// Require exact ordinary-name spans and qualified command/file/argument locations; excluded
+/// namespaces must not produce warnings or output-variable reads.
+///
+/// # Flow
+/// ```text
+///   [ordinary/special expansions]
+///    |
+///   [analyze references]-------------------> [definition/read/unresolved lists]
+///                                           |
+///                                          [check names + qualified spans]
+///                                           |
+///                                          < checks hold? >
+///                                           /         \
+///                                         [pass]     [panic]
+/// ```
+///
+/// # Examples
+/// Direct local call outside any Tokio runtime (the test attribute creates its runtime):
+/// ```text
+/// references_keep_argument_command_file_and_exact_name_spans();
+/// ```
 #[tokio::test]
 async fn references_keep_argument_command_file_and_exact_name_spans() {
     let source = r#"cmake_minimum_required(VERSION 3.31)
@@ -65,6 +105,26 @@ list(LENGTH 变量 COUNT)
     )));
 }
 
+/// Compare size and alignment of reference environment/invocation ID wrappers with usize, proving
+/// layout remains index-sized without allocating reference data.
+///
+/// Only local values and analysis buffers are created or changed; no file, network or process side
+/// effects.
+///
+/// # Arguments
+/// None. The test builds its own fixture and expected results.
+///
+/// # Returns
+/// `()` after all checks pass; no data or output parameter is returned.
+///
+/// # Panics
+/// If a stated invariant fails.
+///
+/// # Examples
+/// Local test-module call:
+/// ```text
+/// reference_ids_keep_the_underlying_index_layout();
+/// ```
 #[test]
 fn reference_ids_keep_the_underlying_index_layout() {
     use cmake_analyzer::parser::semanticer::model::{
@@ -88,6 +148,26 @@ fn reference_ids_keep_the_underlying_index_layout() {
     );
 }
 
+/// Analyze a complete A expansion inside an unfinished message call. Require syntax diagnostics and
+/// a retained read reference for A despite the missing outer parenthesis.
+///
+/// Only local values and analysis buffers are created or changed; no file, network or process side
+/// effects.
+///
+/// # Arguments
+/// None. The test builds its own fixture and expected results.
+///
+/// # Returns
+/// `()` after all checks pass; no data or output parameter is returned.
+///
+/// # Panics
+/// If a stated invariant fails or an unwrapped fixture/setup operation fails.
+///
+/// # Examples
+/// Direct local call outside any Tokio runtime (the test attribute creates its runtime):
+/// ```text
+/// complete_expansions_are_indexed_inside_unclosed_commands();
+/// ```
 #[tokio::test]
 async fn complete_expansions_are_indexed_inside_unclosed_commands() {
     let buffer =
@@ -105,6 +185,43 @@ async fn complete_expansions_are_indexed_inside_unclosed_commands() {
     );
 }
 
+/// Analyze case-insensitive function/macro calls, formal parameters, an empty local and an unknown
+/// call.
+///
+/// Only local values and analysis buffers are created or changed; no file, network or process side
+/// effects.
+///
+/// # Arguments
+/// None. The test builds its own fixture and expected results.
+///
+/// # Returns
+/// `()` after all checks pass; no data or output parameter is returned.
+///
+/// # Panics
+/// If a stated invariant fails or an unwrapped fixture/setup operation fails.
+///
+/// # Algorithm
+/// Require definitions plus calls, parameter definition references, no parameter unset warnings and
+/// one unresolved function diagnostic.
+///
+/// # Flow
+/// ```text
+///   [function/macro/unknown calls]
+///    |
+///   [analyze definitions + references]----------> [parameter/local warnings]
+///                                                |
+///                                               [compare links + diagnostic]
+///                                                |
+///                                               < checks hold? >
+///                                                /         \
+///                                              [pass]     [panic]
+/// ```
+///
+/// # Examples
+/// Direct local call outside any Tokio runtime (the test attribute creates its runtime):
+/// ```text
+/// functions_macros_and_parameters_keep_definitions_and_calls();
+/// ```
 #[tokio::test]
 async fn functions_macros_and_parameters_keep_definitions_and_calls() {
     let source = "cmake_minimum_required(VERSION 3.31)\nfunction(F P)\nmessage(\"${P}\")\nset(LOCAL \"\")\nmessage(\"${LOCAL}\")\nendfunction()\nf(value)\nmacro(M ARG)\nmessage(\"${ARG}\")\nendmacro()\nm(value)\nunknown_fn()\n";
@@ -158,6 +275,27 @@ async fn functions_macros_and_parameters_keep_definitions_and_calls() {
     assert!(format!("{}", buffer.display(false)).contains("WARNINGS"));
 }
 
+/// Analyze normal variables alongside cache/environment writes and reads, plus a function
+/// parent-scope write. Require no cross-namespace warnings, no ordinary references on
+/// cache/environment records and an unresolved nonlocal write.
+///
+/// Only local values and analysis buffers are created or changed; no file, network or process side
+/// effects.
+///
+/// # Arguments
+/// None. The test builds its own fixture and expected results.
+///
+/// # Returns
+/// `()` after all checks pass; no data or output parameter is returned.
+///
+/// # Panics
+/// If a stated invariant fails.
+///
+/// # Examples
+/// Direct local call outside any Tokio runtime (the test attribute creates its runtime):
+/// ```text
+/// namespaces_are_not_mixed_and_nonlocal_writes_remain_unresolved();
+/// ```
 #[tokio::test]
 async fn namespaces_are_not_mixed_and_nonlocal_writes_remain_unresolved() {
     let source = "cmake_minimum_required(VERSION 3.31)\nset(WORD CACHE)\nmessage(\"${WORD}\")\nset(CKEY value CACHE STRING doc)\nset(ENV{ENVKEY} value)\nmessage(\"$CACHE{CKEY}\" \"$ENV{ENVKEY}\")\nfunction(F)\nset(PARENT value PARENT_SCOPE)\nendfunction()\n";
@@ -179,6 +317,27 @@ async fn namespaces_are_not_mixed_and_nonlocal_writes_remain_unresolved() {
     );
 }
 
+/// Analyze a deferred call to a later definition, a macro that changes an empty variable and a list
+/// append after an empty assignment. Require the later call link and suppress stale empty-value
+/// warnings after mutations.
+///
+/// Only local values and analysis buffers are created or changed; no file, network or process side
+/// effects.
+///
+/// # Arguments
+/// None. The test builds its own fixture and expected results.
+///
+/// # Returns
+/// `()` after all checks pass; no data or output parameter is returned.
+///
+/// # Panics
+/// If a stated invariant fails or an unwrapped fixture/setup operation fails.
+///
+/// # Examples
+/// Direct local call outside any Tokio runtime (the test attribute creates its runtime):
+/// ```text
+/// deferred_calls_link_later_definitions_and_calls_invalidate_value_facts();
+/// ```
 #[tokio::test]
 async fn deferred_calls_link_later_definitions_and_calls_invalidate_value_facts() {
     let source = "cmake_minimum_required(VERSION 3.31)\nfunction(F)\nLater()\nendfunction()\nmacro(M)\nset(V changed)\nendmacro()\nset(V \"\")\nM()\nmessage(\"${V}\")\nfunction(Later)\nendfunction()\nset(L \"\")\nlist(APPEND L x)\nmessage(\"${L}\")\n";
@@ -209,6 +368,42 @@ async fn deferred_calls_link_later_definitions_and_calls_invalidate_value_facts(
     );
 }
 
+/// Analyze absent, explicitly unset, empty, expansion-derived and branch-dependent variables.
+///
+/// Only local values and analysis buffers are created or changed; no file, network or process side
+/// effects.
+///
+/// # Arguments
+/// None. The test builds its own fixture and expected results.
+///
+/// # Returns
+/// `()` after all checks pass; no data or output parameter is returned.
+///
+/// # Panics
+/// If a stated invariant fails or an unwrapped fixture/setup operation fails.
+///
+/// # Algorithm
+/// Require their distinct warning kinds, no invented warning for unknown/conditional values and no
+/// definition reference for unset U.
+///
+/// # Flow
+/// ```text
+///   [unset/empty/conditional source]
+///    |
+///   [analyze values]--------------------------> [warning + reference records]
+///                                              |
+///                                             [check kinds and excluded warnings]
+///                                              |
+///                                             < checks hold? >
+///                                              /         \
+///                                            [pass]     [panic]
+/// ```
+///
+/// # Examples
+/// Direct local call outside any Tokio runtime (the test attribute creates its runtime):
+/// ```text
+/// warnings_distinguish_unset_empty_unknown_and_conditional_values();
+/// ```
 #[tokio::test]
 async fn warnings_distinguish_unset_empty_unknown_and_conditional_values() {
     let source = "cmake_minimum_required(VERSION 3.31)\nmessage(\"${MISSING}\")\nunset(U)\nmessage(\"${U}\")\nset(E \"\")\nmessage(\"${E}\")\nset(D \"${INPUT}\")\nmessage(\"${D}\")\nset(V \"\")\nif(FLAG)\nset(V value)\nelse()\nset(V \"\")\nendif()\nmessage(\"${V}\")\nset(Z)\nmessage(\"${Z}\")\n";

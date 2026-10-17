@@ -1,7 +1,47 @@
+//! Process-wide document/workspace limits: global precedence, project rejection and positive
+//! integer validation.
+
+// Contains AI-generated documentation edits.
 // AI-generated process-limit layering and validation tests.
 use cmake_analyzer::config::{ConfigSources, ConfigStore, Limits};
 use std::sync::atomic::Ordering;
 
+/// Merge user limits with an explicit document cap and check 256-document/32-workspace defaults.
+///
+/// Writes, reloads and removes temporary configuration files. Enabled module defaults may inspect
+/// PATH CMake with --version; no project configure or script execution.
+///
+/// # Arguments
+/// None. The test builds its own fixture and expected results.
+///
+/// # Returns
+/// `()` after all checks pass; no data or output parameter is returned.
+///
+/// # Panics
+/// If a stated invariant fails or an unwrapped fixture/setup operation fails.
+///
+/// # Algorithm
+/// Reject process limits discovered as project settings, accept the same file as an explicit global
+/// source, and reject zero, negative, fractional, string and boolean counts.
+///
+/// # Flow
+/// ```text
+///   [user + explicit caps]
+///    |
+///   [merge global limits]-----------> [project / invalid counts]
+///                                    |
+///                                   [reject local or invalid limits]
+///                                    |
+///                                   < checks hold? >
+///                                    /         \
+///                                  [pass]     [panic]
+/// ```
+///
+/// # Examples
+/// Direct local call outside any Tokio runtime (the test attribute creates its runtime):
+/// ```text
+/// limits_merge_only_global_sources_and_require_positive_counts();
+/// ```
 #[tokio::test]
 async fn limits_merge_only_global_sources_and_require_positive_counts() {
     let directory = std::env::temp_dir().join(format!(

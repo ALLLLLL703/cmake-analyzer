@@ -1,3 +1,7 @@
+//! Discover sorted module/package names from shallow search roots and open module overlays.
+//! One replaceable root/name cache per workspace avoids repeated scans; invalidation is explicit,
+//! not a filesystem watcher. No package code is executed.
+// Contains AI-generated documentation additions.
 use super::{
     check, context,
     model::{Catalog, Context, Request},
@@ -10,6 +14,25 @@ use std::{
     sync::Arc,
 };
 
+/// Read one directory into sorted file/directory candidates, following symlinks only to classify
+/// directory targets. Does not recurse or mutate workspace state.
+///
+/// # Arguments
+/// - `directory` `[in]`: Directory to enumerate; open failure is treated as no entries.
+/// - `stop` `[in]`: Cancellation predicate checked between directory entries.
+///
+/// # Returns
+/// Ok sorted (path, is_directory) pairs; Err on iteration failure or cancellation. Unknown file
+/// types are skipped.
+///
+/// # Errors
+/// Directory iteration errors or Interrupted cancellation; opening an unavailable directory instead
+/// returns an empty list.
+///
+/// # Examples
+/// ```text
+/// let children = entries(Path::new("/usr/lib/cmake"), &|| false).await?;
+/// ```
 async fn entries(directory: &Path, stop: &impl Fn() -> bool) -> io::Result<Vec<(PathBuf, bool)>> {
     let mut result = Vec::new();
     let Ok(mut entries) = tokio::fs::read_dir(directory).await else {
@@ -34,12 +57,40 @@ async fn entries(directory: &Path, stop: &impl Fn() -> bool) -> io::Result<Vec<(
     result.sort();
     Ok(result)
 }
+/// Borrow the package stem of a conventional config filename. No I/O or mutation.
+///
+/// # Arguments
+/// - `path` `[in]`: Candidate path; only a UTF-8 final component is inspected.
+///
+/// # Returns
+/// Some nonempty stem before Config.cmake or -config.cmake; None for other filenames/non-UTF-8
+/// names.
+///
+/// # Examples
+/// ```text
+/// assert_eq!(config_name(Path::new("FooConfig.cmake")), Some("Foo"));
+/// ```
 fn config_name(path: &Path) -> Option<&str> {
     let file = path.file_name()?.to_str()?;
     file.strip_suffix("Config.cmake")
         .or_else(|| file.strip_suffix("-config.cmake"))
         .filter(|name| !name.is_empty())
 }
+/// Normalize and merge source-relative roots into a sorted set. Reads cwd only if the joined path
+/// is relative; no filesystem probe.
+///
+/// # Arguments
+/// - `roots` `[in,out]`: Appends normalized unique paths; preserves prior roots.
+/// - `paths` `[in]`: Owned path entries to consume.
+/// - `source` `[in]`: Source context against which relative paths are joined.
+///
+/// # Returns
+/// () after insertion; unnormalizable paths are skipped.
+///
+/// # Examples
+/// ```text
+/// add_roots(&mut roots, vec!["cmake".into()], source);
+/// ```
 fn add_roots(
     roots: &mut BTreeSet<PathBuf>,
     paths: impl IntoIterator<Item = PathBuf>,
@@ -51,6 +102,37 @@ fn add_roots(
             .filter_map(|path| absolute(&source.join(path)).ok()),
     );
 }
+/// Assemble sorted unique module roots and package prefixes across all captured contexts. Reads
+/// enabled environment hints and cached snapshots, not directories; no mutation.
+///
+/// # Arguments
+/// - `workspace` `[in]`: Search configuration and known variable/reference names.
+/// - `path` `[in]`: Requesting file identity used for module precedence and local variables.
+/// - `contexts` `[in]`: Visit-qualified source directories and restored known hints.
+///
+/// # Returns
+/// (module roots, package prefix roots), each normalized, sorted and unique.
+///
+/// # Algorithm
+/// Reuse dependency module precedence then merge roots into sets. Prefixes combine configured
+/// roots, known/environment CMAKE_PREFIX_PATH and known non-CMAKE *_DIR/*_ROOT variables named in
+/// local or graph indexes. This discovers candidate names, not authoritative package selection.
+///
+/// # Flow
+/// ```text
+/// [visit contexts]         [configured/environment hints]
+///         |                            |
+///  [module roots]     [known prefix/package bindings]
+///         |                            |
+///  [normalize set]             [normalize set]
+///         |                            |
+///  [module vector]             [prefix vector]
+/// ```
+///
+/// # Examples
+/// ```text
+/// let (modules, prefixes) = roots(workspace, path, &contexts);
+/// ```
 fn roots(workspace: &Workspace, path: &Path, contexts: &[Context]) -> (Vec<PathBuf>, Vec<PathBuf>) {
     let mut modules = BTreeSet::new();
     let mut prefixes = BTreeSet::new();
@@ -108,6 +190,42 @@ fn roots(workspace: &Workspace, path: &Path, contexts: &[Context]) -> (Vec<PathB
         prefixes.into_iter().collect(),
     )
 }
+/// Discover config filename stems in fixed conventional prefix layouts. Reads shallow directories;
+/// no recursive scan or package execution.
+///
+/// # Arguments
+/// - `prefixes` `[in]`: Normalized package installation roots.
+/// - `stop` `[in]`: Cancellation predicate checked before roots and directory entries.
+///
+/// # Returns
+/// Ok sorted unique config package names; Err on cancellation or directory iteration failure.
+///
+/// # Errors
+/// Interrupted cancellation or directory iteration errors; unavailable directories are skipped.
+///
+/// # Algorithm
+/// Try root/cmake/CMake and package subdirectories under root, lib/cmake, lib64/cmake, share/cmake
+/// and share. Add one lib architecture level. Scan each candidate directory once and retain only
+/// conventional config file stems.
+///
+/// # Flow
+/// ```text
+/// [prefix loop]
+///        |
+///  [fixed package bases]       [lib architectures]
+///        |                            |
+///  [package/cmake/CMake]        [cmake packages]
+///        +----------+-----------------+
+///                   |
+///           [deduplicate directories]
+///                   |
+///            [config file stems]
+/// ```
+///
+/// # Examples
+/// ```text
+/// let names = package_names(&prefixes, &|| false).await?;
+/// ```
 async fn package_names(
     prefixes: &[PathBuf],
     stop: &impl Fn() -> bool,
@@ -154,6 +272,50 @@ async fn package_names(
     }
     Ok(names)
 }
+/// Refresh root-keyed name caches and return requested labels. May scan directories; does not load
+/// package code or change graph bindings.
+///
+/// # Arguments
+/// - `workspace` `[in,out]`: Updates root lists and invalidates/replaces cached Arc name lists.
+/// - `path` `[in]`: Requesting file identity.
+/// - `contexts` `[in]`: Restored visit search hints.
+/// - `request` `[in]`: Module/package category flags; targets are handled separately.
+/// - `stop` `[in]`: Cancellation predicate checked during scans and before returning.
+///
+/// # Returns
+/// Ok catalog with requested shared name arrays and no target sources; Err on
+/// cancellation/iteration failure. Module cache is prepared even for package-only requests to
+/// derive Find names.
+///
+/// # Errors
+/// Interrupted cancellation or directory iteration errors; a cache may already have been
+/// invalidated/replaced before error.
+///
+/// # Algorithm
+/// Changed module roots invalidate both name caches; changed prefixes invalidate packages.
+/// Enumerate bare .cmake modules plus open module overlays. Packages combine shallow config names
+/// and nonempty Find-module stems. Reuse shared arrays until explicit workspace invalidation or
+/// root-key changes; no watcher or independent name-count cap exists.
+///
+/// # Flow
+/// ```text
+/// [current root keys] ----> <changed?>
+///                                /    \
+///                          invalidate reuse
+///                                |     |
+///  [module files + overlays] --> [module Arc]
+///                                |
+///  [prefix configs] ------> [Find stems union]
+///                                |
+///                          [package Arc]
+///                                |
+///                       [requested catalog]
+/// ```
+///
+/// # Examples
+/// ```text
+/// let catalog = collect(workspace, path, &contexts, &request, &|| false).await?;
+/// ```
 pub(super) async fn collect(
     workspace: &mut Workspace,
     path: &Path,

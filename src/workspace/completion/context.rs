@@ -1,3 +1,6 @@
+//! Capture visit contexts and restore local search hints before the completion command.
+//! A joined blocking replay honors cancellation and leaves workspace graphs/snapshots unchanged.
+// Contains AI-generated documentation additions.
 use super::model::Context;
 use crate::{
     parser::semanticer::{
@@ -8,6 +11,21 @@ use crate::{
 };
 use std::path::{Path, PathBuf};
 
+/// Build directory-builtin context for a completion source without filesystem access or mutation.
+///
+/// # Arguments
+/// - `workspace` `[in]`: Root/script context and configured binary root.
+/// - `file` `[in]`: List-file identity for list-directory/file builtins.
+/// - `directory` `[in]`: Current visit source/binary directories.
+///
+/// # Returns
+/// Owned ValueDirectories. source_root uses explicit script cwd when present; binary_root uses
+/// configured root.binary_directory.
+///
+/// # Examples
+/// ```text
+/// let dirs = directories(workspace, path, &visit.directory);
+/// ```
 pub(super) fn directories(
     workspace: &Workspace,
     file: &Path,
@@ -32,6 +50,47 @@ pub(super) fn directories(
         file: file.to_owned(),
     }
 }
+/// Capture all current visit contexts and restore local search hints before the active command.
+/// Does not mutate workspace/snapshots; joins a cancellable blocking replay.
+///
+/// # Arguments
+/// - `workspace` `[in]`: Workspace graph and current local snapshot.
+/// - `path` `[in]`: Normalized completion file identity.
+/// - `command` `[in]`: Active command to exclude with its suffix; None replays all local commands.
+/// - `stop` `[in]`: Owned cancellation predicate called during command replay.
+///
+/// # Returns
+/// Ok contexts, at least one fallback root context when no visit matches; Err on snapshot
+/// normalization/cancellation/worker failure.
+///
+/// # Errors
+/// Snapshot identity normalization, interrupted cancellation or blocking-worker join failure.
+///
+/// # Algorithm
+/// Clone matching graph scope values and directories or create root defaults. Capture the current
+/// snapshot, then replay nondeferred commands before the active command on a joined worker. This
+/// restores local hints that a partial request may have invalidated in final graph state; it is not
+/// general historical state reconstruction.
+///
+/// # Flow
+/// ```text
+/// [matching visits]
+///         |
+///  <any contexts?>
+///      /       \
+///  clone     root fallback
+///      \       /
+///  [current local snapshot]
+///            |
+///  [worker: replay before command]
+///            |
+///     [restored contexts]
+/// ```
+///
+/// # Examples
+/// ```text
+/// let contexts = capture(workspace, path, Some(command.id), || false).await?;
+/// ```
 pub(super) async fn capture(
     workspace: &Workspace,
     path: &Path,
@@ -95,6 +154,19 @@ pub(super) async fn capture(
     .await
     .map_err(std::io::Error::other)?
 }
+/// Split a known path-list value into nonempty path entries. No I/O or mutation.
+///
+/// # Arguments
+/// - `values` `[in]`: Conservative binding set to query.
+/// - `name` `[in]`: Case-sensitive variable name.
+///
+/// # Returns
+/// Paths in semicolon-list order; empty for missing/unknown values.
+///
+/// # Examples
+/// ```text
+/// let roots = paths(values, "CMAKE_PREFIX_PATH");
+/// ```
 pub(super) fn paths(values: &ValueBindings, name: &str) -> Vec<PathBuf> {
     values
         .get(name, None)

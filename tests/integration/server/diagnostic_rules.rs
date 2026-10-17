@@ -1,6 +1,24 @@
 // AI-generated tests.
+//! Rule-level diagnostic severity reloads for unknown commands and variables.
+//! Only fixture configuration is written; no source is executed.
 use super::session::{Project, Session};
 use serde_json::{Value, json};
+/// Extract borrowed diagnostic messages paired with numeric LSP severities; no side effects.
+///
+/// # Arguments
+/// - `report` `[in]`: publishDiagnostics notification with an array of string messages/integer
+///   severities.
+///
+/// # Returns
+/// A vector in publication order; each tuple is (borrowed message, numeric severity).
+///
+/// # Panics
+/// Panics if the expected array, string or integer fields have other JSON types.
+///
+/// # Examples
+/// ```text
+/// let levels = diagnostics(&report);
+/// ```
 fn diagnostics(report: &Value) -> Vec<(&str, i64)> {
     report["params"]["diagnostics"]
         .as_array()
@@ -15,6 +33,44 @@ fn diagnostics(report: &Value) -> Vec<(&str, i64)> {
         .collect()
 }
 #[tokio::test]
+/// Check unknown-function/variable severity mappings republish on configuration-only changes.
+/// Creates temporary files and an analyzer session; successful completion stops the session and
+/// removes fixtures.
+///
+/// # Arguments
+/// None.
+///
+/// # Returns
+/// `()` if every assertion passes; no output parameter.
+///
+/// # Panics
+/// Panics on any failed assertion or unwrapped fixture/transport/process failure.
+/// Cleanup is explicit on the success path; a panic may leave a fixture tree.
+///
+/// # Algorithm
+/// Require default severities 1 and 2, then reload hint/info/warn/error/none for both rules and
+/// require exactly two matching severities or no diagnostics. Reload unsupported fatal and
+/// require an error. No post-error publication is asserted.
+///
+/// # Flow
+/// ```text
+/// [Temporary sources + settings]      [Expected: severity 4/3/2/1 or none]
+///              |                              |
+///              v                              |
+/// [LSP scenario messages]                 |
+///              |                              |
+///              +-------------+----------------+
+///                            v
+///                  [Compare assertions]
+///                            |
+///                            v
+///             [Finish session + remove tree]
+/// ```
+///
+/// # Examples
+/// ```text
+/// per_rule_levels_reload_and_invalid_levels_preserve_live_configuration(); // #[tokio::test] supplies the runtime
+/// ```
 async fn per_rule_levels_reload_and_invalid_levels_preserve_live_configuration() {
     let p = Project::new().await;
     let body = "unresolved_external_call()\nmessage(\"${UNKNOWN_RULE_VARIABLE}\")\n";

@@ -1,8 +1,48 @@
 // AI-generated multi-root and dependency ownership tests.
+//! Multi-root discovery and shared dependency overlays in diagnostics and symbols.
+//! Tests edit memory buffers, then stop services and remove temporary projects.
 use super::session::*;
 use serde_json::json;
 
 #[tokio::test]
+/// Check shared-document diagnostics/symbols reflect overlays and an unrelated entry exposes symbols.
+/// Creates temporary files and an analyzer session; successful completion stops the session and
+/// removes fixtures.
+///
+/// # Arguments
+/// None.
+///
+/// # Returns
+/// `()` if every assertion passes; no output parameter.
+///
+/// # Panics
+/// Panics on any failed assertion or unwrapped fixture/transport/process failure.
+/// Cleanup is explicit on the success path; a panic may leave a fixture tree.
+///
+/// # Algorithm
+/// Open a shared dependency with missing include/bogus call, require multiple diagnostics with
+/// sanitized path messages, then replace it with LIVE and require empty diagnostics plus LIVE
+/// symbols. Open an unrelated c root and require THIRD symbols.
+///
+/// # Flow
+/// ```text
+/// [Temporary sources + settings]      [Expected: shared LIVE + discovered THIRD]
+///              |                              |
+///              v                              |
+/// [LSP scenario messages]                 |
+///              |                              |
+///              +-------------+----------------+
+///                            v
+///                  [Compare assertions]
+///                            |
+///                            v
+///             [Finish session + remove tree]
+/// ```
+///
+/// # Examples
+/// ```text
+/// roots_and_shared_dependency_receive_live_overlays(); // #[tokio::test] supplies the runtime
+/// ```
 async fn roots_and_shared_dependency_receive_live_overlays() {
     let project = Project::new().await;
     let shared = project.write("shared.cmake", "set(SHARED disk)").await;
@@ -70,6 +110,45 @@ async fn roots_and_shared_dependency_receive_live_overlays() {
 }
 
 #[tokio::test]
+/// Check missing-import diagnostics are range-qualified and clear after the root removes the
+/// import.
+/// Creates temporary files and an analyzer session; successful completion stops the session and
+/// removes fixtures.
+///
+/// # Arguments
+/// None.
+///
+/// # Returns
+/// `()` if every assertion passes; no output parameter.
+///
+/// # Panics
+/// Panics on any failed assertion or unwrapped fixture/transport/process failure.
+/// Cleanup is explicit on the success path; a panic may leave a fixture tree.
+///
+/// # Algorithm
+/// Open include(missing.cmake), require a severity-2 warning at line 1 without leaking the
+/// missing or root path in any message. Replace the root with message(fixed) and require empty
+/// version-2 diagnostics.
+///
+/// # Flow
+/// ```text
+/// [Temporary sources + settings]      [Expected: sanitized warning / version-2 clear]
+///              |                              |
+///              v                              |
+/// [LSP scenario messages]                 |
+///              |                              |
+///              +-------------+----------------+
+///                            v
+///                  [Compare assertions]
+///                            |
+///                            v
+///             [Finish session + remove tree]
+/// ```
+///
+/// # Examples
+/// ```text
+/// dependency_resolution_diagnostics_clear_on_root_edit(); // #[tokio::test] supplies the runtime
+/// ```
 async fn dependency_resolution_diagnostics_clear_on_root_edit() {
     let project = Project::new().await;
     let root = project

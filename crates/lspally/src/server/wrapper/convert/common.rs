@@ -2,7 +2,48 @@
 // Contains AI-authored routing/layout or conversion edits.
 // 用自己的类型用起来不烧心
 
+// Contains AI-authored documentation additions.
+//! Adapt shared document, lifecycle, capability, diagnostic and edit records. Wrapper handlers
+//! decode before business calls; replies and client methods encode before serialization.
+//!
+//! `decode_*` consumes typed wire input; `encode_*` consumes business values.
+//! Optional absence and list order are preserved. Returned records are new owned values;
+//! there are no output parameters, transport writes or shared-state mutations.
+
 use super::*;
+/// Decode a text replacement and its annotation reference for business handlers.
+/// No external side effects or file/network I/O; takes input by value without borrowing caller state.
+///
+/// # Mapping
+/// - `annotation_id`: move/copy unchanged into the same-named output fields.
+/// - `text_edit`: convert through [`decode_text_edit`].
+///
+/// # Arguments
+/// - `v` `[in]`: owned `lsp_types::AnnotatedTextEdit` consumed by conversion; no caller output storage.
+/// # Returns
+/// Always `Ok(value)` containing `d::AnnotatedTextEdit`. No output parameters or shared state are
+/// changed.
+/// # Examples
+/// Private adapter context; this builds values only and does not send a message.
+/// ```text
+/// let input = lsp_types::AnnotatedTextEdit {
+///     text_edit: lsp_types::TextEdit {
+///         range: lsp_types::Range {
+///             start: lsp_types::Position {
+///                 line: 0,
+///                 character: 0,
+///             },
+///             end: lsp_types::Position {
+///                 line: 0,
+///                 character: 0,
+///             },
+///         },
+///         new_text: "replacement".into(),
+///     },
+///     annotation_id: "value".into(),
+/// };
+/// let output = decode_annotated_text_edit(input)?;
+/// ```
 pub(in crate::server::wrapper) fn decode_annotated_text_edit(
     v: lsp_types::AnnotatedTextEdit,
 ) -> Result<d::AnnotatedTextEdit, ServerError> {
@@ -11,6 +52,39 @@ pub(in crate::server::wrapper) fn decode_annotated_text_edit(
         annotation_id: v.annotation_id,
     })
 }
+/// Encode a text replacement and its annotation reference for typed LSP output.
+/// No external side effects or file/network I/O; takes input by value without borrowing caller state.
+///
+/// # Mapping
+/// - `annotation_id`: move/copy unchanged into the same-named output fields.
+/// - `text_edit`: convert through [`encode_text_edit`].
+///
+/// # Arguments
+/// - `v` `[in]`: owned `d::AnnotatedTextEdit` consumed by conversion; no caller output storage.
+/// # Returns
+/// Always `Ok(value)` containing `lsp_types::AnnotatedTextEdit`. No output parameters or shared state
+/// are changed.
+/// # Examples
+/// Private adapter context; this builds values only and does not send a message.
+/// ```text
+/// let input = d::AnnotatedTextEdit {
+///     text_edit: d::TextEdit {
+///         range: d::Range {
+///             start: d::Position {
+///                 line: 0,
+///                 character: 0,
+///             },
+///             end: d::Position {
+///                 line: 0,
+///                 character: 0,
+///             },
+///         },
+///         new_text: "replacement".into(),
+///     },
+///     annotation_id: "value".into(),
+/// };
+/// let output = encode_annotated_text_edit(input)?;
+/// ```
 pub(in crate::server::wrapper) fn encode_annotated_text_edit(
     v: d::AnnotatedTextEdit,
 ) -> Result<lsp_types::AnnotatedTextEdit, ServerError> {
@@ -19,6 +93,36 @@ pub(in crate::server::wrapper) fn encode_annotated_text_edit(
         annotation_id: v.annotation_id,
     })
 }
+/// Encode a client-applied workspace edit and optional display label for typed LSP output.
+/// No external side effects or file/network I/O; takes input by value without borrowing caller state.
+///
+/// # Mapping
+/// - `label`: move/copy unchanged into the same-named output fields.
+/// - `edit`: convert through [`encode_workspace_edit`].
+///
+/// # Arguments
+/// - `v` `[in]`: owned `d::ApplyWorkspaceEditParams` consumed by conversion; no caller output storage.
+/// # Returns
+/// `Ok(value)` contains the complete `lsp_types::ApplyWorkspaceEditParams`; `Err(error)` returns the
+/// first conversion failure.
+/// No output parameters are appended to or overwritten; no partial output is returned.
+/// # Errors
+/// - Invalid output URI syntax yields InternalError (-32603) through [`encode_uri`]; no resource is
+///   accessed.
+/// Already consumed temporary values are dropped on failure; caller-owned shared state is unchanged.
+/// # Examples
+/// Private adapter context; this builds values only and does not send a message.
+/// ```text
+/// let input = d::ApplyWorkspaceEditParams {
+///     label: None,
+///     edit: d::WorkspaceEdit {
+///         changes: None,
+///         document_changes: None,
+///         change_annotations: None,
+///     },
+/// };
+/// let output = encode_apply_workspace_edit_params(input)?;
+/// ```
 pub(in crate::server::wrapper) fn encode_apply_workspace_edit_params(
     v: d::ApplyWorkspaceEditParams,
 ) -> Result<lsp_types::ApplyWorkspaceEditParams, ServerError> {
@@ -27,6 +131,31 @@ pub(in crate::server::wrapper) fn encode_apply_workspace_edit_params(
         edit: encode_workspace_edit(v.edit)?,
     })
 }
+/// Decode the client's applied flag and failure explanation and index for business handlers.
+/// No external side effects or file/network I/O; takes input by value without borrowing caller state.
+///
+/// A successful conversion may contain `applied == false`; this is a client-reported failure, not an
+/// adapter error.
+///
+/// # Mapping
+/// - `applied`, `failure_reason`, `failed_change`: move/copy unchanged into the same-named output
+///   fields.
+///
+/// # Arguments
+/// - `v` `[in]`: owned `lsp_types::ApplyWorkspaceEditResponse` consumed by conversion; no caller output storage.
+/// # Returns
+/// Always `Ok(value)` containing `d::ApplyWorkspaceEditResponse`. No output parameters or shared state
+/// are changed.
+/// # Examples
+/// Private adapter context; this builds values only and does not send a message.
+/// ```text
+/// let input = lsp_types::ApplyWorkspaceEditResponse {
+///     applied: false,
+///     failure_reason: None,
+///     failed_change: None,
+/// };
+/// let output = decode_apply_workspace_edit_response(input)?;
+/// ```
 pub(in crate::server::wrapper) fn decode_apply_workspace_edit_response(
     v: lsp_types::ApplyWorkspaceEditResponse,
 ) -> Result<d::ApplyWorkspaceEditResponse, ServerError> {
@@ -36,6 +165,26 @@ pub(in crate::server::wrapper) fn decode_apply_workspace_edit_response(
         failed_change: v.failed_change,
     })
 }
+/// Decode the request identifier carried by cancellation for business handlers.
+/// No external side effects or file/network I/O; takes input by value without borrowing caller state.
+///
+/// The integer/string identifier choice is retained; decoding does not signal cancellation.
+///
+/// # Mapping
+/// - `id`: convert through [`decode_number_or_string`].
+///
+/// # Arguments
+/// - `v` `[in]`: owned `lsp_types::CancelParams` consumed by conversion; no caller output storage.
+/// # Returns
+/// Always `Ok(value)` containing `d::CancelParams`. No output parameters or shared state are changed.
+/// # Examples
+/// Private adapter context; this builds values only and does not send a message.
+/// ```text
+/// let input = lsp_types::CancelParams {
+///     id: lsp_types::NumberOrString::Number(0),
+/// };
+/// let output = decode_cancel_params(input)?;
+/// ```
 pub(in crate::server::wrapper) fn decode_cancel_params(
     v: lsp_types::CancelParams,
 ) -> Result<d::CancelParams, ServerError> {
@@ -43,6 +192,28 @@ pub(in crate::server::wrapper) fn decode_cancel_params(
         id: decode_number_or_string(v.id)?,
     })
 }
+/// Decode an edit label, confirmation request and explanation for business handlers.
+/// No external side effects or file/network I/O; takes input by value without borrowing caller state.
+///
+/// # Mapping
+/// - `label`, `needs_confirmation`, `description`: move/copy unchanged into the same-named output
+///   fields.
+///
+/// # Arguments
+/// - `v` `[in]`: owned `lsp_types::ChangeAnnotation` consumed by conversion; no caller output storage.
+/// # Returns
+/// Always `Ok(value)` containing `d::ChangeAnnotation`. No output parameters or shared state are
+/// changed.
+/// # Examples
+/// Private adapter context; this builds values only and does not send a message.
+/// ```text
+/// let input = lsp_types::ChangeAnnotation {
+///     label: "value".into(),
+///     needs_confirmation: None,
+///     description: None,
+/// };
+/// let output = decode_change_annotation(input)?;
+/// ```
 pub(in crate::server::wrapper) fn decode_change_annotation(
     v: lsp_types::ChangeAnnotation,
 ) -> Result<d::ChangeAnnotation, ServerError> {
@@ -52,6 +223,28 @@ pub(in crate::server::wrapper) fn decode_change_annotation(
         description: v.description,
     })
 }
+/// Encode an edit label, confirmation request and explanation for typed LSP output.
+/// No external side effects or file/network I/O; takes input by value without borrowing caller state.
+///
+/// # Mapping
+/// - `label`, `needs_confirmation`, `description`: move/copy unchanged into the same-named output
+///   fields.
+///
+/// # Arguments
+/// - `v` `[in]`: owned `d::ChangeAnnotation` consumed by conversion; no caller output storage.
+/// # Returns
+/// Always `Ok(value)` containing `lsp_types::ChangeAnnotation`. No output parameters or shared state
+/// are changed.
+/// # Examples
+/// Private adapter context; this builds values only and does not send a message.
+/// ```text
+/// let input = d::ChangeAnnotation {
+///     label: "value".into(),
+///     needs_confirmation: None,
+///     description: None,
+/// };
+/// let output = encode_change_annotation(input)?;
+/// ```
 pub(in crate::server::wrapper) fn encode_change_annotation(
     v: d::ChangeAnnotation,
 ) -> Result<lsp_types::ChangeAnnotation, ServerError> {
@@ -61,6 +254,25 @@ pub(in crate::server::wrapper) fn encode_change_annotation(
         description: v.description,
     })
 }
+/// Decode the client's annotation-label grouping flag for business handlers.
+/// No external side effects or file/network I/O; takes input by value without borrowing caller state.
+///
+/// # Mapping
+/// - `groups_on_label`: move/copy unchanged into the same-named output fields.
+///
+/// # Arguments
+/// - `v` `[in]`: owned `lsp_types::ChangeAnnotationWorkspaceEditClientCapabilities` consumed by conversion; no caller output storage.
+/// # Returns
+/// Always `Ok(value)` containing `d::ChangeAnnotationWorkspaceEditClientCapabilities`. No output
+/// parameters or shared state are changed.
+/// # Examples
+/// Private adapter context; this builds values only and does not send a message.
+/// ```text
+/// let input = lsp_types::ChangeAnnotationWorkspaceEditClientCapabilities {
+///     groups_on_label: None,
+/// };
+/// let output = decode_change_annotation_workspace_edit_client_capabilities(input)?;
+/// ```
 pub(in crate::server::wrapper) fn decode_change_annotation_workspace_edit_client_capabilities(
     v: lsp_types::ChangeAnnotationWorkspaceEditClientCapabilities,
 ) -> Result<d::ChangeAnnotationWorkspaceEditClientCapabilities, ServerError> {
@@ -68,6 +280,49 @@ pub(in crate::server::wrapper) fn decode_change_annotation_workspace_edit_client
         groups_on_label: v.groups_on_label,
     })
 }
+/// Decode the client's workspace, document, notebook, window, general and extension support for
+/// business handlers.
+/// No external side effects or file/network I/O; takes input by value without borrowing caller state.
+///
+/// Unsupported or absent feature records stay absent. Decoding alone grants no capabilities and changes
+/// no session permissions.
+///
+/// # Mapping
+/// - `workspace`: convert through [`decode_workspace_client_capabilities`]; preserve `None` versus
+///   `Some`.
+/// - `text_document`: convert through [`decode_text_document_client_capabilities`]; preserve `None`
+///   versus `Some`.
+/// - `notebook_document`: convert through [`decode_notebook_document_client_capabilities`]; preserve
+///   `None` versus `Some`.
+/// - `window`: convert through [`decode_window_client_capabilities`]; preserve `None` versus `Some`.
+/// - `general`: convert through [`decode_general_client_capabilities`]; preserve `None` versus `Some`.
+/// - `experimental`: convert through [`data_from_wire`]; preserve `None` versus `Some`.
+///
+/// # Arguments
+/// - `v` `[in]`: owned `lsp_types::ClientCapabilities` consumed by conversion; no caller output storage.
+/// # Returns
+/// `Ok(value)` contains the complete `d::ClientCapabilities`; `Err(error)` returns the first conversion
+/// failure.
+/// No output parameters are appended to or overwritten; no partial output is returned.
+/// # Errors
+/// - A JSON number lacking signed, unsigned and floating representations yields InvalidParams (-32602)
+///   through [`data_from_wire`].
+/// - JSON serialization/deserialization shape or representation failures in scalar wrappers yield
+///   InternalError (-32603) through [`codec_error`].
+/// Already consumed temporary values are dropped on failure; caller-owned shared state is unchanged.
+/// # Examples
+/// Private adapter context; this builds values only and does not send a message.
+/// ```text
+/// let input = lsp_types::ClientCapabilities {
+///     workspace: None,
+///     text_document: None,
+///     notebook_document: None,
+///     window: None,
+///     general: None,
+///     experimental: None,
+/// };
+/// let output = decode_client_capabilities(input)?;
+/// ```
 pub(in crate::server::wrapper) fn decode_client_capabilities(
     v: lsp_types::ClientCapabilities,
 ) -> Result<d::ClientCapabilities, ServerError> {
@@ -90,6 +345,25 @@ pub(in crate::server::wrapper) fn decode_client_capabilities(
         experimental: (v.experimental).map(data_from_wire).transpose()?,
     })
 }
+/// Decode the client's name and optional version for business handlers.
+/// No external side effects or file/network I/O; takes input by value without borrowing caller state.
+///
+/// # Mapping
+/// - `name`, `version`: move/copy unchanged into the same-named output fields.
+///
+/// # Arguments
+/// - `v` `[in]`: owned `lsp_types::ClientInfo` consumed by conversion; no caller output storage.
+/// # Returns
+/// Always `Ok(value)` containing `d::ClientInfo`. No output parameters or shared state are changed.
+/// # Examples
+/// Private adapter context; this builds values only and does not send a message.
+/// ```text
+/// let input = lsp_types::ClientInfo {
+///     name: "item".into(),
+///     version: None,
+/// };
+/// let output = decode_client_info(input)?;
+/// ```
 pub(in crate::server::wrapper) fn decode_client_info(
     v: lsp_types::ClientInfo,
 ) -> Result<d::ClientInfo, ServerError> {
@@ -98,6 +372,25 @@ pub(in crate::server::wrapper) fn decode_client_info(
         version: v.version,
     })
 }
+/// Decode a diagnostic explanation URI for business handlers.
+/// No external side effects or file/network I/O; takes input by value without borrowing caller state.
+///
+/// # Mapping
+/// - `href`: convert through [`decode_uri`].
+///
+/// # Arguments
+/// - `v` `[in]`: owned `lsp_types::CodeDescription` consumed by conversion; no caller output storage.
+/// # Returns
+/// Always `Ok(value)` containing `d::CodeDescription`. No output parameters or shared state are
+/// changed.
+/// # Examples
+/// Private adapter context; this builds values only and does not send a message.
+/// ```text
+/// let input = lsp_types::CodeDescription {
+///     href: "file:///tmp/example.rs".parse().unwrap(),
+/// };
+/// let output = decode_code_description(input)?;
+/// ```
 pub(in crate::server::wrapper) fn decode_code_description(
     v: lsp_types::CodeDescription,
 ) -> Result<d::CodeDescription, ServerError> {
@@ -105,6 +398,30 @@ pub(in crate::server::wrapper) fn decode_code_description(
         href: decode_uri(v.href)?,
     })
 }
+/// Encode a diagnostic explanation URI for typed LSP output.
+/// No external side effects or file/network I/O; takes input by value without borrowing caller state.
+///
+/// # Mapping
+/// - `href`: convert through [`encode_uri`].
+///
+/// # Arguments
+/// - `v` `[in]`: owned `d::CodeDescription` consumed by conversion; no caller output storage.
+/// # Returns
+/// `Ok(value)` contains the complete `lsp_types::CodeDescription`; `Err(error)` returns the first
+/// conversion failure.
+/// No output parameters are appended to or overwritten; no partial output is returned.
+/// # Errors
+/// - Invalid output URI syntax yields InternalError (-32603) through [`encode_uri`]; no resource is
+///   accessed.
+/// Already consumed temporary values are dropped on failure; caller-owned shared state is unchanged.
+/// # Examples
+/// Private adapter context; this builds values only and does not send a message.
+/// ```text
+/// let input = d::CodeDescription {
+///     href: d::Uri("file:///tmp/example.rs".into()),
+/// };
+/// let output = encode_code_description(input)?;
+/// ```
 pub(in crate::server::wrapper) fn encode_code_description(
     v: d::CodeDescription,
 ) -> Result<lsp_types::CodeDescription, ServerError> {
@@ -112,6 +429,61 @@ pub(in crate::server::wrapper) fn encode_code_description(
         href: encode_uri(v.href)?,
     })
 }
+/// Decode a command identifier, display title and optional argument data for business handlers.
+/// No external side effects or file/network I/O; takes input by value without borrowing caller state.
+///
+/// Arguments retain their order and optionality. Conversion does not execute the command.
+///
+/// # Mapping
+/// - `title`, `command`: move/copy unchanged into the same-named output fields.
+/// - `arguments`: consume each element in order through [`data_from_wire`]; preserve `None` versus
+///   `Some`.
+///
+/// # Arguments
+/// - `v` `[in]`: owned `lsp_types::Command` consumed by conversion; no caller output storage.
+/// # Returns
+/// `Ok(value)` contains the complete `d::Command`; `Err(error)` returns the first conversion failure.
+/// No output parameters are appended to or overwritten; no partial output is returned.
+/// # Errors
+/// - A JSON number lacking signed, unsigned and floating representations yields InvalidParams (-32602)
+///   through [`data_from_wire`].
+/// Already consumed temporary values are dropped on failure; caller-owned shared state is unchanged.
+///
+/// # Algorithm
+/// Build the output using the field mappings above.
+/// Optional adapters keep `None`; `Some` values are converted before the output is returned.
+/// Consume list elements in order or rebuild maps by key; collection finishes before exposing output.
+/// Stop at the first nested error and drop incomplete local output.
+/// # Flow
+/// ```text
+///  [map other fields]    [list/map entries]
+///        |                      |
+///    [converted]         <next entry?> <----+
+///        |                /        \       |
+///        |              no         yes     |
+///        |               |          |      |
+///        |               |   [convert entry]
+///        |               |          |      |
+///        |               |          +------+
+///        +-------+-------+
+///                v
+///        [complete output record]
+///
+///  Any failing adapter ----> [drop locals]
+///                                   |
+///                                   v
+///                            [return error]
+/// ```
+/// # Examples
+/// Private adapter context; this builds values only and does not send a message.
+/// ```text
+/// let input = lsp_types::Command {
+///     title: "Inspect".into(),
+///     command: "example.inspect".into(),
+///     arguments: None,
+/// };
+/// let output = decode_command(input)?;
+/// ```
 pub(in crate::server::wrapper) fn decode_command(
     v: lsp_types::Command,
 ) -> Result<d::Command, ServerError> {
@@ -129,6 +501,62 @@ pub(in crate::server::wrapper) fn decode_command(
             .transpose()?,
     })
 }
+/// Encode a command identifier, display title and optional argument data for typed LSP output.
+/// No external side effects or file/network I/O; takes input by value without borrowing caller state.
+///
+/// Arguments retain their order and optionality. Conversion does not execute the command.
+///
+/// # Mapping
+/// - `title`, `command`: move/copy unchanged into the same-named output fields.
+/// - `arguments`: consume each element in order through [`data_to_wire`]; preserve `None` versus
+///   `Some`.
+///
+/// # Arguments
+/// - `v` `[in]`: owned `d::Command` consumed by conversion; no caller output storage.
+/// # Returns
+/// `Ok(value)` contains the complete `lsp_types::Command`; `Err(error)` returns the first conversion
+/// failure.
+/// No output parameters are appended to or overwritten; no partial output is returned.
+/// # Errors
+/// - Non-finite floats in opaque data, including nested data, yield InternalError (-32603) through
+///   [`data_to_wire`].
+/// Already consumed temporary values are dropped on failure; caller-owned shared state is unchanged.
+///
+/// # Algorithm
+/// Build the output using the field mappings above.
+/// Optional adapters keep `None`; `Some` values are converted before the output is returned.
+/// Consume list elements in order or rebuild maps by key; collection finishes before exposing output.
+/// Stop at the first nested error and drop incomplete local output.
+/// # Flow
+/// ```text
+///  [map other fields]    [list/map entries]
+///        |                      |
+///    [converted]         <next entry?> <----+
+///        |                /        \       |
+///        |              no         yes     |
+///        |               |          |      |
+///        |               |   [convert entry]
+///        |               |          |      |
+///        |               |          +------+
+///        +-------+-------+
+///                v
+///        [complete output record]
+///
+///  Any failing adapter ----> [drop locals]
+///                                   |
+///                                   v
+///                            [return error]
+/// ```
+/// # Examples
+/// Private adapter context; this builds values only and does not send a message.
+/// ```text
+/// let input = d::Command {
+///     title: "Inspect".into(),
+///     command: "example.inspect".into(),
+///     arguments: None,
+/// };
+/// let output = encode_command(input)?;
+/// ```
 pub(in crate::server::wrapper) fn encode_command(
     v: d::Command,
 ) -> Result<lsp_types::Command, ServerError> {
@@ -146,6 +574,32 @@ pub(in crate::server::wrapper) fn encode_command(
             .transpose()?,
     })
 }
+/// Encode a configuration section and optional document scope for typed LSP output.
+/// No external side effects or file/network I/O; takes input by value without borrowing caller state.
+///
+/// # Mapping
+/// - `section`: move/copy unchanged into the same-named output fields.
+/// - `scope_uri`: convert through [`encode_uri`]; preserve `None` versus `Some`.
+///
+/// # Arguments
+/// - `v` `[in]`: owned `d::ConfigurationItem` consumed by conversion; no caller output storage.
+/// # Returns
+/// `Ok(value)` contains the complete `lsp_types::ConfigurationItem`; `Err(error)` returns the first
+/// conversion failure.
+/// No output parameters are appended to or overwritten; no partial output is returned.
+/// # Errors
+/// - Invalid output URI syntax yields InternalError (-32603) through [`encode_uri`]; no resource is
+///   accessed.
+/// Already consumed temporary values are dropped on failure; caller-owned shared state is unchanged.
+/// # Examples
+/// Private adapter context; this builds values only and does not send a message.
+/// ```text
+/// let input = d::ConfigurationItem {
+///     scope_uri: None,
+///     section: None,
+/// };
+/// let output = encode_configuration_item(input)?;
+/// ```
 pub(in crate::server::wrapper) fn encode_configuration_item(
     v: d::ConfigurationItem,
 ) -> Result<lsp_types::ConfigurationItem, ServerError> {
@@ -154,6 +608,53 @@ pub(in crate::server::wrapper) fn encode_configuration_item(
         section: v.section,
     })
 }
+/// Encode the ordered configuration queries for typed LSP output.
+/// No external side effects or file/network I/O; takes input by value without borrowing caller state.
+///
+/// # Mapping
+/// - `items`: consume each element in order through [`encode_configuration_item`].
+///
+/// # Arguments
+/// - `v` `[in]`: owned `d::ConfigurationParams` consumed by conversion; no caller output storage.
+/// # Returns
+/// `Ok(value)` contains the complete `lsp_types::ConfigurationParams`; `Err(error)` returns the first
+/// conversion failure.
+/// No output parameters are appended to or overwritten; no partial output is returned.
+/// # Errors
+/// - Invalid output URI syntax yields InternalError (-32603) through [`encode_uri`]; no resource is
+///   accessed.
+/// Already consumed temporary values are dropped on failure; caller-owned shared state is unchanged.
+///
+/// # Algorithm
+/// Build the output using the field mappings above.
+/// Consume list elements in order or rebuild maps by key; collection finishes before exposing output.
+/// Stop at the first nested error and drop incomplete local output.
+/// # Flow
+/// ```text
+///  [map other fields]    [list/map entries]
+///        |                      |
+///    [converted]         <next entry?> <----+
+///        |                /        \       |
+///        |              no         yes     |
+///        |               |          |      |
+///        |               |   [convert entry]
+///        |               |          |      |
+///        |               |          +------+
+///        +-------+-------+
+///                v
+///        [complete output record]
+///
+///  Any failing adapter ----> [drop locals]
+///                                   |
+///                                   v
+///                            [return error]
+/// ```
+/// # Examples
+/// Private adapter context; this builds values only and does not send a message.
+/// ```text
+/// let input = d::ConfigurationParams { items: vec![] };
+/// let output = encode_configuration_params(input)?;
+/// ```
 pub(in crate::server::wrapper) fn encode_configuration_params(
     v: d::ConfigurationParams,
 ) -> Result<lsp_types::ConfigurationParams, ServerError> {
@@ -164,6 +665,30 @@ pub(in crate::server::wrapper) fn encode_configuration_params(
             .collect::<Result<Vec<_>, ServerError>>()?,
     })
 }
+/// Decode a proposed file creation, options and annotation reference for business handlers.
+/// No external side effects or file/network I/O; takes input by value without borrowing caller state.
+///
+/// This only describes a client operation; it does not create a file or enforce overwrite policy.
+///
+/// # Mapping
+/// - `annotation_id`: move/copy unchanged into the same-named output fields.
+/// - `uri`: convert through [`decode_uri`].
+/// - `options`: convert through [`decode_create_file_options`]; preserve `None` versus `Some`.
+///
+/// # Arguments
+/// - `v` `[in]`: owned `lsp_types::CreateFile` consumed by conversion; no caller output storage.
+/// # Returns
+/// Always `Ok(value)` containing `d::CreateFile`. No output parameters or shared state are changed.
+/// # Examples
+/// Private adapter context; this builds values only and does not send a message.
+/// ```text
+/// let input = lsp_types::CreateFile {
+///     uri: "file:///tmp/example.rs".parse().unwrap(),
+///     options: None,
+///     annotation_id: None,
+/// };
+/// let output = decode_create_file(input)?;
+/// ```
 pub(in crate::server::wrapper) fn decode_create_file(
     v: lsp_types::CreateFile,
 ) -> Result<d::CreateFile, ServerError> {
@@ -173,6 +698,36 @@ pub(in crate::server::wrapper) fn decode_create_file(
         annotation_id: v.annotation_id,
     })
 }
+/// Encode a proposed file creation, options and annotation reference for typed LSP output.
+/// No external side effects or file/network I/O; takes input by value without borrowing caller state.
+///
+/// This only describes a client operation; it does not create a file or enforce overwrite policy.
+///
+/// # Mapping
+/// - `annotation_id`: move/copy unchanged into the same-named output fields.
+/// - `uri`: convert through [`encode_uri`].
+/// - `options`: convert through [`encode_create_file_options`]; preserve `None` versus `Some`.
+///
+/// # Arguments
+/// - `v` `[in]`: owned `d::CreateFile` consumed by conversion; no caller output storage.
+/// # Returns
+/// `Ok(value)` contains the complete `lsp_types::CreateFile`; `Err(error)` returns the first conversion
+/// failure.
+/// No output parameters are appended to or overwritten; no partial output is returned.
+/// # Errors
+/// - Invalid output URI syntax yields InternalError (-32603) through [`encode_uri`]; no resource is
+///   accessed.
+/// Already consumed temporary values are dropped on failure; caller-owned shared state is unchanged.
+/// # Examples
+/// Private adapter context; this builds values only and does not send a message.
+/// ```text
+/// let input = d::CreateFile {
+///     uri: d::Uri("file:///tmp/example.rs".into()),
+///     options: None,
+///     annotation_id: None,
+/// };
+/// let output = encode_create_file(input)?;
+/// ```
 pub(in crate::server::wrapper) fn encode_create_file(
     v: d::CreateFile,
 ) -> Result<lsp_types::CreateFile, ServerError> {
@@ -182,6 +737,26 @@ pub(in crate::server::wrapper) fn encode_create_file(
         annotation_id: v.annotation_id,
     })
 }
+/// Decode the overwrite and ignore-existing creation flags for business handlers.
+/// No external side effects or file/network I/O; takes input by value without borrowing caller state.
+///
+/// # Mapping
+/// - `overwrite`, `ignore_if_exists`: move/copy unchanged into the same-named output fields.
+///
+/// # Arguments
+/// - `v` `[in]`: owned `lsp_types::CreateFileOptions` consumed by conversion; no caller output storage.
+/// # Returns
+/// Always `Ok(value)` containing `d::CreateFileOptions`. No output parameters or shared state are
+/// changed.
+/// # Examples
+/// Private adapter context; this builds values only and does not send a message.
+/// ```text
+/// let input = lsp_types::CreateFileOptions {
+///     overwrite: None,
+///     ignore_if_exists: None,
+/// };
+/// let output = decode_create_file_options(input)?;
+/// ```
 pub(in crate::server::wrapper) fn decode_create_file_options(
     v: lsp_types::CreateFileOptions,
 ) -> Result<d::CreateFileOptions, ServerError> {
@@ -190,6 +765,26 @@ pub(in crate::server::wrapper) fn decode_create_file_options(
         ignore_if_exists: v.ignore_if_exists,
     })
 }
+/// Encode the overwrite and ignore-existing creation flags for typed LSP output.
+/// No external side effects or file/network I/O; takes input by value without borrowing caller state.
+///
+/// # Mapping
+/// - `overwrite`, `ignore_if_exists`: move/copy unchanged into the same-named output fields.
+///
+/// # Arguments
+/// - `v` `[in]`: owned `d::CreateFileOptions` consumed by conversion; no caller output storage.
+/// # Returns
+/// Always `Ok(value)` containing `lsp_types::CreateFileOptions`. No output parameters or shared state
+/// are changed.
+/// # Examples
+/// Private adapter context; this builds values only and does not send a message.
+/// ```text
+/// let input = d::CreateFileOptions {
+///     overwrite: None,
+///     ignore_if_exists: None,
+/// };
+/// let output = encode_create_file_options(input)?;
+/// ```
 pub(in crate::server::wrapper) fn encode_create_file_options(
     v: d::CreateFileOptions,
 ) -> Result<lsp_types::CreateFileOptions, ServerError> {
@@ -198,6 +793,44 @@ pub(in crate::server::wrapper) fn encode_create_file_options(
         ignore_if_exists: v.ignore_if_exists,
     })
 }
+/// Encode the boolean, options or registration declaration advertisement for typed LSP output.
+/// No external side effects or file/network I/O; takes input by value without borrowing caller state.
+///
+/// # Mapping
+/// - `Simple` stays `Simple`; copy the support boolean unchanged.
+/// - `RegistrationOptions` stays `RegistrationOptions`; convert the payload through
+///   [`encode_declaration_registration_options`].
+/// - `Options` stays `Options`; convert the payload through [`encode_declaration_options`].
+///
+/// # Arguments
+/// - `v` `[in]`: owned `d::DeclarationCapability` consumed by conversion; no caller output storage.
+/// # Returns
+/// Always `Ok(value)` containing `lsp_types::DeclarationCapability`. No output parameters or shared
+/// state are changed.
+///
+/// # Algorithm
+/// Select the input variant and rebuild the same output variant using the payload adapters above.
+/// Containers are consumed rather than cloned.
+/// # Flow
+/// ```text
+///                       <input variant?>
+///                               |
+///           +-------------------+--------------------+
+///           |                   |                    |
+///       [Simple]      [RegistrationOptions]      [Options]
+///           |                   |                    |
+///     [map payload]       [map payload]        [map payload]
+///           |                   |                    |
+///           +-------------------+--------------------+
+///                               |
+///                     [same output choice]
+/// ```
+/// # Examples
+/// Private adapter context; this builds values only and does not send a message.
+/// ```text
+/// let input = d::DeclarationCapability::Simple(false);
+/// let output = encode_declaration_capability(input)?;
+/// ```
 pub(in crate::server::wrapper) fn encode_declaration_capability(
     v: d::DeclarationCapability,
 ) -> Result<lsp_types::DeclarationCapability, ServerError> {
@@ -213,6 +846,27 @@ pub(in crate::server::wrapper) fn encode_declaration_capability(
         }
     })
 }
+/// Encode declaration-query work-progress support for typed LSP output.
+/// No external side effects or file/network I/O; takes input by value without borrowing caller state.
+///
+/// # Mapping
+/// - `work_done_progress_options`: convert through [`encode_work_done_progress_options`].
+///
+/// # Arguments
+/// - `v` `[in]`: owned `d::DeclarationOptions` consumed by conversion; no caller output storage.
+/// # Returns
+/// Always `Ok(value)` containing `lsp_types::DeclarationOptions`. No output parameters or shared state
+/// are changed.
+/// # Examples
+/// Private adapter context; this builds values only and does not send a message.
+/// ```text
+/// let input = d::DeclarationOptions {
+///     work_done_progress_options: d::WorkDoneProgressOptions {
+///         work_done_progress: None,
+///     },
+/// };
+/// let output = encode_declaration_options(input)?;
+/// ```
 pub(in crate::server::wrapper) fn encode_declaration_options(
     v: d::DeclarationOptions,
 ) -> Result<lsp_types::DeclarationOptions, ServerError> {
@@ -222,6 +876,36 @@ pub(in crate::server::wrapper) fn encode_declaration_options(
         )?,
     })
 }
+/// Encode declaration options, document selector and registration ID for typed LSP output.
+/// No external side effects or file/network I/O; takes input by value without borrowing caller state.
+///
+/// # Mapping
+/// - `declaration_options`: convert through [`encode_declaration_options`].
+/// - `text_document_registration_options`: convert through
+///   [`encode_text_document_registration_options`].
+/// - `static_registration_options`: convert through [`encode_static_registration_options`].
+///
+/// # Arguments
+/// - `v` `[in]`: owned `d::DeclarationRegistrationOptions` consumed by conversion; no caller output storage.
+/// # Returns
+/// Always `Ok(value)` containing `lsp_types::DeclarationRegistrationOptions`. No output parameters or
+/// shared state are changed.
+/// # Examples
+/// Private adapter context; this builds values only and does not send a message.
+/// ```text
+/// let input = d::DeclarationRegistrationOptions {
+///     declaration_options: d::DeclarationOptions {
+///         work_done_progress_options: d::WorkDoneProgressOptions {
+///             work_done_progress: None,
+///         },
+///     },
+///     text_document_registration_options: d::TextDocumentRegistrationOptions {
+///         document_selector: None,
+///     },
+///     static_registration_options: d::StaticRegistrationOptions { id: None },
+/// };
+/// let output = encode_declaration_registration_options(input)?;
+/// ```
 pub(in crate::server::wrapper) fn encode_declaration_registration_options(
     v: d::DeclarationRegistrationOptions,
 ) -> Result<lsp_types::DeclarationRegistrationOptions, ServerError> {
@@ -235,6 +919,27 @@ pub(in crate::server::wrapper) fn encode_declaration_registration_options(
         )?,
     })
 }
+/// Encode definition-query work-progress support for typed LSP output.
+/// No external side effects or file/network I/O; takes input by value without borrowing caller state.
+///
+/// # Mapping
+/// - `work_done_progress_options`: convert through [`encode_work_done_progress_options`].
+///
+/// # Arguments
+/// - `v` `[in]`: owned `d::DefinitionOptions` consumed by conversion; no caller output storage.
+/// # Returns
+/// Always `Ok(value)` containing `lsp_types::DefinitionOptions`. No output parameters or shared state
+/// are changed.
+/// # Examples
+/// Private adapter context; this builds values only and does not send a message.
+/// ```text
+/// let input = d::DefinitionOptions {
+///     work_done_progress_options: d::WorkDoneProgressOptions {
+///         work_done_progress: None,
+///     },
+/// };
+/// let output = encode_definition_options(input)?;
+/// ```
 pub(in crate::server::wrapper) fn encode_definition_options(
     v: d::DefinitionOptions,
 ) -> Result<lsp_types::DefinitionOptions, ServerError> {
@@ -244,6 +949,28 @@ pub(in crate::server::wrapper) fn encode_definition_options(
         )?,
     })
 }
+/// Decode a proposed deletion and its options for business handlers.
+/// No external side effects or file/network I/O; takes input by value without borrowing caller state.
+///
+/// This only describes a client operation; it does not delete a file or enforce deletion policy.
+///
+/// # Mapping
+/// - `uri`: convert through [`decode_uri`].
+/// - `options`: convert through [`decode_delete_file_options`]; preserve `None` versus `Some`.
+///
+/// # Arguments
+/// - `v` `[in]`: owned `lsp_types::DeleteFile` consumed by conversion; no caller output storage.
+/// # Returns
+/// Always `Ok(value)` containing `d::DeleteFile`. No output parameters or shared state are changed.
+/// # Examples
+/// Private adapter context; this builds values only and does not send a message.
+/// ```text
+/// let input = lsp_types::DeleteFile {
+///     uri: "file:///tmp/example.rs".parse().unwrap(),
+///     options: None,
+/// };
+/// let output = decode_delete_file(input)?;
+/// ```
 pub(in crate::server::wrapper) fn decode_delete_file(
     v: lsp_types::DeleteFile,
 ) -> Result<d::DeleteFile, ServerError> {
@@ -252,6 +979,34 @@ pub(in crate::server::wrapper) fn decode_delete_file(
         options: (v.options).map(decode_delete_file_options).transpose()?,
     })
 }
+/// Encode a proposed deletion and its options for typed LSP output.
+/// No external side effects or file/network I/O; takes input by value without borrowing caller state.
+///
+/// This only describes a client operation; it does not delete a file or enforce deletion policy.
+///
+/// # Mapping
+/// - `uri`: convert through [`encode_uri`].
+/// - `options`: convert through [`encode_delete_file_options`]; preserve `None` versus `Some`.
+///
+/// # Arguments
+/// - `v` `[in]`: owned `d::DeleteFile` consumed by conversion; no caller output storage.
+/// # Returns
+/// `Ok(value)` contains the complete `lsp_types::DeleteFile`; `Err(error)` returns the first conversion
+/// failure.
+/// No output parameters are appended to or overwritten; no partial output is returned.
+/// # Errors
+/// - Invalid output URI syntax yields InternalError (-32603) through [`encode_uri`]; no resource is
+///   accessed.
+/// Already consumed temporary values are dropped on failure; caller-owned shared state is unchanged.
+/// # Examples
+/// Private adapter context; this builds values only and does not send a message.
+/// ```text
+/// let input = d::DeleteFile {
+///     uri: d::Uri("file:///tmp/example.rs".into()),
+///     options: None,
+/// };
+/// let output = encode_delete_file(input)?;
+/// ```
 pub(in crate::server::wrapper) fn encode_delete_file(
     v: d::DeleteFile,
 ) -> Result<lsp_types::DeleteFile, ServerError> {
@@ -260,6 +1015,28 @@ pub(in crate::server::wrapper) fn encode_delete_file(
         options: (v.options).map(encode_delete_file_options).transpose()?,
     })
 }
+/// Decode recursive deletion, ignore-missing and annotation settings for business handlers.
+/// No external side effects or file/network I/O; takes input by value without borrowing caller state.
+///
+/// # Mapping
+/// - `recursive`, `ignore_if_not_exists`, `annotation_id`: move/copy unchanged into the same-named
+///   output fields.
+///
+/// # Arguments
+/// - `v` `[in]`: owned `lsp_types::DeleteFileOptions` consumed by conversion; no caller output storage.
+/// # Returns
+/// Always `Ok(value)` containing `d::DeleteFileOptions`. No output parameters or shared state are
+/// changed.
+/// # Examples
+/// Private adapter context; this builds values only and does not send a message.
+/// ```text
+/// let input = lsp_types::DeleteFileOptions {
+///     recursive: None,
+///     ignore_if_not_exists: None,
+///     annotation_id: None,
+/// };
+/// let output = decode_delete_file_options(input)?;
+/// ```
 pub(in crate::server::wrapper) fn decode_delete_file_options(
     v: lsp_types::DeleteFileOptions,
 ) -> Result<d::DeleteFileOptions, ServerError> {
@@ -269,6 +1046,28 @@ pub(in crate::server::wrapper) fn decode_delete_file_options(
         annotation_id: v.annotation_id,
     })
 }
+/// Encode recursive deletion, ignore-missing and annotation settings for typed LSP output.
+/// No external side effects or file/network I/O; takes input by value without borrowing caller state.
+///
+/// # Mapping
+/// - `recursive`, `ignore_if_not_exists`, `annotation_id`: move/copy unchanged into the same-named
+///   output fields.
+///
+/// # Arguments
+/// - `v` `[in]`: owned `d::DeleteFileOptions` consumed by conversion; no caller output storage.
+/// # Returns
+/// Always `Ok(value)` containing `lsp_types::DeleteFileOptions`. No output parameters or shared state
+/// are changed.
+/// # Examples
+/// Private adapter context; this builds values only and does not send a message.
+/// ```text
+/// let input = d::DeleteFileOptions {
+///     recursive: None,
+///     ignore_if_not_exists: None,
+///     annotation_id: None,
+/// };
+/// let output = encode_delete_file_options(input)?;
+/// ```
 pub(in crate::server::wrapper) fn encode_delete_file_options(
     v: d::DeleteFileOptions,
 ) -> Result<lsp_types::DeleteFileOptions, ServerError> {
@@ -278,6 +1077,85 @@ pub(in crate::server::wrapper) fn encode_delete_file_options(
         annotation_id: v.annotation_id,
     })
 }
+/// Decode a problem range, severity, code, explanation, related locations, tags and opaque data for
+/// business handlers.
+/// No external side effects or file/network I/O; takes input by value without borrowing caller state.
+///
+/// # Mapping
+/// - `source`, `message`: move/copy unchanged into the same-named output fields.
+/// - `range`: convert through [`decode_range`].
+/// - `severity`: convert through [`decode_diagnostic_severity`]; preserve `None` versus `Some`.
+/// - `code`: convert through [`decode_number_or_string`]; preserve `None` versus `Some`.
+/// - `code_description`: convert through [`decode_code_description`]; preserve `None` versus `Some`.
+/// - `related_information`: consume each element in order through
+///   [`decode_diagnostic_related_information`]; preserve `None` versus `Some`.
+/// - `tags`: consume each element in order through [`decode_diagnostic_tag`]; preserve `None` versus
+///   `Some`.
+/// - `data`: convert through [`data_from_wire`]; preserve `None` versus `Some`.
+///
+/// # Arguments
+/// - `v` `[in]`: owned `lsp_types::Diagnostic` consumed by conversion; no caller output storage.
+/// # Returns
+/// `Ok(value)` contains the complete `d::Diagnostic`; `Err(error)` returns the first conversion
+/// failure.
+/// No output parameters are appended to or overwritten; no partial output is returned.
+/// # Errors
+/// - A JSON number lacking signed, unsigned and floating representations yields InvalidParams (-32602)
+///   through [`data_from_wire`].
+/// - JSON serialization/deserialization shape or representation failures in scalar wrappers yield
+///   InternalError (-32603) through [`codec_error`].
+/// Already consumed temporary values are dropped on failure; caller-owned shared state is unchanged.
+///
+/// # Algorithm
+/// Build the output using the field mappings above.
+/// Optional adapters keep `None`; `Some` values are converted before the output is returned.
+/// Consume list elements in order or rebuild maps by key; collection finishes before exposing output.
+/// Stop at the first nested error and drop incomplete local output.
+/// # Flow
+/// ```text
+///  [map other fields]    [list/map entries]
+///        |                      |
+///    [converted]         <next entry?> <----+
+///        |                /        \       |
+///        |              no         yes     |
+///        |               |          |      |
+///        |               |   [convert entry]
+///        |               |          |      |
+///        |               |          +------+
+///        +-------+-------+
+///                v
+///        [complete output record]
+///
+///  Any failing adapter ----> [drop locals]
+///                                   |
+///                                   v
+///                            [return error]
+/// ```
+/// # Examples
+/// Private adapter context; this builds values only and does not send a message.
+/// ```text
+/// let input = lsp_types::Diagnostic {
+///     range: lsp_types::Range {
+///         start: lsp_types::Position {
+///             line: 0,
+///             character: 0,
+///         },
+///         end: lsp_types::Position {
+///             line: 0,
+///             character: 0,
+///         },
+///     },
+///     severity: None,
+///     code: None,
+///     code_description: None,
+///     source: None,
+///     message: "Ready".into(),
+///     related_information: None,
+///     tags: None,
+///     data: None,
+/// };
+/// let output = decode_diagnostic(input)?;
+/// ```
 pub(in crate::server::wrapper) fn decode_diagnostic(
     v: lsp_types::Diagnostic,
 ) -> Result<d::Diagnostic, ServerError> {
@@ -311,6 +1189,87 @@ pub(in crate::server::wrapper) fn decode_diagnostic(
         data: (v.data).map(data_from_wire).transpose()?,
     })
 }
+/// Encode a problem range, severity, code, explanation, related locations, tags and opaque data for
+/// typed LSP output.
+/// No external side effects or file/network I/O; takes input by value without borrowing caller state.
+///
+/// # Mapping
+/// - `source`, `message`: move/copy unchanged into the same-named output fields.
+/// - `range`: convert through [`encode_range`].
+/// - `severity`: convert through [`encode_diagnostic_severity`]; preserve `None` versus `Some`.
+/// - `code`: convert through [`encode_number_or_string`]; preserve `None` versus `Some`.
+/// - `code_description`: convert through [`encode_code_description`]; preserve `None` versus `Some`.
+/// - `related_information`: consume each element in order through
+///   [`encode_diagnostic_related_information`]; preserve `None` versus `Some`.
+/// - `tags`: consume each element in order through [`encode_diagnostic_tag`]; preserve `None` versus
+///   `Some`.
+/// - `data`: convert through [`data_to_wire`]; preserve `None` versus `Some`.
+///
+/// # Arguments
+/// - `v` `[in]`: owned `d::Diagnostic` consumed by conversion; no caller output storage.
+/// # Returns
+/// `Ok(value)` contains the complete `lsp_types::Diagnostic`; `Err(error)` returns the first conversion
+/// failure.
+/// No output parameters are appended to or overwritten; no partial output is returned.
+/// # Errors
+/// - Invalid output URI syntax yields InternalError (-32603) through [`encode_uri`]; no resource is
+///   accessed.
+/// - Non-finite floats in opaque data, including nested data, yield InternalError (-32603) through
+///   [`data_to_wire`].
+/// - JSON serialization/deserialization shape or representation failures in scalar wrappers yield
+///   InternalError (-32603) through [`codec_error`].
+/// Already consumed temporary values are dropped on failure; caller-owned shared state is unchanged.
+///
+/// # Algorithm
+/// Build the output using the field mappings above.
+/// Optional adapters keep `None`; `Some` values are converted before the output is returned.
+/// Consume list elements in order or rebuild maps by key; collection finishes before exposing output.
+/// Stop at the first nested error and drop incomplete local output.
+/// # Flow
+/// ```text
+///  [map other fields]    [list/map entries]
+///        |                      |
+///    [converted]         <next entry?> <----+
+///        |                /        \       |
+///        |              no         yes     |
+///        |               |          |      |
+///        |               |   [convert entry]
+///        |               |          |      |
+///        |               |          +------+
+///        +-------+-------+
+///                v
+///        [complete output record]
+///
+///  Any failing adapter ----> [drop locals]
+///                                   |
+///                                   v
+///                            [return error]
+/// ```
+/// # Examples
+/// Private adapter context; this builds values only and does not send a message.
+/// ```text
+/// let input = d::Diagnostic {
+///     range: d::Range {
+///         start: d::Position {
+///             line: 0,
+///             character: 0,
+///         },
+///         end: d::Position {
+///             line: 0,
+///             character: 0,
+///         },
+///     },
+///     severity: None,
+///     code: None,
+///     code_description: None,
+///     source: None,
+///     message: "Ready".into(),
+///     related_information: None,
+///     tags: None,
+///     data: None,
+/// };
+/// let output = encode_diagnostic(input)?;
+/// ```
 pub(in crate::server::wrapper) fn encode_diagnostic(
     v: d::Diagnostic,
 ) -> Result<lsp_types::Diagnostic, ServerError> {
@@ -344,6 +1303,39 @@ pub(in crate::server::wrapper) fn encode_diagnostic(
         data: (v.data).map(data_to_wire).transpose()?,
     })
 }
+/// Decode a related problem message and location for business handlers.
+/// No external side effects or file/network I/O; takes input by value without borrowing caller state.
+///
+/// # Mapping
+/// - `message`: move/copy unchanged into the same-named output fields.
+/// - `location`: convert through [`decode_location`].
+///
+/// # Arguments
+/// - `v` `[in]`: owned `lsp_types::DiagnosticRelatedInformation` consumed by conversion; no caller output storage.
+/// # Returns
+/// Always `Ok(value)` containing `d::DiagnosticRelatedInformation`. No output parameters or shared
+/// state are changed.
+/// # Examples
+/// Private adapter context; this builds values only and does not send a message.
+/// ```text
+/// let input = lsp_types::DiagnosticRelatedInformation {
+///     location: lsp_types::Location {
+///         uri: "file:///tmp/example.rs".parse().unwrap(),
+///         range: lsp_types::Range {
+///             start: lsp_types::Position {
+///                 line: 0,
+///                 character: 0,
+///             },
+///             end: lsp_types::Position {
+///                 line: 0,
+///                 character: 0,
+///             },
+///         },
+///     },
+///     message: "Ready".into(),
+/// };
+/// let output = decode_diagnostic_related_information(input)?;
+/// ```
 pub(in crate::server::wrapper) fn decode_diagnostic_related_information(
     v: lsp_types::DiagnosticRelatedInformation,
 ) -> Result<d::DiagnosticRelatedInformation, ServerError> {
@@ -352,6 +1344,44 @@ pub(in crate::server::wrapper) fn decode_diagnostic_related_information(
         message: v.message,
     })
 }
+/// Encode a related problem message and location for typed LSP output.
+/// No external side effects or file/network I/O; takes input by value without borrowing caller state.
+///
+/// # Mapping
+/// - `message`: move/copy unchanged into the same-named output fields.
+/// - `location`: convert through [`encode_location`].
+///
+/// # Arguments
+/// - `v` `[in]`: owned `d::DiagnosticRelatedInformation` consumed by conversion; no caller output storage.
+/// # Returns
+/// `Ok(value)` contains the complete `lsp_types::DiagnosticRelatedInformation`; `Err(error)` returns
+/// the first conversion failure.
+/// No output parameters are appended to or overwritten; no partial output is returned.
+/// # Errors
+/// - Invalid output URI syntax yields InternalError (-32603) through [`encode_uri`]; no resource is
+///   accessed.
+/// Already consumed temporary values are dropped on failure; caller-owned shared state is unchanged.
+/// # Examples
+/// Private adapter context; this builds values only and does not send a message.
+/// ```text
+/// let input = d::DiagnosticRelatedInformation {
+///     location: d::Location {
+///         uri: d::Uri("file:///tmp/example.rs".into()),
+///         range: d::Range {
+///             start: d::Position {
+///                 line: 0,
+///                 character: 0,
+///             },
+///             end: d::Position {
+///                 line: 0,
+///                 character: 0,
+///             },
+///         },
+///     },
+///     message: "Ready".into(),
+/// };
+/// let output = encode_diagnostic_related_information(input)?;
+/// ```
 pub(in crate::server::wrapper) fn encode_diagnostic_related_information(
     v: d::DiagnosticRelatedInformation,
 ) -> Result<lsp_types::DiagnosticRelatedInformation, ServerError> {
@@ -360,6 +1390,33 @@ pub(in crate::server::wrapper) fn encode_diagnostic_related_information(
         message: v.message,
     })
 }
+/// Decode the numeric diagnostic severity for business handlers.
+/// No external side effects or file/network I/O; takes input by value without borrowing caller state.
+///
+/// The JSON scalar representation bridges the private wire wrapper and the business tuple field.
+/// The signed `i32` value is preserved without a known-value whitelist.
+/// Unknown values are not rejected merely for being unknown.
+///
+/// # Mapping
+/// - `v`: serialize the wire scalar, then deserialize into the business wrapper's public tuple field `.0`.
+/// - No integer rounding or known-constant check occurs.
+///
+/// # Arguments
+/// - `v` `[in]`: owned `lsp_types::DiagnosticSeverity` consumed by conversion; no caller output storage.
+/// # Returns
+/// `Ok(value)` contains the complete `d::DiagnosticSeverity`; `Err(error)` returns the first conversion
+/// failure.
+/// No output parameters are appended to or overwritten; no partial output is returned.
+/// # Errors
+/// - JSON serialization/deserialization shape or representation failures in scalar wrappers yield
+///   InternalError (-32603) through [`codec_error`].
+/// Already consumed temporary values are dropped on failure; caller-owned shared state is unchanged.
+/// # Examples
+/// Private adapter context; this builds values only and does not send a message.
+/// ```text
+/// let input = serde_json::from_value(serde_json::json!(1)).unwrap();
+/// let output = decode_diagnostic_severity(input)?;
+/// ```
 pub(in crate::server::wrapper) fn decode_diagnostic_severity(
     v: lsp_types::DiagnosticSeverity,
 ) -> Result<d::DiagnosticSeverity, ServerError> {
@@ -368,11 +1425,65 @@ pub(in crate::server::wrapper) fn decode_diagnostic_severity(
         serde_json::from_value(value).map_err(codec_error)?,
     ))
 }
+/// Encode the numeric diagnostic severity for typed LSP output.
+/// No external side effects or file/network I/O; takes input by value without borrowing caller state.
+///
+/// The JSON scalar representation bridges the private wire wrapper and the business tuple field.
+/// The signed `i32` value is preserved without a known-value whitelist.
+/// Unknown values are not rejected merely for being unknown.
+///
+/// # Mapping
+/// - `v.0`: serialize the business scalar, then deserialize the same JSON scalar as the wire wrapper.
+/// - No integer rounding or known-constant check occurs.
+///
+/// # Arguments
+/// - `v` `[in]`: owned `d::DiagnosticSeverity` consumed by conversion; no caller output storage.
+/// # Returns
+/// `Ok(value)` contains the complete `lsp_types::DiagnosticSeverity`; `Err(error)` returns the first
+/// conversion failure.
+/// No output parameters are appended to or overwritten; no partial output is returned.
+/// # Errors
+/// - JSON serialization/deserialization shape or representation failures in scalar wrappers yield
+///   InternalError (-32603) through [`codec_error`].
+/// Already consumed temporary values are dropped on failure; caller-owned shared state is unchanged.
+/// # Examples
+/// Private adapter context; this builds values only and does not send a message.
+/// ```text
+/// let input = d::DiagnosticSeverity(0);
+/// let output = encode_diagnostic_severity(input)?;
+/// ```
 pub(in crate::server::wrapper) fn encode_diagnostic_severity(
     v: d::DiagnosticSeverity,
 ) -> Result<lsp_types::DiagnosticSeverity, ServerError> {
     serde_json::from_value(serde_json::to_value(v.0).map_err(codec_error)?).map_err(codec_error)
 }
+/// Decode the numeric diagnostic rendering tag for business handlers.
+/// No external side effects or file/network I/O; takes input by value without borrowing caller state.
+///
+/// The JSON scalar representation bridges the private wire wrapper and the business tuple field.
+/// The signed `i32` value is preserved without a known-value whitelist.
+/// Unknown values are not rejected merely for being unknown.
+///
+/// # Mapping
+/// - `v`: serialize the wire scalar, then deserialize into the business wrapper's public tuple field `.0`.
+/// - No integer rounding or known-constant check occurs.
+///
+/// # Arguments
+/// - `v` `[in]`: owned `lsp_types::DiagnosticTag` consumed by conversion; no caller output storage.
+/// # Returns
+/// `Ok(value)` contains the complete `d::DiagnosticTag`; `Err(error)` returns the first conversion
+/// failure.
+/// No output parameters are appended to or overwritten; no partial output is returned.
+/// # Errors
+/// - JSON serialization/deserialization shape or representation failures in scalar wrappers yield
+///   InternalError (-32603) through [`codec_error`].
+/// Already consumed temporary values are dropped on failure; caller-owned shared state is unchanged.
+/// # Examples
+/// Private adapter context; this builds values only and does not send a message.
+/// ```text
+/// let input = serde_json::from_value(serde_json::json!(1)).unwrap();
+/// let output = decode_diagnostic_tag(input)?;
+/// ```
 pub(in crate::server::wrapper) fn decode_diagnostic_tag(
     v: lsp_types::DiagnosticTag,
 ) -> Result<d::DiagnosticTag, ServerError> {
@@ -381,11 +1492,62 @@ pub(in crate::server::wrapper) fn decode_diagnostic_tag(
         serde_json::from_value(value).map_err(codec_error)?,
     ))
 }
+/// Encode the numeric diagnostic rendering tag for typed LSP output.
+/// No external side effects or file/network I/O; takes input by value without borrowing caller state.
+///
+/// The JSON scalar representation bridges the private wire wrapper and the business tuple field.
+/// The signed `i32` value is preserved without a known-value whitelist.
+/// Unknown values are not rejected merely for being unknown.
+///
+/// # Mapping
+/// - `v.0`: serialize the business scalar, then deserialize the same JSON scalar as the wire wrapper.
+/// - No integer rounding or known-constant check occurs.
+///
+/// # Arguments
+/// - `v` `[in]`: owned `d::DiagnosticTag` consumed by conversion; no caller output storage.
+/// # Returns
+/// `Ok(value)` contains the complete `lsp_types::DiagnosticTag`; `Err(error)` returns the first
+/// conversion failure.
+/// No output parameters are appended to or overwritten; no partial output is returned.
+/// # Errors
+/// - JSON serialization/deserialization shape or representation failures in scalar wrappers yield
+///   InternalError (-32603) through [`codec_error`].
+/// Already consumed temporary values are dropped on failure; caller-owned shared state is unchanged.
+/// # Examples
+/// Private adapter context; this builds values only and does not send a message.
+/// ```text
+/// let input = d::DiagnosticTag(0);
+/// let output = encode_diagnostic_tag(input)?;
+/// ```
 pub(in crate::server::wrapper) fn encode_diagnostic_tag(
     v: d::DiagnosticTag,
 ) -> Result<lsp_types::DiagnosticTag, ServerError> {
     serde_json::from_value(serde_json::to_value(v.0).map_err(codec_error)?).map_err(codec_error)
 }
+/// Decode the client's replacement configuration data for business handlers.
+/// No external side effects or file/network I/O; takes input by value without borrowing caller state.
+///
+/// # Mapping
+/// - `settings`: convert through [`data_from_wire`].
+///
+/// # Arguments
+/// - `v` `[in]`: owned `lsp_types::DidChangeConfigurationParams` consumed by conversion; no caller output storage.
+/// # Returns
+/// `Ok(value)` contains the complete `d::DidChangeConfigurationParams`; `Err(error)` returns the first
+/// conversion failure.
+/// No output parameters are appended to or overwritten; no partial output is returned.
+/// # Errors
+/// - A JSON number lacking signed, unsigned and floating representations yields InvalidParams (-32602)
+///   through [`data_from_wire`].
+/// Already consumed temporary values are dropped on failure; caller-owned shared state is unchanged.
+/// # Examples
+/// Private adapter context; this builds values only and does not send a message.
+/// ```text
+/// let input = lsp_types::DidChangeConfigurationParams {
+///     settings: serde_json::json!(null),
+/// };
+/// let output = decode_did_change_configuration_params(input)?;
+/// ```
 pub(in crate::server::wrapper) fn decode_did_change_configuration_params(
     v: lsp_types::DidChangeConfigurationParams,
 ) -> Result<d::DidChangeConfigurationParams, ServerError> {
@@ -393,6 +1555,53 @@ pub(in crate::server::wrapper) fn decode_did_change_configuration_params(
         settings: data_from_wire(v.settings)?,
     })
 }
+/// Decode a document version and ordered content-change descriptions for business handlers.
+/// No external side effects or file/network I/O; takes input by value without borrowing caller state.
+///
+/// Changes retain client order; this does not check version monotonicity or apply changes to server
+/// state.
+///
+/// # Mapping
+/// - `text_document`: convert through [`decode_versioned_text_document_identifier`].
+/// - `content_changes`: consume each element in order through
+///   [`decode_text_document_content_change_event`].
+///
+/// # Arguments
+/// - `v` `[in]`: owned `lsp_types::DidChangeTextDocumentParams` consumed by conversion; no caller output storage.
+/// # Returns
+/// Always `Ok(value)` containing `d::DidChangeTextDocumentParams`. No output parameters or shared state
+/// are changed.
+///
+/// # Algorithm
+/// Build the output using the field mappings above.
+/// Consume list elements in order or rebuild maps by key; collection finishes before exposing output.
+/// # Flow
+/// ```text
+///  [map other fields]    [list/map entries]
+///        |                      |
+///    [converted]         <next entry?> <----+
+///        |                /        \       |
+///        |              no         yes     |
+///        |               |          |      |
+///        |               |   [convert entry]
+///        |               |          |      |
+///        |               |          +------+
+///        +-------+-------+
+///                v
+///        [complete output record]
+/// ```
+/// # Examples
+/// Private adapter context; this builds values only and does not send a message.
+/// ```text
+/// let input = lsp_types::DidChangeTextDocumentParams {
+///     text_document: lsp_types::VersionedTextDocumentIdentifier {
+///         uri: "file:///tmp/example.rs".parse().unwrap(),
+///         version: 1,
+///     },
+///     content_changes: vec![],
+/// };
+/// let output = decode_did_change_text_document_params(input)?;
+/// ```
 pub(in crate::server::wrapper) fn decode_did_change_text_document_params(
     v: lsp_types::DidChangeTextDocumentParams,
 ) -> Result<d::DidChangeTextDocumentParams, ServerError> {
@@ -404,6 +1613,27 @@ pub(in crate::server::wrapper) fn decode_did_change_text_document_params(
             .collect::<Result<Vec<_>, ServerError>>()?,
     })
 }
+/// Decode the client's watched-file registration and relative-pattern support for business handlers.
+/// No external side effects or file/network I/O; takes input by value without borrowing caller state.
+///
+/// # Mapping
+/// - `dynamic_registration`, `relative_pattern_support`: move/copy unchanged into the same-named output
+///   fields.
+///
+/// # Arguments
+/// - `v` `[in]`: owned `lsp_types::DidChangeWatchedFilesClientCapabilities` consumed by conversion; no caller output storage.
+/// # Returns
+/// Always `Ok(value)` containing `d::DidChangeWatchedFilesClientCapabilities`. No output parameters or
+/// shared state are changed.
+/// # Examples
+/// Private adapter context; this builds values only and does not send a message.
+/// ```text
+/// let input = lsp_types::DidChangeWatchedFilesClientCapabilities {
+///     dynamic_registration: None,
+///     relative_pattern_support: None,
+/// };
+/// let output = decode_did_change_watched_files_client_capabilities(input)?;
+/// ```
 pub(in crate::server::wrapper) fn decode_did_change_watched_files_client_capabilities(
     v: lsp_types::DidChangeWatchedFilesClientCapabilities,
 ) -> Result<d::DidChangeWatchedFilesClientCapabilities, ServerError> {
@@ -412,6 +1642,53 @@ pub(in crate::server::wrapper) fn decode_did_change_watched_files_client_capabil
         relative_pattern_support: v.relative_pattern_support,
     })
 }
+/// Decode the ordered watched-file events for business handlers.
+/// No external side effects or file/network I/O; takes input by value without borrowing caller state.
+///
+/// # Mapping
+/// - `changes`: consume each element in order through [`decode_file_event`].
+///
+/// # Arguments
+/// - `v` `[in]`: owned `lsp_types::DidChangeWatchedFilesParams` consumed by conversion; no caller output storage.
+/// # Returns
+/// `Ok(value)` contains the complete `d::DidChangeWatchedFilesParams`; `Err(error)` returns the first
+/// conversion failure.
+/// No output parameters are appended to or overwritten; no partial output is returned.
+/// # Errors
+/// - JSON serialization/deserialization shape or representation failures in scalar wrappers yield
+///   InternalError (-32603) through [`codec_error`].
+/// Already consumed temporary values are dropped on failure; caller-owned shared state is unchanged.
+///
+/// # Algorithm
+/// Build the output using the field mappings above.
+/// Consume list elements in order or rebuild maps by key; collection finishes before exposing output.
+/// Stop at the first nested error and drop incomplete local output.
+/// # Flow
+/// ```text
+///  [map other fields]    [list/map entries]
+///        |                      |
+///    [converted]         <next entry?> <----+
+///        |                /        \       |
+///        |              no         yes     |
+///        |               |          |      |
+///        |               |   [convert entry]
+///        |               |          |      |
+///        |               |          +------+
+///        +-------+-------+
+///                v
+///        [complete output record]
+///
+///  Any failing adapter ----> [drop locals]
+///                                   |
+///                                   v
+///                            [return error]
+/// ```
+/// # Examples
+/// Private adapter context; this builds values only and does not send a message.
+/// ```text
+/// let input = lsp_types::DidChangeWatchedFilesParams { changes: vec![] };
+/// let output = decode_did_change_watched_files_params(input)?;
+/// ```
 pub(in crate::server::wrapper) fn decode_did_change_watched_files_params(
     v: lsp_types::DidChangeWatchedFilesParams,
 ) -> Result<d::DidChangeWatchedFilesParams, ServerError> {
@@ -422,6 +1699,27 @@ pub(in crate::server::wrapper) fn decode_did_change_watched_files_params(
             .collect::<Result<Vec<_>, ServerError>>()?,
     })
 }
+/// Decode the closed document identifier for business handlers.
+/// No external side effects or file/network I/O; takes input by value without borrowing caller state.
+///
+/// # Mapping
+/// - `text_document`: convert through [`decode_text_document_identifier`].
+///
+/// # Arguments
+/// - `v` `[in]`: owned `lsp_types::DidCloseTextDocumentParams` consumed by conversion; no caller output storage.
+/// # Returns
+/// Always `Ok(value)` containing `d::DidCloseTextDocumentParams`. No output parameters or shared state
+/// are changed.
+/// # Examples
+/// Private adapter context; this builds values only and does not send a message.
+/// ```text
+/// let input = lsp_types::DidCloseTextDocumentParams {
+///     text_document: lsp_types::TextDocumentIdentifier {
+///         uri: "file:///tmp/example.rs".parse().unwrap(),
+///     },
+/// };
+/// let output = decode_did_close_text_document_params(input)?;
+/// ```
 pub(in crate::server::wrapper) fn decode_did_close_text_document_params(
     v: lsp_types::DidCloseTextDocumentParams,
 ) -> Result<d::DidCloseTextDocumentParams, ServerError> {
@@ -429,6 +1727,30 @@ pub(in crate::server::wrapper) fn decode_did_close_text_document_params(
         text_document: decode_text_document_identifier(v.text_document)?,
     })
 }
+/// Decode the opened document and initial contents for business handlers.
+/// No external side effects or file/network I/O; takes input by value without borrowing caller state.
+///
+/// # Mapping
+/// - `text_document`: convert through [`decode_text_document_item`].
+///
+/// # Arguments
+/// - `v` `[in]`: owned `lsp_types::DidOpenTextDocumentParams` consumed by conversion; no caller output storage.
+/// # Returns
+/// Always `Ok(value)` containing `d::DidOpenTextDocumentParams`. No output parameters or shared state
+/// are changed.
+/// # Examples
+/// Private adapter context; this builds values only and does not send a message.
+/// ```text
+/// let input = lsp_types::DidOpenTextDocumentParams {
+///     text_document: lsp_types::TextDocumentItem {
+///         uri: "file:///tmp/example.rs".parse().unwrap(),
+///         language_id: "value".into(),
+///         version: 1,
+///         text: "value".into(),
+///     },
+/// };
+/// let output = decode_did_open_text_document_params(input)?;
+/// ```
 pub(in crate::server::wrapper) fn decode_did_open_text_document_params(
     v: lsp_types::DidOpenTextDocumentParams,
 ) -> Result<d::DidOpenTextDocumentParams, ServerError> {
@@ -436,6 +1758,29 @@ pub(in crate::server::wrapper) fn decode_did_open_text_document_params(
         text_document: decode_text_document_item(v.text_document)?,
     })
 }
+/// Decode the saved document identifier and optional contents for business handlers.
+/// No external side effects or file/network I/O; takes input by value without borrowing caller state.
+///
+/// # Mapping
+/// - `text`: move/copy unchanged into the same-named output fields.
+/// - `text_document`: convert through [`decode_text_document_identifier`].
+///
+/// # Arguments
+/// - `v` `[in]`: owned `lsp_types::DidSaveTextDocumentParams` consumed by conversion; no caller output storage.
+/// # Returns
+/// Always `Ok(value)` containing `d::DidSaveTextDocumentParams`. No output parameters or shared state
+/// are changed.
+/// # Examples
+/// Private adapter context; this builds values only and does not send a message.
+/// ```text
+/// let input = lsp_types::DidSaveTextDocumentParams {
+///     text_document: lsp_types::TextDocumentIdentifier {
+///         uri: "file:///tmp/example.rs".parse().unwrap(),
+///     },
+///     text: None,
+/// };
+/// let output = decode_did_save_text_document_params(input)?;
+/// ```
 pub(in crate::server::wrapper) fn decode_did_save_text_document_params(
     v: lsp_types::DidSaveTextDocumentParams,
 ) -> Result<d::DidSaveTextDocumentParams, ServerError> {
@@ -444,6 +1789,48 @@ pub(in crate::server::wrapper) fn decode_did_save_text_document_params(
         text: v.text,
     })
 }
+/// Decode a text-edit-or-resource-operation choice for business handlers.
+/// No external side effects or file/network I/O; takes input by value without borrowing caller state.
+///
+/// # Mapping
+/// - `Op` stays `Op`; convert the payload through [`decode_resource_op`].
+/// - `Edit` stays `Edit`; convert the payload through [`decode_text_document_edit`].
+///
+/// # Arguments
+/// - `v` `[in]`: owned `lsp_types::DocumentChangeOperation` consumed by conversion; no caller output storage.
+/// # Returns
+/// Always `Ok(value)` containing `d::DocumentChangeOperation`. No output parameters or shared state are
+/// changed.
+///
+/// # Algorithm
+/// Select the input variant and rebuild the same output variant using the payload adapters above.
+/// Containers are consumed rather than cloned.
+/// # Flow
+/// ```text
+///           <input variant?>
+///                   |
+///           +-------+--------+
+///           |                |
+///         [Op]            [Edit]
+///           |                |
+///     [map payload]    [map payload]
+///           |                |
+///           +-------+--------+
+///                   |
+///         [same output choice]
+/// ```
+/// # Examples
+/// Private adapter context; this builds values only and does not send a message.
+/// ```text
+/// let input = lsp_types::DocumentChangeOperation::Op(lsp_types::ResourceOp::Create(
+///     lsp_types::CreateFile {
+///         uri: "file:///tmp/example.rs".parse().unwrap(),
+///         options: None,
+///         annotation_id: None,
+///     },
+/// ));
+/// let output = decode_document_change_operation(input)?;
+/// ```
 pub(in crate::server::wrapper) fn decode_document_change_operation(
     v: lsp_types::DocumentChangeOperation,
 ) -> Result<d::DocumentChangeOperation, ServerError> {
@@ -456,6 +1843,57 @@ pub(in crate::server::wrapper) fn decode_document_change_operation(
         }
     })
 }
+/// Encode a text-edit-or-resource-operation choice for typed LSP output.
+/// No external side effects or file/network I/O; takes input by value without borrowing caller state.
+///
+/// # Mapping
+/// - `Op` stays `Op`; convert the payload through [`encode_resource_op`].
+/// - `Edit` stays `Edit`; convert the payload through [`encode_text_document_edit`].
+///
+/// # Arguments
+/// - `v` `[in]`: owned `d::DocumentChangeOperation` consumed by conversion; no caller output storage.
+/// # Returns
+/// `Ok(value)` contains the complete `lsp_types::DocumentChangeOperation`; `Err(error)` returns the
+/// first conversion failure.
+/// No output parameters are appended to or overwritten; no partial output is returned.
+/// # Errors
+/// - Invalid output URI syntax yields InternalError (-32603) through [`encode_uri`]; no resource is
+///   accessed.
+/// Already consumed temporary values are dropped on failure; caller-owned shared state is unchanged.
+///
+/// # Algorithm
+/// Select the input variant and rebuild the same output variant using the payload adapters above.
+/// Containers are consumed rather than cloned.
+/// A nested failure exits immediately and discards the partially built local value.
+/// # Flow
+/// ```text
+///           <input variant?>
+///                   |
+///           +-------+--------+
+///           |                |
+///         [Op]            [Edit]
+///           |                |
+///     [map payload]    [map payload]
+///           |                |
+///           +-------+--------+
+///                   |
+///         [same output choice]
+///
+///  Payload failure ---> [drop locals]
+///                              |
+///                              v
+///                        [return error]
+/// ```
+/// # Examples
+/// Private adapter context; this builds values only and does not send a message.
+/// ```text
+/// let input = d::DocumentChangeOperation::Op(d::ResourceOp::Create(d::CreateFile {
+///     uri: d::Uri("file:///tmp/example.rs".into()),
+///     options: None,
+///     annotation_id: None,
+/// }));
+/// let output = encode_document_change_operation(input)?;
+/// ```
 pub(in crate::server::wrapper) fn encode_document_change_operation(
     v: d::DocumentChangeOperation,
 ) -> Result<lsp_types::DocumentChangeOperation, ServerError> {
@@ -468,6 +1906,25 @@ pub(in crate::server::wrapper) fn encode_document_change_operation(
         }
     })
 }
+/// Decode the edits-only or mixed-operations workspace change choice for business handlers.
+/// No external side effects or file/network I/O; takes input by value without borrowing caller state.
+///
+/// # Mapping
+/// - `Edits` stays `Edits`; convert the payload through [`decode_text_document_edit`] in element order.
+/// - `Operations` stays `Operations`; convert the payload through [`decode_document_change_operation`]
+///   in element order.
+///
+/// # Arguments
+/// - `v` `[in]`: owned `lsp_types::DocumentChanges` consumed by conversion; no caller output storage.
+/// # Returns
+/// Always `Ok(value)` containing `d::DocumentChanges`. No output parameters or shared state are
+/// changed.
+/// # Examples
+/// Private adapter context; this builds values only and does not send a message.
+/// ```text
+/// let input = lsp_types::DocumentChanges::Edits(vec![]);
+/// let output = decode_document_changes(input)?;
+/// ```
 pub(in crate::server::wrapper) fn decode_document_changes(
     v: lsp_types::DocumentChanges,
 ) -> Result<d::DocumentChanges, ServerError> {
@@ -484,6 +1941,30 @@ pub(in crate::server::wrapper) fn decode_document_changes(
         ),
     })
 }
+/// Encode the edits-only or mixed-operations workspace change choice for typed LSP output.
+/// No external side effects or file/network I/O; takes input by value without borrowing caller state.
+///
+/// # Mapping
+/// - `Edits` stays `Edits`; convert the payload through [`encode_text_document_edit`] in element order.
+/// - `Operations` stays `Operations`; convert the payload through [`encode_document_change_operation`]
+///   in element order.
+///
+/// # Arguments
+/// - `v` `[in]`: owned `d::DocumentChanges` consumed by conversion; no caller output storage.
+/// # Returns
+/// `Ok(value)` contains the complete `lsp_types::DocumentChanges`; `Err(error)` returns the first
+/// conversion failure.
+/// No output parameters are appended to or overwritten; no partial output is returned.
+/// # Errors
+/// - Invalid output URI syntax yields InternalError (-32603) through [`encode_uri`]; no resource is
+///   accessed.
+/// Already consumed temporary values are dropped on failure; caller-owned shared state is unchanged.
+/// # Examples
+/// Private adapter context; this builds values only and does not send a message.
+/// ```text
+/// let input = d::DocumentChanges::Edits(vec![]);
+/// let output = encode_document_changes(input)?;
+/// ```
 pub(in crate::server::wrapper) fn encode_document_changes(
     v: d::DocumentChanges,
 ) -> Result<lsp_types::DocumentChanges, ServerError> {
@@ -500,6 +1981,27 @@ pub(in crate::server::wrapper) fn encode_document_changes(
         ),
     })
 }
+/// Encode language, URI scheme and filename-pattern selection criteria for typed LSP output.
+/// No external side effects or file/network I/O; takes input by value without borrowing caller state.
+///
+/// # Mapping
+/// - `language`, `scheme`, `pattern`: move/copy unchanged into the same-named output fields.
+///
+/// # Arguments
+/// - `v` `[in]`: owned `d::DocumentFilter` consumed by conversion; no caller output storage.
+/// # Returns
+/// Always `Ok(value)` containing `lsp_types::DocumentFilter`. No output parameters or shared state are
+/// changed.
+/// # Examples
+/// Private adapter context; this builds values only and does not send a message.
+/// ```text
+/// let input = d::DocumentFilter {
+///     language: None,
+///     scheme: None,
+///     pattern: None,
+/// };
+/// let output = encode_document_filter(input)?;
+/// ```
 pub(in crate::server::wrapper) fn encode_document_filter(
     v: d::DocumentFilter,
 ) -> Result<lsp_types::DocumentFilter, ServerError> {
@@ -509,6 +2011,27 @@ pub(in crate::server::wrapper) fn encode_document_filter(
         pattern: v.pattern,
     })
 }
+/// Encode whole-document formatting work-progress support for typed LSP output.
+/// No external side effects or file/network I/O; takes input by value without borrowing caller state.
+///
+/// # Mapping
+/// - `work_done_progress_options`: convert through [`encode_work_done_progress_options`].
+///
+/// # Arguments
+/// - `v` `[in]`: owned `d::DocumentFormattingOptions` consumed by conversion; no caller output storage.
+/// # Returns
+/// Always `Ok(value)` containing `lsp_types::DocumentFormattingOptions`. No output parameters or shared
+/// state are changed.
+/// # Examples
+/// Private adapter context; this builds values only and does not send a message.
+/// ```text
+/// let input = d::DocumentFormattingOptions {
+///     work_done_progress_options: d::WorkDoneProgressOptions {
+///         work_done_progress: None,
+///     },
+/// };
+/// let output = encode_document_formatting_options(input)?;
+/// ```
 pub(in crate::server::wrapper) fn encode_document_formatting_options(
     v: d::DocumentFormattingOptions,
 ) -> Result<lsp_types::DocumentFormattingOptions, ServerError> {
@@ -518,6 +2041,27 @@ pub(in crate::server::wrapper) fn encode_document_formatting_options(
         )?,
     })
 }
+/// Encode highlight-query work-progress support for typed LSP output.
+/// No external side effects or file/network I/O; takes input by value without borrowing caller state.
+///
+/// # Mapping
+/// - `work_done_progress_options`: convert through [`encode_work_done_progress_options`].
+///
+/// # Arguments
+/// - `v` `[in]`: owned `d::DocumentHighlightOptions` consumed by conversion; no caller output storage.
+/// # Returns
+/// Always `Ok(value)` containing `lsp_types::DocumentHighlightOptions`. No output parameters or shared
+/// state are changed.
+/// # Examples
+/// Private adapter context; this builds values only and does not send a message.
+/// ```text
+/// let input = d::DocumentHighlightOptions {
+///     work_done_progress_options: d::WorkDoneProgressOptions {
+///         work_done_progress: None,
+///     },
+/// };
+/// let output = encode_document_highlight_options(input)?;
+/// ```
 pub(in crate::server::wrapper) fn encode_document_highlight_options(
     v: d::DocumentHighlightOptions,
 ) -> Result<lsp_types::DocumentHighlightOptions, ServerError> {
@@ -527,6 +2071,27 @@ pub(in crate::server::wrapper) fn encode_document_highlight_options(
         )?,
     })
 }
+/// Encode range-formatting work-progress support for typed LSP output.
+/// No external side effects or file/network I/O; takes input by value without borrowing caller state.
+///
+/// # Mapping
+/// - `work_done_progress_options`: convert through [`encode_work_done_progress_options`].
+///
+/// # Arguments
+/// - `v` `[in]`: owned `d::DocumentRangeFormattingOptions` consumed by conversion; no caller output storage.
+/// # Returns
+/// Always `Ok(value)` containing `lsp_types::DocumentRangeFormattingOptions`. No output parameters or
+/// shared state are changed.
+/// # Examples
+/// Private adapter context; this builds values only and does not send a message.
+/// ```text
+/// let input = d::DocumentRangeFormattingOptions {
+///     work_done_progress_options: d::WorkDoneProgressOptions {
+///         work_done_progress: None,
+///     },
+/// };
+/// let output = encode_document_range_formatting_options(input)?;
+/// ```
 pub(in crate::server::wrapper) fn encode_document_range_formatting_options(
     v: d::DocumentRangeFormattingOptions,
 ) -> Result<lsp_types::DocumentRangeFormattingOptions, ServerError> {
@@ -536,6 +2101,29 @@ pub(in crate::server::wrapper) fn encode_document_range_formatting_options(
         )?,
     })
 }
+/// Encode the symbol-provider label and work-progress support for typed LSP output.
+/// No external side effects or file/network I/O; takes input by value without borrowing caller state.
+///
+/// # Mapping
+/// - `label`: move/copy unchanged into the same-named output fields.
+/// - `work_done_progress_options`: convert through [`encode_work_done_progress_options`].
+///
+/// # Arguments
+/// - `v` `[in]`: owned `d::DocumentSymbolOptions` consumed by conversion; no caller output storage.
+/// # Returns
+/// Always `Ok(value)` containing `lsp_types::DocumentSymbolOptions`. No output parameters or shared
+/// state are changed.
+/// # Examples
+/// Private adapter context; this builds values only and does not send a message.
+/// ```text
+/// let input = d::DocumentSymbolOptions {
+///     label: None,
+///     work_done_progress_options: d::WorkDoneProgressOptions {
+///         work_done_progress: None,
+///     },
+/// };
+/// let output = encode_document_symbol_options(input)?;
+/// ```
 pub(in crate::server::wrapper) fn encode_document_symbol_options(
     v: d::DocumentSymbolOptions,
 ) -> Result<lsp_types::DocumentSymbolOptions, ServerError> {
@@ -546,6 +2134,41 @@ pub(in crate::server::wrapper) fn encode_document_symbol_options(
         )?,
     })
 }
+/// Decode the plain-string-or-markup documentation choice for business handlers.
+/// No external side effects or file/network I/O; takes input by value without borrowing caller state.
+///
+/// # Mapping
+/// - `String` stays `String`; move the text unchanged.
+/// - `MarkupContent` stays `MarkupContent`; convert the payload through [`decode_markup_content`].
+///
+/// # Arguments
+/// - `v` `[in]`: owned `lsp_types::Documentation` consumed by conversion; no caller output storage.
+/// # Returns
+/// Always `Ok(value)` containing `d::Documentation`. No output parameters or shared state are changed.
+///
+/// # Algorithm
+/// Select the input variant and rebuild the same output variant using the payload adapters above.
+/// Containers are consumed rather than cloned.
+/// # Flow
+/// ```text
+///           <input variant?>
+///                   |
+///           +-------+--------+
+///           |                |
+///       [String]      [MarkupContent]
+///           |                |
+///     [map payload]    [map payload]
+///           |                |
+///           +-------+--------+
+///                   |
+///         [same output choice]
+/// ```
+/// # Examples
+/// Private adapter context; this builds values only and does not send a message.
+/// ```text
+/// let input = lsp_types::Documentation::String("value".into());
+/// let output = decode_documentation(input)?;
+/// ```
 pub(in crate::server::wrapper) fn decode_documentation(
     v: lsp_types::Documentation,
 ) -> Result<d::Documentation, ServerError> {
@@ -556,6 +2179,42 @@ pub(in crate::server::wrapper) fn decode_documentation(
         }
     })
 }
+/// Encode the plain-string-or-markup documentation choice for typed LSP output.
+/// No external side effects or file/network I/O; takes input by value without borrowing caller state.
+///
+/// # Mapping
+/// - `String` stays `String`; move the text unchanged.
+/// - `MarkupContent` stays `MarkupContent`; convert the payload through [`encode_markup_content`].
+///
+/// # Arguments
+/// - `v` `[in]`: owned `d::Documentation` consumed by conversion; no caller output storage.
+/// # Returns
+/// Always `Ok(value)` containing `lsp_types::Documentation`. No output parameters or shared state are
+/// changed.
+///
+/// # Algorithm
+/// Select the input variant and rebuild the same output variant using the payload adapters above.
+/// Containers are consumed rather than cloned.
+/// # Flow
+/// ```text
+///           <input variant?>
+///                   |
+///           +-------+--------+
+///           |                |
+///       [String]      [MarkupContent]
+///           |                |
+///     [map payload]    [map payload]
+///           |                |
+///           +-------+--------+
+///                   |
+///         [same output choice]
+/// ```
+/// # Examples
+/// Private adapter context; this builds values only and does not send a message.
+/// ```text
+/// let input = d::Documentation::String("value".into());
+/// let output = encode_documentation(input)?;
+/// ```
 pub(in crate::server::wrapper) fn encode_documentation(
     v: d::Documentation,
 ) -> Result<lsp_types::Documentation, ServerError> {
@@ -566,6 +2225,25 @@ pub(in crate::server::wrapper) fn encode_documentation(
         }
     })
 }
+/// Decode the client's dynamic-registration flag for business handlers.
+/// No external side effects or file/network I/O; takes input by value without borrowing caller state.
+///
+/// # Mapping
+/// - `dynamic_registration`: move/copy unchanged into the same-named output fields.
+///
+/// # Arguments
+/// - `v` `[in]`: owned `lsp_types::DynamicRegistrationClientCapabilities` consumed by conversion; no caller output storage.
+/// # Returns
+/// Always `Ok(value)` containing `d::DynamicRegistrationClientCapabilities`. No output parameters or
+/// shared state are changed.
+/// # Examples
+/// Private adapter context; this builds values only and does not send a message.
+/// ```text
+/// let input = lsp_types::DynamicRegistrationClientCapabilities {
+///     dynamic_registration: None,
+/// };
+/// let output = decode_dynamic_registration_client_capabilities(input)?;
+/// ```
 pub(in crate::server::wrapper) fn decode_dynamic_registration_client_capabilities(
     v: lsp_types::DynamicRegistrationClientCapabilities,
 ) -> Result<d::DynamicRegistrationClientCapabilities, ServerError> {
@@ -573,6 +2251,48 @@ pub(in crate::server::wrapper) fn decode_dynamic_registration_client_capabilitie
         dynamic_registration: v.dynamic_registration,
     })
 }
+/// Encode the advertised command names and work-progress support for typed LSP output.
+/// No external side effects or file/network I/O; takes input by value without borrowing caller state.
+///
+/// # Mapping
+/// - `commands`: consume each element in order; retain element values unchanged.
+/// - `work_done_progress_options`: convert through [`encode_work_done_progress_options`].
+///
+/// # Arguments
+/// - `v` `[in]`: owned `d::ExecuteCommandOptions` consumed by conversion; no caller output storage.
+/// # Returns
+/// Always `Ok(value)` containing `lsp_types::ExecuteCommandOptions`. No output parameters or shared
+/// state are changed.
+///
+/// # Algorithm
+/// Build the output using the field mappings above.
+/// Consume list elements in order or rebuild maps by key; collection finishes before exposing output.
+/// # Flow
+/// ```text
+///  [map other fields]    [list/map entries]
+///        |                      |
+///    [converted]         <next entry?> <----+
+///        |                /        \       |
+///        |              no         yes     |
+///        |               |          |      |
+///        |               |   [convert entry]
+///        |               |          |      |
+///        |               |          +------+
+///        +-------+-------+
+///                v
+///        [complete output record]
+/// ```
+/// # Examples
+/// Private adapter context; this builds values only and does not send a message.
+/// ```text
+/// let input = d::ExecuteCommandOptions {
+///     commands: vec![],
+///     work_done_progress_options: d::WorkDoneProgressOptions {
+///         work_done_progress: None,
+///     },
+/// };
+/// let output = encode_execute_command_options(input)?;
+/// ```
 pub(in crate::server::wrapper) fn encode_execute_command_options(
     v: d::ExecuteCommandOptions,
 ) -> Result<lsp_types::ExecuteCommandOptions, ServerError> {
@@ -586,6 +2306,63 @@ pub(in crate::server::wrapper) fn encode_execute_command_options(
         )?,
     })
 }
+/// Decode the requested command name, argument data and progress token for business handlers.
+/// No external side effects or file/network I/O; takes input by value without borrowing caller state.
+///
+/// Arguments retain their order; decoding does not execute the command.
+///
+/// # Mapping
+/// - `command`: move/copy unchanged into the same-named output fields.
+/// - `arguments`: consume each element in order through [`data_from_wire`].
+/// - `work_done_progress_params`: convert through [`decode_work_done_progress_params`].
+///
+/// # Arguments
+/// - `v` `[in]`: owned `lsp_types::ExecuteCommandParams` consumed by conversion; no caller output storage.
+/// # Returns
+/// `Ok(value)` contains the complete `d::ExecuteCommandParams`; `Err(error)` returns the first
+/// conversion failure.
+/// No output parameters are appended to or overwritten; no partial output is returned.
+/// # Errors
+/// - A JSON number lacking signed, unsigned and floating representations yields InvalidParams (-32602)
+///   through [`data_from_wire`].
+/// Already consumed temporary values are dropped on failure; caller-owned shared state is unchanged.
+///
+/// # Algorithm
+/// Build the output using the field mappings above.
+/// Consume list elements in order or rebuild maps by key; collection finishes before exposing output.
+/// Stop at the first nested error and drop incomplete local output.
+/// # Flow
+/// ```text
+///  [map other fields]    [list/map entries]
+///        |                      |
+///    [converted]         <next entry?> <----+
+///        |                /        \       |
+///        |              no         yes     |
+///        |               |          |      |
+///        |               |   [convert entry]
+///        |               |          |      |
+///        |               |          +------+
+///        +-------+-------+
+///                v
+///        [complete output record]
+///
+///  Any failing adapter ----> [drop locals]
+///                                   |
+///                                   v
+///                            [return error]
+/// ```
+/// # Examples
+/// Private adapter context; this builds values only and does not send a message.
+/// ```text
+/// let input = lsp_types::ExecuteCommandParams {
+///     command: "example.inspect".into(),
+///     arguments: vec![],
+///     work_done_progress_params: lsp_types::WorkDoneProgressParams {
+///         work_done_token: None,
+///     },
+/// };
+/// let output = decode_execute_command_params(input)?;
+/// ```
 pub(in crate::server::wrapper) fn decode_execute_command_params(
     v: lsp_types::ExecuteCommandParams,
 ) -> Result<d::ExecuteCommandParams, ServerError> {
@@ -598,6 +2375,26 @@ pub(in crate::server::wrapper) fn decode_execute_command_params(
         work_done_progress_params: decode_work_done_progress_params(v.work_done_progress_params)?,
     })
 }
+/// Decode the client's workspace-edit failure policy for business handlers.
+/// No external side effects or file/network I/O; takes input by value without borrowing caller state.
+///
+/// # Mapping
+/// - `Abort` stays `Abort`; no payload to convert.
+/// - `Transactional` stays `Transactional`; no payload to convert.
+/// - `TextOnlyTransactional` stays `TextOnlyTransactional`; no payload to convert.
+/// - `Undo` stays `Undo`; no payload to convert.
+///
+/// # Arguments
+/// - `v` `[in]`: owned `lsp_types::FailureHandlingKind` consumed by conversion; no caller output storage.
+/// # Returns
+/// Always `Ok(value)` containing `d::FailureHandlingKind`. No output parameters or shared state are
+/// changed.
+/// # Examples
+/// Private adapter context; this builds values only and does not send a message.
+/// ```text
+/// let input = lsp_types::FailureHandlingKind::Abort;
+/// let output = decode_failure_handling_kind(input)?;
+/// ```
 pub(in crate::server::wrapper) fn decode_failure_handling_kind(
     v: lsp_types::FailureHandlingKind,
 ) -> Result<d::FailureHandlingKind, ServerError> {
@@ -610,6 +2407,33 @@ pub(in crate::server::wrapper) fn decode_failure_handling_kind(
         lsp_types::FailureHandlingKind::Undo => d::FailureHandlingKind::Undo,
     })
 }
+/// Decode the numeric watched-file change kind for business handlers.
+/// No external side effects or file/network I/O; takes input by value without borrowing caller state.
+///
+/// The JSON scalar representation bridges the private wire wrapper and the business tuple field.
+/// The signed `i32` value is preserved without a known-value whitelist.
+/// Unknown values are not rejected merely for being unknown.
+///
+/// # Mapping
+/// - `v`: serialize the wire scalar, then deserialize into the business wrapper's public tuple field `.0`.
+/// - No integer rounding or known-constant check occurs.
+///
+/// # Arguments
+/// - `v` `[in]`: owned `lsp_types::FileChangeType` consumed by conversion; no caller output storage.
+/// # Returns
+/// `Ok(value)` contains the complete `d::FileChangeType`; `Err(error)` returns the first conversion
+/// failure.
+/// No output parameters are appended to or overwritten; no partial output is returned.
+/// # Errors
+/// - JSON serialization/deserialization shape or representation failures in scalar wrappers yield
+///   InternalError (-32603) through [`codec_error`].
+/// Already consumed temporary values are dropped on failure; caller-owned shared state is unchanged.
+/// # Examples
+/// Private adapter context; this builds values only and does not send a message.
+/// ```text
+/// let input = serde_json::from_value(serde_json::json!(1)).unwrap();
+/// let output = decode_file_change_type(input)?;
+/// ```
 pub(in crate::server::wrapper) fn decode_file_change_type(
     v: lsp_types::FileChangeType,
 ) -> Result<d::FileChangeType, ServerError> {
@@ -618,6 +2442,31 @@ pub(in crate::server::wrapper) fn decode_file_change_type(
         serde_json::from_value(value).map_err(codec_error)?,
     ))
 }
+/// Decode a watched-file URI and change kind for business handlers.
+/// No external side effects or file/network I/O; takes input by value without borrowing caller state.
+///
+/// # Mapping
+/// - `uri`: convert through [`decode_uri`].
+/// - `typ`: convert through [`decode_file_change_type`].
+///
+/// # Arguments
+/// - `v` `[in]`: owned `lsp_types::FileEvent` consumed by conversion; no caller output storage.
+/// # Returns
+/// `Ok(value)` contains the complete `d::FileEvent`; `Err(error)` returns the first conversion failure.
+/// No output parameters are appended to or overwritten; no partial output is returned.
+/// # Errors
+/// - JSON serialization/deserialization shape or representation failures in scalar wrappers yield
+///   InternalError (-32603) through [`codec_error`].
+/// Already consumed temporary values are dropped on failure; caller-owned shared state is unchanged.
+/// # Examples
+/// Private adapter context; this builds values only and does not send a message.
+/// ```text
+/// let input = lsp_types::FileEvent {
+///     uri: "file:///tmp/example.rs".parse().unwrap(),
+///     typ: serde_json::from_value(serde_json::json!(1)).unwrap(),
+/// };
+/// let output = decode_file_event(input)?;
+/// ```
 pub(in crate::server::wrapper) fn decode_file_event(
     v: lsp_types::FileEvent,
 ) -> Result<d::FileEvent, ServerError> {
@@ -626,6 +2475,67 @@ pub(in crate::server::wrapper) fn decode_file_event(
         typ: decode_file_change_type(v.typ)?,
     })
 }
+/// Decode the client's pattern, Markdown, stale-request and position-encoding support for business
+/// handlers.
+/// No external side effects or file/network I/O; takes input by value without borrowing caller state.
+///
+/// # Mapping
+/// - `regular_expressions`: convert through [`decode_regular_expressions_client_capabilities`];
+///   preserve `None` versus `Some`.
+/// - `markdown`: convert through [`decode_markdown_client_capabilities`]; preserve `None` versus
+///   `Some`.
+/// - `stale_request_support`: convert through [`decode_stale_request_support_client_capabilities`];
+///   preserve `None` versus `Some`.
+/// - `position_encodings`: consume each element in order through [`decode_position_encoding_kind`];
+///   preserve `None` versus `Some`.
+///
+/// # Arguments
+/// - `v` `[in]`: owned `lsp_types::GeneralClientCapabilities` consumed by conversion; no caller output storage.
+/// # Returns
+/// `Ok(value)` contains the complete `d::GeneralClientCapabilities`; `Err(error)` returns the first
+/// conversion failure.
+/// No output parameters are appended to or overwritten; no partial output is returned.
+/// # Errors
+/// - JSON serialization/deserialization shape or representation failures in scalar wrappers yield
+///   InternalError (-32603) through [`codec_error`].
+/// Already consumed temporary values are dropped on failure; caller-owned shared state is unchanged.
+///
+/// # Algorithm
+/// Build the output using the field mappings above.
+/// Optional adapters keep `None`; `Some` values are converted before the output is returned.
+/// Consume list elements in order or rebuild maps by key; collection finishes before exposing output.
+/// Stop at the first nested error and drop incomplete local output.
+/// # Flow
+/// ```text
+///  [map other fields]    [list/map entries]
+///        |                      |
+///    [converted]         <next entry?> <----+
+///        |                /        \       |
+///        |              no         yes     |
+///        |               |          |      |
+///        |               |   [convert entry]
+///        |               |          |      |
+///        |               |          +------+
+///        +-------+-------+
+///                v
+///        [complete output record]
+///
+///  Any failing adapter ----> [drop locals]
+///                                   |
+///                                   v
+///                            [return error]
+/// ```
+/// # Examples
+/// Private adapter context; this builds values only and does not send a message.
+/// ```text
+/// let input = lsp_types::GeneralClientCapabilities {
+///     regular_expressions: None,
+///     markdown: None,
+///     stale_request_support: None,
+///     position_encodings: None,
+/// };
+/// let output = decode_general_client_capabilities(input)?;
+/// ```
 pub(in crate::server::wrapper) fn decode_general_client_capabilities(
     v: lsp_types::GeneralClientCapabilities,
 ) -> Result<d::GeneralClientCapabilities, ServerError> {
@@ -650,6 +2560,25 @@ pub(in crate::server::wrapper) fn decode_general_client_capabilities(
             .transpose()?,
     })
 }
+/// Decode the client's navigation registration and location-link support for business handlers.
+/// No external side effects or file/network I/O; takes input by value without borrowing caller state.
+///
+/// # Mapping
+/// - `dynamic_registration`, `link_support`: move/copy unchanged into the same-named output fields.
+///
+/// # Arguments
+/// - `v` `[in]`: owned `lsp_types::GotoCapability` consumed by conversion; no caller output storage.
+/// # Returns
+/// Always `Ok(value)` containing `d::GotoCapability`. No output parameters or shared state are changed.
+/// # Examples
+/// Private adapter context; this builds values only and does not send a message.
+/// ```text
+/// let input = lsp_types::GotoCapability {
+///     dynamic_registration: None,
+///     link_support: None,
+/// };
+/// let output = decode_goto_capability(input)?;
+/// ```
 pub(in crate::server::wrapper) fn decode_goto_capability(
     v: lsp_types::GotoCapability,
 ) -> Result<d::GotoCapability, ServerError> {
@@ -658,6 +2587,41 @@ pub(in crate::server::wrapper) fn decode_goto_capability(
         link_support: v.link_support,
     })
 }
+/// Decode the navigation position and work and partial-progress tokens for business handlers.
+/// No external side effects or file/network I/O; takes input by value without borrowing caller state.
+///
+/// # Mapping
+/// - `text_document_position_params`: convert through [`decode_text_document_position_params`].
+/// - `work_done_progress_params`: convert through [`decode_work_done_progress_params`].
+/// - `partial_result_params`: convert through [`decode_partial_result_params`].
+///
+/// # Arguments
+/// - `v` `[in]`: owned `lsp_types::GotoDefinitionParams` consumed by conversion; no caller output storage.
+/// # Returns
+/// Always `Ok(value)` containing `d::GotoDefinitionParams`. No output parameters or shared state are
+/// changed.
+/// # Examples
+/// Private adapter context; this builds values only and does not send a message.
+/// ```text
+/// let input = lsp_types::GotoDefinitionParams {
+///     text_document_position_params: lsp_types::TextDocumentPositionParams {
+///         text_document: lsp_types::TextDocumentIdentifier {
+///             uri: "file:///tmp/example.rs".parse().unwrap(),
+///         },
+///         position: lsp_types::Position {
+///             line: 0,
+///             character: 0,
+///         },
+///     },
+///     work_done_progress_params: lsp_types::WorkDoneProgressParams {
+///         work_done_token: None,
+///     },
+///     partial_result_params: lsp_types::PartialResultParams {
+///         partial_result_token: None,
+///     },
+/// };
+/// let output = decode_goto_definition_params(input)?;
+/// ```
 pub(in crate::server::wrapper) fn decode_goto_definition_params(
     v: lsp_types::GotoDefinitionParams,
 ) -> Result<d::GotoDefinitionParams, ServerError> {
@@ -669,6 +2633,66 @@ pub(in crate::server::wrapper) fn decode_goto_definition_params(
         partial_result_params: decode_partial_result_params(v.partial_result_params)?,
     })
 }
+/// Encode the single-location, location-list or location-link navigation choice for typed LSP output.
+/// No external side effects or file/network I/O; takes input by value without borrowing caller state.
+///
+/// # Mapping
+/// - `Scalar` stays `Scalar`; convert the payload through [`encode_location`].
+/// - `Array` stays `Array`; convert the payload through [`encode_location`] in element order.
+/// - `Link` stays `Link`; convert the payload through [`encode_location_link`] in element order.
+///
+/// # Arguments
+/// - `v` `[in]`: owned `d::GotoDefinitionResponse` consumed by conversion; no caller output storage.
+/// # Returns
+/// `Ok(value)` contains the complete `lsp_types::GotoDefinitionResponse`; `Err(error)` returns the
+/// first conversion failure.
+/// No output parameters are appended to or overwritten; no partial output is returned.
+/// # Errors
+/// - Invalid output URI syntax yields InternalError (-32603) through [`encode_uri`]; no resource is
+///   accessed.
+/// Already consumed temporary values are dropped on failure; caller-owned shared state is unchanged.
+///
+/// # Algorithm
+/// Select the input variant and rebuild the same output variant using the payload adapters above.
+/// Containers are consumed rather than cloned.
+/// A nested failure exits immediately and discards the partially built local value.
+/// # Flow
+/// ```text
+///                    <input variant?>
+///                            |
+///           +----------------+----------------+
+///           |                |                |
+///       [Scalar]          [Array]          [Link]
+///           |                |                |
+///     [map payload]    [map payload]    [map payload]
+///           |                |                |
+///           +----------------+----------------+
+///                            |
+///                  [same output choice]
+///
+///  Payload failure ---> [drop locals]
+///                              |
+///                              v
+///                        [return error]
+/// ```
+/// # Examples
+/// Private adapter context; this builds values only and does not send a message.
+/// ```text
+/// let input = d::GotoDefinitionResponse::Scalar(d::Location {
+///     uri: d::Uri("file:///tmp/example.rs".into()),
+///     range: d::Range {
+///         start: d::Position {
+///             line: 0,
+///             character: 0,
+///         },
+///         end: d::Position {
+///             line: 0,
+///             character: 0,
+///         },
+///     },
+/// });
+/// let output = encode_goto_definition_response(input)?;
+/// ```
 pub(in crate::server::wrapper) fn encode_goto_definition_response(
     v: d::GotoDefinitionResponse,
 ) -> Result<lsp_types::GotoDefinitionResponse, ServerError> {
@@ -688,6 +2712,43 @@ pub(in crate::server::wrapper) fn encode_goto_definition_response(
         ),
     })
 }
+/// Encode the boolean-or-registration implementation advertisement for typed LSP output.
+/// No external side effects or file/network I/O; takes input by value without borrowing caller state.
+///
+/// # Mapping
+/// - `Simple` stays `Simple`; copy the support boolean unchanged.
+/// - `Options` stays `Options`; convert the payload through
+///   [`encode_static_text_document_registration_options`].
+///
+/// # Arguments
+/// - `v` `[in]`: owned `d::ImplementationProviderCapability` consumed by conversion; no caller output storage.
+/// # Returns
+/// Always `Ok(value)` containing `lsp_types::ImplementationProviderCapability`. No output parameters or
+/// shared state are changed.
+///
+/// # Algorithm
+/// Select the input variant and rebuild the same output variant using the payload adapters above.
+/// Containers are consumed rather than cloned.
+/// # Flow
+/// ```text
+///           <input variant?>
+///                   |
+///           +-------+--------+
+///           |                |
+///       [Simple]         [Options]
+///           |                |
+///     [map payload]    [map payload]
+///           |                |
+///           +-------+--------+
+///                   |
+///         [same output choice]
+/// ```
+/// # Examples
+/// Private adapter context; this builds values only and does not send a message.
+/// ```text
+/// let input = d::ImplementationProviderCapability::Simple(false);
+/// let output = encode_implementation_provider_capability(input)?;
+/// ```
 pub(in crate::server::wrapper) fn encode_implementation_provider_capability(
     v: d::ImplementationProviderCapability,
 ) -> Result<lsp_types::ImplementationProviderCapability, ServerError> {
@@ -702,6 +2763,88 @@ pub(in crate::server::wrapper) fn encode_implementation_provider_capability(
         }
     })
 }
+/// Decode the process, roots, options, capabilities, trace level, folders, client identity and locale
+/// for business handlers.
+/// No external side effects or file/network I/O; takes input by value without borrowing caller state.
+///
+/// Deprecated `root_path` and `root_uri` are both retained independently. No root is chosen, capability
+/// negotiated or process inspected here.
+///
+/// # Mapping
+/// - `process_id`, `root_path`, `locale`: move/copy unchanged into the same-named output fields.
+/// - `root_uri`: convert through [`decode_uri`]; preserve `None` versus `Some`.
+/// - `initialization_options`: convert through [`data_from_wire`]; preserve `None` versus `Some`.
+/// - `capabilities`: convert through [`decode_client_capabilities`].
+/// - `trace`: convert through [`decode_trace_value`]; preserve `None` versus `Some`.
+/// - `workspace_folders`: consume each element in order through [`decode_workspace_folder`]; preserve
+///   `None` versus `Some`.
+/// - `client_info`: convert through [`decode_client_info`]; preserve `None` versus `Some`.
+/// - `work_done_progress_params`: convert through [`decode_work_done_progress_params`].
+///
+/// # Arguments
+/// - `v` `[in]`: owned `lsp_types::InitializeParams` consumed by conversion; no caller output storage.
+/// # Returns
+/// `Ok(value)` contains the complete `d::InitializeParams`; `Err(error)` returns the first conversion
+/// failure.
+/// No output parameters are appended to or overwritten; no partial output is returned.
+/// # Errors
+/// - A JSON number lacking signed, unsigned and floating representations yields InvalidParams (-32602)
+///   through [`data_from_wire`].
+/// - JSON serialization/deserialization shape or representation failures in scalar wrappers yield
+///   InternalError (-32603) through [`codec_error`].
+/// Already consumed temporary values are dropped on failure; caller-owned shared state is unchanged.
+///
+/// # Algorithm
+/// Build the output using the field mappings above.
+/// Optional adapters keep `None`; `Some` values are converted before the output is returned.
+/// Consume list elements in order or rebuild maps by key; collection finishes before exposing output.
+/// Stop at the first nested error and drop incomplete local output.
+/// # Flow
+/// ```text
+///  [map other fields]    [list/map entries]
+///        |                      |
+///    [converted]         <next entry?> <----+
+///        |                /        \       |
+///        |              no         yes     |
+///        |               |          |      |
+///        |               |   [convert entry]
+///        |               |          |      |
+///        |               |          +------+
+///        +-------+-------+
+///                v
+///        [complete output record]
+///
+///  Any failing adapter ----> [drop locals]
+///                                   |
+///                                   v
+///                            [return error]
+/// ```
+/// # Examples
+/// Private adapter context; this builds values only and does not send a message.
+/// ```text
+/// let input = lsp_types::InitializeParams {
+///     process_id: None,
+///     root_path: None,
+///     root_uri: None,
+///     initialization_options: None,
+///     capabilities: lsp_types::ClientCapabilities {
+///         workspace: None,
+///         text_document: None,
+///         notebook_document: None,
+///         window: None,
+///         general: None,
+///         experimental: None,
+///     },
+///     trace: None,
+///     workspace_folders: None,
+///     client_info: None,
+///     locale: None,
+///     work_done_progress_params: lsp_types::WorkDoneProgressParams {
+///         work_done_token: None,
+///     },
+/// };
+/// let output = decode_initialize_params(input)?;
+/// ```
 pub(in crate::server::wrapper) fn decode_initialize_params(
     v: lsp_types::InitializeParams,
 ) -> Result<d::InitializeParams, ServerError> {
@@ -726,6 +2869,69 @@ pub(in crate::server::wrapper) fn decode_initialize_params(
         work_done_progress_params: decode_work_done_progress_params(v.work_done_progress_params)?,
     })
 }
+/// Encode the server capabilities and optional server identity for typed LSP output.
+/// No external side effects or file/network I/O; takes input by value without borrowing caller state.
+///
+/// # Mapping
+/// - `capabilities`: convert through [`encode_server_capabilities`].
+/// - `server_info`: convert through [`encode_server_info`]; preserve `None` versus `Some`.
+///
+/// # Arguments
+/// - `v` `[in]`: owned `d::InitializeResult` consumed by conversion; no caller output storage.
+/// # Returns
+/// `Ok(value)` contains the complete `lsp_types::InitializeResult`; `Err(error)` returns the first
+/// conversion failure.
+/// No output parameters are appended to or overwritten; no partial output is returned.
+/// # Errors
+/// - Non-finite floats in opaque data, including nested data, yield InternalError (-32603) through
+///   [`data_to_wire`].
+/// - JSON serialization/deserialization shape or representation failures in scalar wrappers yield
+///   InternalError (-32603) through [`codec_error`].
+/// Already consumed temporary values are dropped on failure; caller-owned shared state is unchanged.
+/// # Examples
+/// Private adapter context; this builds values only and does not send a message.
+/// ```text
+/// let input = d::InitializeResult {
+///     capabilities: d::ServerCapabilities {
+///         position_encoding: None,
+///         text_document_sync: None,
+///         notebook_document_sync: None,
+///         selection_range_provider: None,
+///         hover_provider: None,
+///         completion_provider: None,
+///         signature_help_provider: None,
+///         definition_provider: None,
+///         type_definition_provider: None,
+///         implementation_provider: None,
+///         references_provider: None,
+///         document_highlight_provider: None,
+///         document_symbol_provider: None,
+///         workspace_symbol_provider: None,
+///         code_action_provider: None,
+///         code_lens_provider: None,
+///         document_formatting_provider: None,
+///         document_range_formatting_provider: None,
+///         document_on_type_formatting_provider: None,
+///         rename_provider: None,
+///         document_link_provider: None,
+///         color_provider: None,
+///         folding_range_provider: None,
+///         declaration_provider: None,
+///         execute_command_provider: None,
+///         workspace: None,
+///         call_hierarchy_provider: None,
+///         semantic_tokens_provider: None,
+///         moniker_provider: None,
+///         linked_editing_range_provider: None,
+///         inline_value_provider: None,
+///         inlay_hint_provider: None,
+///         diagnostic_provider: None,
+///         experimental: None,
+///     },
+///     server_info: None,
+/// };
+/// let output = encode_initialize_result(input)?;
+/// ```
 pub(in crate::server::wrapper) fn encode_initialize_result(
     v: d::InitializeResult,
 ) -> Result<lsp_types::InitializeResult, ServerError> {
@@ -734,11 +2940,49 @@ pub(in crate::server::wrapper) fn encode_initialize_result(
         server_info: (v.server_info).map(encode_server_info).transpose()?,
     })
 }
+/// Decode the empty initialization-complete notification for business handlers.
+/// No external side effects or file/network I/O; takes input by value without borrowing caller state.
+///
+/// The empty wire record is consumed and discarded; no lifecycle transition occurs here.
+///
+/// The empty input record becomes the corresponding empty output record.
+///
+/// # Arguments
+/// - `v` `[in]`: owned `lsp_types::InitializedParams` consumed by conversion; no caller output storage.
+/// # Returns
+/// Always `Ok(value)` containing `d::InitializedParams`. No output parameters or shared state are
+/// changed.
+/// # Examples
+/// Private adapter context; this builds values only and does not send a message.
+/// ```text
+/// let input = lsp_types::InitializedParams {};
+/// let output = decode_initialized_params(input)?;
+/// ```
 pub(in crate::server::wrapper) fn decode_initialized_params(
     v: lsp_types::InitializedParams,
 ) -> Result<d::InitializedParams, ServerError> {
     Ok::<_, ServerError>(d::InitializedParams {})
 }
+/// Encode a language-tagged code sample for typed LSP output.
+/// No external side effects or file/network I/O; takes input by value without borrowing caller state.
+///
+/// # Mapping
+/// - `language`, `value`: move/copy unchanged into the same-named output fields.
+///
+/// # Arguments
+/// - `v` `[in]`: owned `d::LanguageString` consumed by conversion; no caller output storage.
+/// # Returns
+/// Always `Ok(value)` containing `lsp_types::LanguageString`. No output parameters or shared state are
+/// changed.
+/// # Examples
+/// Private adapter context; this builds values only and does not send a message.
+/// ```text
+/// let input = d::LanguageString {
+///     language: "rust".into(),
+///     value: "text".into(),
+/// };
+/// let output = encode_language_string(input)?;
+/// ```
 pub(in crate::server::wrapper) fn encode_language_string(
     v: d::LanguageString,
 ) -> Result<lsp_types::LanguageString, ServerError> {
@@ -747,6 +2991,35 @@ pub(in crate::server::wrapper) fn encode_language_string(
         value: v.value,
     })
 }
+/// Decode a resource URI and source range for business handlers.
+/// No external side effects or file/network I/O; takes input by value without borrowing caller state.
+///
+/// # Mapping
+/// - `uri`: convert through [`decode_uri`].
+/// - `range`: convert through [`decode_range`].
+///
+/// # Arguments
+/// - `v` `[in]`: owned `lsp_types::Location` consumed by conversion; no caller output storage.
+/// # Returns
+/// Always `Ok(value)` containing `d::Location`. No output parameters or shared state are changed.
+/// # Examples
+/// Private adapter context; this builds values only and does not send a message.
+/// ```text
+/// let input = lsp_types::Location {
+///     uri: "file:///tmp/example.rs".parse().unwrap(),
+///     range: lsp_types::Range {
+///         start: lsp_types::Position {
+///             line: 0,
+///             character: 0,
+///         },
+///         end: lsp_types::Position {
+///             line: 0,
+///             character: 0,
+///         },
+///     },
+/// };
+/// let output = decode_location(input)?;
+/// ```
 pub(in crate::server::wrapper) fn decode_location(
     v: lsp_types::Location,
 ) -> Result<d::Location, ServerError> {
@@ -755,6 +3028,41 @@ pub(in crate::server::wrapper) fn decode_location(
         range: decode_range(v.range)?,
     })
 }
+/// Encode a resource URI and source range for typed LSP output.
+/// No external side effects or file/network I/O; takes input by value without borrowing caller state.
+///
+/// # Mapping
+/// - `uri`: convert through [`encode_uri`].
+/// - `range`: convert through [`encode_range`].
+///
+/// # Arguments
+/// - `v` `[in]`: owned `d::Location` consumed by conversion; no caller output storage.
+/// # Returns
+/// `Ok(value)` contains the complete `lsp_types::Location`; `Err(error)` returns the first conversion
+/// failure.
+/// No output parameters are appended to or overwritten; no partial output is returned.
+/// # Errors
+/// - Invalid output URI syntax yields InternalError (-32603) through [`encode_uri`]; no resource is
+///   accessed.
+/// Already consumed temporary values are dropped on failure; caller-owned shared state is unchanged.
+/// # Examples
+/// Private adapter context; this builds values only and does not send a message.
+/// ```text
+/// let input = d::Location {
+///     uri: d::Uri("file:///tmp/example.rs".into()),
+///     range: d::Range {
+///         start: d::Position {
+///             line: 0,
+///             character: 0,
+///         },
+///         end: d::Position {
+///             line: 0,
+///             character: 0,
+///         },
+///     },
+/// };
+/// let output = encode_location(input)?;
+/// ```
 pub(in crate::server::wrapper) fn encode_location(
     v: d::Location,
 ) -> Result<lsp_types::Location, ServerError> {
@@ -763,6 +3071,55 @@ pub(in crate::server::wrapper) fn encode_location(
         range: encode_range(v.range)?,
     })
 }
+/// Encode the optional origin range and target URI, full range and selection range for typed LSP
+/// output.
+/// No external side effects or file/network I/O; takes input by value without borrowing caller state.
+///
+/// # Mapping
+/// - `origin_selection_range`: convert through [`encode_range`]; preserve `None` versus `Some`.
+/// - `target_uri`: convert through [`encode_uri`].
+/// - `target_range`: convert through [`encode_range`].
+/// - `target_selection_range`: convert through [`encode_range`].
+///
+/// # Arguments
+/// - `v` `[in]`: owned `d::LocationLink` consumed by conversion; no caller output storage.
+/// # Returns
+/// `Ok(value)` contains the complete `lsp_types::LocationLink`; `Err(error)` returns the first
+/// conversion failure.
+/// No output parameters are appended to or overwritten; no partial output is returned.
+/// # Errors
+/// - Invalid output URI syntax yields InternalError (-32603) through [`encode_uri`]; no resource is
+///   accessed.
+/// Already consumed temporary values are dropped on failure; caller-owned shared state is unchanged.
+/// # Examples
+/// Private adapter context; this builds values only and does not send a message.
+/// ```text
+/// let input = d::LocationLink {
+///     origin_selection_range: None,
+///     target_uri: d::Uri("file:///tmp/example.rs".into()),
+///     target_range: d::Range {
+///         start: d::Position {
+///             line: 0,
+///             character: 0,
+///         },
+///         end: d::Position {
+///             line: 0,
+///             character: 0,
+///         },
+///     },
+///     target_selection_range: d::Range {
+///         start: d::Position {
+///             line: 0,
+///             character: 0,
+///         },
+///         end: d::Position {
+///             line: 0,
+///             character: 0,
+///         },
+///     },
+/// };
+/// let output = encode_location_link(input)?;
+/// ```
 pub(in crate::server::wrapper) fn encode_location_link(
     v: d::LocationLink,
 ) -> Result<lsp_types::LocationLink, ServerError> {
@@ -773,6 +3130,49 @@ pub(in crate::server::wrapper) fn encode_location_link(
         target_selection_range: encode_range(v.target_selection_range)?,
     })
 }
+/// Decode the client's Markdown parser identity, version and allowed tags for business handlers.
+/// No external side effects or file/network I/O; takes input by value without borrowing caller state.
+///
+/// # Mapping
+/// - `parser`, `version`: move/copy unchanged into the same-named output fields.
+/// - `allowed_tags`: consume each element in order; retain element values unchanged; preserve `None`
+///   versus `Some`.
+///
+/// # Arguments
+/// - `v` `[in]`: owned `lsp_types::MarkdownClientCapabilities` consumed by conversion; no caller output storage.
+/// # Returns
+/// Always `Ok(value)` containing `d::MarkdownClientCapabilities`. No output parameters or shared state
+/// are changed.
+///
+/// # Algorithm
+/// Build the output using the field mappings above.
+/// Optional adapters keep `None`; `Some` values are converted before the output is returned.
+/// Consume list elements in order or rebuild maps by key; collection finishes before exposing output.
+/// # Flow
+/// ```text
+///  [map other fields]    [list/map entries]
+///        |                      |
+///    [converted]         <next entry?> <----+
+///        |                /        \       |
+///        |              no         yes     |
+///        |               |          |      |
+///        |               |   [convert entry]
+///        |               |          |      |
+///        |               |          +------+
+///        +-------+-------+
+///                v
+///        [complete output record]
+/// ```
+/// # Examples
+/// Private adapter context; this builds values only and does not send a message.
+/// ```text
+/// let input = lsp_types::MarkdownClientCapabilities {
+///     parser: "value".into(),
+///     version: None,
+///     allowed_tags: None,
+/// };
+/// let output = decode_markdown_client_capabilities(input)?;
+/// ```
 pub(in crate::server::wrapper) fn decode_markdown_client_capabilities(
     v: lsp_types::MarkdownClientCapabilities,
 ) -> Result<d::MarkdownClientCapabilities, ServerError> {
@@ -790,6 +3190,42 @@ pub(in crate::server::wrapper) fn decode_markdown_client_capabilities(
             .transpose()?,
     })
 }
+/// Encode the plain Markdown-or-language-code choice for typed LSP output.
+/// No external side effects or file/network I/O; takes input by value without borrowing caller state.
+///
+/// # Mapping
+/// - `String` stays `String`; move the text unchanged.
+/// - `LanguageString` stays `LanguageString`; convert the payload through [`encode_language_string`].
+///
+/// # Arguments
+/// - `v` `[in]`: owned `d::MarkedString` consumed by conversion; no caller output storage.
+/// # Returns
+/// Always `Ok(value)` containing `lsp_types::MarkedString`. No output parameters or shared state are
+/// changed.
+///
+/// # Algorithm
+/// Select the input variant and rebuild the same output variant using the payload adapters above.
+/// Containers are consumed rather than cloned.
+/// # Flow
+/// ```text
+///            <input variant?>
+///                    |
+///           +--------+--------+
+///           |                 |
+///       [String]      [LanguageString]
+///           |                 |
+///     [map payload]     [map payload]
+///           |                 |
+///           +--------+--------+
+///                    |
+///          [same output choice]
+/// ```
+/// # Examples
+/// Private adapter context; this builds values only and does not send a message.
+/// ```text
+/// let input = d::MarkedString::String("value".into());
+/// let output = encode_marked_string(input)?;
+/// ```
 pub(in crate::server::wrapper) fn encode_marked_string(
     v: d::MarkedString,
 ) -> Result<lsp_types::MarkedString, ServerError> {
@@ -800,6 +3236,26 @@ pub(in crate::server::wrapper) fn encode_marked_string(
         }
     })
 }
+/// Decode a content format and its unrendered text for business handlers.
+/// No external side effects or file/network I/O; takes input by value without borrowing caller state.
+///
+/// # Mapping
+/// - `value`: move/copy unchanged into the same-named output fields.
+/// - `kind`: convert through [`decode_markup_kind`].
+///
+/// # Arguments
+/// - `v` `[in]`: owned `lsp_types::MarkupContent` consumed by conversion; no caller output storage.
+/// # Returns
+/// Always `Ok(value)` containing `d::MarkupContent`. No output parameters or shared state are changed.
+/// # Examples
+/// Private adapter context; this builds values only and does not send a message.
+/// ```text
+/// let input = lsp_types::MarkupContent {
+///     kind: lsp_types::MarkupKind::PlainText,
+///     value: "text".into(),
+/// };
+/// let output = decode_markup_content(input)?;
+/// ```
 pub(in crate::server::wrapper) fn decode_markup_content(
     v: lsp_types::MarkupContent,
 ) -> Result<d::MarkupContent, ServerError> {
@@ -808,6 +3264,27 @@ pub(in crate::server::wrapper) fn decode_markup_content(
         value: v.value,
     })
 }
+/// Encode a content format and its unrendered text for typed LSP output.
+/// No external side effects or file/network I/O; takes input by value without borrowing caller state.
+///
+/// # Mapping
+/// - `value`: move/copy unchanged into the same-named output fields.
+/// - `kind`: convert through [`encode_markup_kind`].
+///
+/// # Arguments
+/// - `v` `[in]`: owned `d::MarkupContent` consumed by conversion; no caller output storage.
+/// # Returns
+/// Always `Ok(value)` containing `lsp_types::MarkupContent`. No output parameters or shared state are
+/// changed.
+/// # Examples
+/// Private adapter context; this builds values only and does not send a message.
+/// ```text
+/// let input = d::MarkupContent {
+///     kind: d::MarkupKind::PlainText,
+///     value: "text".into(),
+/// };
+/// let output = encode_markup_content(input)?;
+/// ```
 pub(in crate::server::wrapper) fn encode_markup_content(
     v: d::MarkupContent,
 ) -> Result<lsp_types::MarkupContent, ServerError> {
@@ -816,6 +3293,23 @@ pub(in crate::server::wrapper) fn encode_markup_content(
         value: v.value,
     })
 }
+/// Decode the plaintext-or-Markdown content format for business handlers.
+/// No external side effects or file/network I/O; takes input by value without borrowing caller state.
+///
+/// # Mapping
+/// - `PlainText` stays `PlainText`; no payload to convert.
+/// - `Markdown` stays `Markdown`; no payload to convert.
+///
+/// # Arguments
+/// - `v` `[in]`: owned `lsp_types::MarkupKind` consumed by conversion; no caller output storage.
+/// # Returns
+/// Always `Ok(value)` containing `d::MarkupKind`. No output parameters or shared state are changed.
+/// # Examples
+/// Private adapter context; this builds values only and does not send a message.
+/// ```text
+/// let input = lsp_types::MarkupKind::PlainText;
+/// let output = decode_markup_kind(input)?;
+/// ```
 pub(in crate::server::wrapper) fn decode_markup_kind(
     v: lsp_types::MarkupKind,
 ) -> Result<d::MarkupKind, ServerError> {
@@ -824,6 +3318,24 @@ pub(in crate::server::wrapper) fn decode_markup_kind(
         lsp_types::MarkupKind::Markdown => d::MarkupKind::Markdown,
     })
 }
+/// Encode the plaintext-or-Markdown content format for typed LSP output.
+/// No external side effects or file/network I/O; takes input by value without borrowing caller state.
+///
+/// # Mapping
+/// - `PlainText` stays `PlainText`; no payload to convert.
+/// - `Markdown` stays `Markdown`; no payload to convert.
+///
+/// # Arguments
+/// - `v` `[in]`: owned `d::MarkupKind` consumed by conversion; no caller output storage.
+/// # Returns
+/// Always `Ok(value)` containing `lsp_types::MarkupKind`. No output parameters or shared state are
+/// changed.
+/// # Examples
+/// Private adapter context; this builds values only and does not send a message.
+/// ```text
+/// let input = d::MarkupKind::PlainText;
+/// let output = encode_markup_kind(input)?;
+/// ```
 pub(in crate::server::wrapper) fn encode_markup_kind(
     v: d::MarkupKind,
 ) -> Result<lsp_types::MarkupKind, ServerError> {
@@ -832,6 +3344,23 @@ pub(in crate::server::wrapper) fn encode_markup_kind(
         d::MarkupKind::Markdown => lsp_types::MarkupKind::Markdown,
     })
 }
+/// Decode the integer-or-string identifier choice for business handlers.
+/// No external side effects or file/network I/O; takes input by value without borrowing caller state.
+///
+/// # Mapping
+/// - `Number` stays `Number`; copy the signed integer unchanged.
+/// - `String` stays `String`; move the text unchanged.
+///
+/// # Arguments
+/// - `v` `[in]`: owned `lsp_types::NumberOrString` consumed by conversion; no caller output storage.
+/// # Returns
+/// Always `Ok(value)` containing `d::NumberOrString`. No output parameters or shared state are changed.
+/// # Examples
+/// Private adapter context; this builds values only and does not send a message.
+/// ```text
+/// let input = lsp_types::NumberOrString::Number(0);
+/// let output = decode_number_or_string(input)?;
+/// ```
 pub(in crate::server::wrapper) fn decode_number_or_string(
     v: lsp_types::NumberOrString,
 ) -> Result<d::NumberOrString, ServerError> {
@@ -840,6 +3369,24 @@ pub(in crate::server::wrapper) fn decode_number_or_string(
         lsp_types::NumberOrString::String(f0) => d::NumberOrString::String(f0),
     })
 }
+/// Encode the integer-or-string identifier choice for typed LSP output.
+/// No external side effects or file/network I/O; takes input by value without borrowing caller state.
+///
+/// # Mapping
+/// - `Number` stays `Number`; copy the signed integer unchanged.
+/// - `String` stays `String`; move the text unchanged.
+///
+/// # Arguments
+/// - `v` `[in]`: owned `d::NumberOrString` consumed by conversion; no caller output storage.
+/// # Returns
+/// Always `Ok(value)` containing `lsp_types::NumberOrString`. No output parameters or shared state are
+/// changed.
+/// # Examples
+/// Private adapter context; this builds values only and does not send a message.
+/// ```text
+/// let input = d::NumberOrString::Number(0);
+/// let output = encode_number_or_string(input)?;
+/// ```
 pub(in crate::server::wrapper) fn encode_number_or_string(
     v: d::NumberOrString,
 ) -> Result<lsp_types::NumberOrString, ServerError> {
@@ -848,6 +3395,27 @@ pub(in crate::server::wrapper) fn encode_number_or_string(
         d::NumberOrString::String(f0) => lsp_types::NumberOrString::String(f0),
     })
 }
+/// Decode a document URI and nullable version for business handlers.
+/// No external side effects or file/network I/O; takes input by value without borrowing caller state.
+///
+/// # Mapping
+/// - `version`: move/copy unchanged into the same-named output fields.
+/// - `uri`: convert through [`decode_uri`].
+///
+/// # Arguments
+/// - `v` `[in]`: owned `lsp_types::OptionalVersionedTextDocumentIdentifier` consumed by conversion; no caller output storage.
+/// # Returns
+/// Always `Ok(value)` containing `d::OptionalVersionedTextDocumentIdentifier`. No output parameters or
+/// shared state are changed.
+/// # Examples
+/// Private adapter context; this builds values only and does not send a message.
+/// ```text
+/// let input = lsp_types::OptionalVersionedTextDocumentIdentifier {
+///     uri: "file:///tmp/example.rs".parse().unwrap(),
+///     version: None,
+/// };
+/// let output = decode_optional_versioned_text_document_identifier(input)?;
+/// ```
 pub(in crate::server::wrapper) fn decode_optional_versioned_text_document_identifier(
     v: lsp_types::OptionalVersionedTextDocumentIdentifier,
 ) -> Result<d::OptionalVersionedTextDocumentIdentifier, ServerError> {
@@ -856,6 +3424,32 @@ pub(in crate::server::wrapper) fn decode_optional_versioned_text_document_identi
         version: v.version,
     })
 }
+/// Encode a document URI and nullable version for typed LSP output.
+/// No external side effects or file/network I/O; takes input by value without borrowing caller state.
+///
+/// # Mapping
+/// - `version`: move/copy unchanged into the same-named output fields.
+/// - `uri`: convert through [`encode_uri`].
+///
+/// # Arguments
+/// - `v` `[in]`: owned `d::OptionalVersionedTextDocumentIdentifier` consumed by conversion; no caller output storage.
+/// # Returns
+/// `Ok(value)` contains the complete `lsp_types::OptionalVersionedTextDocumentIdentifier`; `Err(error)`
+/// returns the first conversion failure.
+/// No output parameters are appended to or overwritten; no partial output is returned.
+/// # Errors
+/// - Invalid output URI syntax yields InternalError (-32603) through [`encode_uri`]; no resource is
+///   accessed.
+/// Already consumed temporary values are dropped on failure; caller-owned shared state is unchanged.
+/// # Examples
+/// Private adapter context; this builds values only and does not send a message.
+/// ```text
+/// let input = d::OptionalVersionedTextDocumentIdentifier {
+///     uri: d::Uri("file:///tmp/example.rs".into()),
+///     version: None,
+/// };
+/// let output = encode_optional_versioned_text_document_identifier(input)?;
+/// ```
 pub(in crate::server::wrapper) fn encode_optional_versioned_text_document_identifier(
     v: d::OptionalVersionedTextDocumentIdentifier,
 ) -> Result<lsp_types::OptionalVersionedTextDocumentIdentifier, ServerError> {
@@ -864,6 +3458,26 @@ pub(in crate::server::wrapper) fn encode_optional_versioned_text_document_identi
         version: v.version,
     })
 }
+/// Decode the optional partial-result token for business handlers.
+/// No external side effects or file/network I/O; takes input by value without borrowing caller state.
+///
+/// # Mapping
+/// - `partial_result_token`: convert through [`decode_number_or_string`]; preserve `None` versus
+///   `Some`.
+///
+/// # Arguments
+/// - `v` `[in]`: owned `lsp_types::PartialResultParams` consumed by conversion; no caller output storage.
+/// # Returns
+/// Always `Ok(value)` containing `d::PartialResultParams`. No output parameters or shared state are
+/// changed.
+/// # Examples
+/// Private adapter context; this builds values only and does not send a message.
+/// ```text
+/// let input = lsp_types::PartialResultParams {
+///     partial_result_token: None,
+/// };
+/// let output = decode_partial_result_params(input)?;
+/// ```
 pub(in crate::server::wrapper) fn decode_partial_result_params(
     v: lsp_types::PartialResultParams,
 ) -> Result<d::PartialResultParams, ServerError> {
@@ -873,6 +3487,28 @@ pub(in crate::server::wrapper) fn decode_partial_result_params(
             .transpose()?,
     })
 }
+/// Decode a zero-based line and character offset for business handlers.
+/// No external side effects or file/network I/O; takes input by value without borrowing caller state.
+///
+/// Line and character integers are copied unchanged. The session chooses the character unit; this
+/// adapter neither reads text nor converts UTF-8/UTF-16/UTF-32 offsets.
+///
+/// # Mapping
+/// - `line`, `character`: move/copy unchanged into the same-named output fields.
+///
+/// # Arguments
+/// - `v` `[in]`: owned `lsp_types::Position` consumed by conversion; no caller output storage.
+/// # Returns
+/// Always `Ok(value)` containing `d::Position`. No output parameters or shared state are changed.
+/// # Examples
+/// Private adapter context; this builds values only and does not send a message.
+/// ```text
+/// let input = lsp_types::Position {
+///     line: 0,
+///     character: 0,
+/// };
+/// let output = decode_position(input)?;
+/// ```
 pub(in crate::server::wrapper) fn decode_position(
     v: lsp_types::Position,
 ) -> Result<d::Position, ServerError> {
@@ -881,6 +3517,29 @@ pub(in crate::server::wrapper) fn decode_position(
         character: v.character,
     })
 }
+/// Encode a zero-based line and character offset for typed LSP output.
+/// No external side effects or file/network I/O; takes input by value without borrowing caller state.
+///
+/// Line and character integers are copied unchanged. The session chooses the character unit; this
+/// adapter neither reads text nor converts UTF-8/UTF-16/UTF-32 offsets.
+///
+/// # Mapping
+/// - `line`, `character`: move/copy unchanged into the same-named output fields.
+///
+/// # Arguments
+/// - `v` `[in]`: owned `d::Position` consumed by conversion; no caller output storage.
+/// # Returns
+/// Always `Ok(value)` containing `lsp_types::Position`. No output parameters or shared state are
+/// changed.
+/// # Examples
+/// Private adapter context; this builds values only and does not send a message.
+/// ```text
+/// let input = d::Position {
+///     line: 0,
+///     character: 0,
+/// };
+/// let output = encode_position(input)?;
+/// ```
 pub(in crate::server::wrapper) fn encode_position(
     v: d::Position,
 ) -> Result<lsp_types::Position, ServerError> {
@@ -889,6 +3548,33 @@ pub(in crate::server::wrapper) fn encode_position(
         character: v.character,
     })
 }
+/// Decode the extensible character-offset encoding name for business handlers.
+/// No external side effects or file/network I/O; takes input by value without borrowing caller state.
+///
+/// The JSON scalar representation bridges the private wire wrapper and the business tuple field.
+/// The string spelling is preserved without a known-value whitelist.
+/// Unknown values are not rejected merely for being unknown.
+///
+/// # Mapping
+/// - `v`: serialize the wire scalar, then deserialize into the business wrapper's public tuple field `.0`.
+/// - No string normalization or known-name check occurs.
+///
+/// # Arguments
+/// - `v` `[in]`: owned `lsp_types::PositionEncodingKind` consumed by conversion; no caller output storage.
+/// # Returns
+/// `Ok(value)` contains the complete `d::PositionEncodingKind`; `Err(error)` returns the first
+/// conversion failure.
+/// No output parameters are appended to or overwritten; no partial output is returned.
+/// # Errors
+/// - JSON serialization/deserialization shape or representation failures in scalar wrappers yield
+///   InternalError (-32603) through [`codec_error`].
+/// Already consumed temporary values are dropped on failure; caller-owned shared state is unchanged.
+/// # Examples
+/// Private adapter context; this builds values only and does not send a message.
+/// ```text
+/// let input = serde_json::from_value(serde_json::json!("utf-16")).unwrap();
+/// let output = decode_position_encoding_kind(input)?;
+/// ```
 pub(in crate::server::wrapper) fn decode_position_encoding_kind(
     v: lsp_types::PositionEncodingKind,
 ) -> Result<d::PositionEncodingKind, ServerError> {
@@ -897,11 +3583,96 @@ pub(in crate::server::wrapper) fn decode_position_encoding_kind(
         serde_json::from_value(value).map_err(codec_error)?,
     ))
 }
+/// Encode the extensible character-offset encoding name for typed LSP output.
+/// No external side effects or file/network I/O; takes input by value without borrowing caller state.
+///
+/// The JSON scalar representation bridges the private wire wrapper and the business tuple field.
+/// The string spelling is preserved without a known-value whitelist.
+/// Unknown values are not rejected merely for being unknown.
+///
+/// # Mapping
+/// - `v.0`: serialize the business scalar, then deserialize the same JSON scalar as the wire wrapper.
+/// - No string normalization or known-name check occurs.
+///
+/// # Arguments
+/// - `v` `[in]`: owned `d::PositionEncodingKind` consumed by conversion; no caller output storage.
+/// # Returns
+/// `Ok(value)` contains the complete `lsp_types::PositionEncodingKind`; `Err(error)` returns the first
+/// conversion failure.
+/// No output parameters are appended to or overwritten; no partial output is returned.
+/// # Errors
+/// - JSON serialization/deserialization shape or representation failures in scalar wrappers yield
+///   InternalError (-32603) through [`codec_error`].
+/// Already consumed temporary values are dropped on failure; caller-owned shared state is unchanged.
+/// # Examples
+/// Private adapter context; this builds values only and does not send a message.
+/// ```text
+/// let input = d::PositionEncodingKind("variable".into());
+/// let output = encode_position_encoding_kind(input)?;
+/// ```
 pub(in crate::server::wrapper) fn encode_position_encoding_kind(
     v: d::PositionEncodingKind,
 ) -> Result<lsp_types::PositionEncodingKind, ServerError> {
     serde_json::from_value(serde_json::to_value(v.0).map_err(codec_error)?).map_err(codec_error)
 }
+/// Decode the client's related-information, tag, version, code-link and data support for business
+/// handlers.
+/// No external side effects or file/network I/O; takes input by value without borrowing caller state.
+///
+/// # Mapping
+/// - `related_information`, `version_support`, `code_description_support`, `data_support`: move/copy
+///   unchanged into the same-named output fields.
+/// - `tag_support`: consume each element in order inside the tag-support record through
+///   [`decode_diagnostic_tag`]; preserve `None` versus `Some`.
+///
+/// # Arguments
+/// - `v` `[in]`: owned `lsp_types::PublishDiagnosticsClientCapabilities` consumed by conversion; no caller output storage.
+/// # Returns
+/// `Ok(value)` contains the complete `d::PublishDiagnosticsClientCapabilities`; `Err(error)` returns
+/// the first conversion failure.
+/// No output parameters are appended to or overwritten; no partial output is returned.
+/// # Errors
+/// - JSON serialization/deserialization shape or representation failures in scalar wrappers yield
+///   InternalError (-32603) through [`codec_error`].
+/// Already consumed temporary values are dropped on failure; caller-owned shared state is unchanged.
+///
+/// # Algorithm
+/// Build the output using the field mappings above.
+/// Optional adapters keep `None`; `Some` values are converted before the output is returned.
+/// Consume list elements in order or rebuild maps by key; collection finishes before exposing output.
+/// Stop at the first nested error and drop incomplete local output.
+/// # Flow
+/// ```text
+///  [map other fields]    [list/map entries]
+///        |                      |
+///    [converted]         <next entry?> <----+
+///        |                /        \       |
+///        |              no         yes     |
+///        |               |          |      |
+///        |               |   [convert entry]
+///        |               |          |      |
+///        |               |          +------+
+///        +-------+-------+
+///                v
+///        [complete output record]
+///
+///  Any failing adapter ----> [drop locals]
+///                                   |
+///                                   v
+///                            [return error]
+/// ```
+/// # Examples
+/// Private adapter context; this builds values only and does not send a message.
+/// ```text
+/// let input = lsp_types::PublishDiagnosticsClientCapabilities {
+///     related_information: None,
+///     tag_support: None,
+///     version_support: None,
+///     code_description_support: None,
+///     data_support: None,
+/// };
+/// let output = decode_publish_diagnostics_client_capabilities(input)?;
+/// ```
 pub(in crate::server::wrapper) fn decode_publish_diagnostics_client_capabilities(
     v: lsp_types::PublishDiagnosticsClientCapabilities,
 ) -> Result<d::PublishDiagnosticsClientCapabilities, ServerError> {
@@ -923,6 +3694,63 @@ pub(in crate::server::wrapper) fn decode_publish_diagnostics_client_capabilities
         data_support: v.data_support,
     })
 }
+/// Encode the diagnostic document URI, ordered problems and optional version for typed LSP output.
+/// No external side effects or file/network I/O; takes input by value without borrowing caller state.
+///
+/// # Mapping
+/// - `version`: move/copy unchanged into the same-named output fields.
+/// - `uri`: convert through [`encode_uri`].
+/// - `diagnostics`: consume each element in order through [`encode_diagnostic`].
+///
+/// # Arguments
+/// - `v` `[in]`: owned `d::PublishDiagnosticsParams` consumed by conversion; no caller output storage.
+/// # Returns
+/// `Ok(value)` contains the complete `lsp_types::PublishDiagnosticsParams`; `Err(error)` returns the
+/// first conversion failure.
+/// No output parameters are appended to or overwritten; no partial output is returned.
+/// # Errors
+/// - Invalid output URI syntax yields InternalError (-32603) through [`encode_uri`]; no resource is
+///   accessed.
+/// - Non-finite floats in opaque data, including nested data, yield InternalError (-32603) through
+///   [`data_to_wire`].
+/// - JSON serialization/deserialization shape or representation failures in scalar wrappers yield
+///   InternalError (-32603) through [`codec_error`].
+/// Already consumed temporary values are dropped on failure; caller-owned shared state is unchanged.
+///
+/// # Algorithm
+/// Build the output using the field mappings above.
+/// Consume list elements in order or rebuild maps by key; collection finishes before exposing output.
+/// Stop at the first nested error and drop incomplete local output.
+/// # Flow
+/// ```text
+///  [map other fields]    [list/map entries]
+///        |                      |
+///    [converted]         <next entry?> <----+
+///        |                /        \       |
+///        |              no         yes     |
+///        |               |          |      |
+///        |               |   [convert entry]
+///        |               |          |      |
+///        |               |          +------+
+///        +-------+-------+
+///                v
+///        [complete output record]
+///
+///  Any failing adapter ----> [drop locals]
+///                                   |
+///                                   v
+///                            [return error]
+/// ```
+/// # Examples
+/// Private adapter context; this builds values only and does not send a message.
+/// ```text
+/// let input = d::PublishDiagnosticsParams {
+///     uri: d::Uri("file:///tmp/example.rs".into()),
+///     diagnostics: vec![],
+///     version: None,
+/// };
+/// let output = encode_publish_diagnostics_params(input)?;
+/// ```
 pub(in crate::server::wrapper) fn encode_publish_diagnostics_params(
     v: d::PublishDiagnosticsParams,
 ) -> Result<lsp_types::PublishDiagnosticsParams, ServerError> {
@@ -935,6 +3763,35 @@ pub(in crate::server::wrapper) fn encode_publish_diagnostics_params(
         version: v.version,
     })
 }
+/// Decode the start and exclusive-end document coordinates for business handlers.
+/// No external side effects or file/network I/O; takes input by value without borrowing caller state.
+///
+/// Endpoint conversion copies coordinates; it does not check ordering, bounds or negotiated character
+/// units.
+///
+/// # Mapping
+/// - `start`: convert through [`decode_position`].
+/// - `end`: convert through [`decode_position`].
+///
+/// # Arguments
+/// - `v` `[in]`: owned `lsp_types::Range` consumed by conversion; no caller output storage.
+/// # Returns
+/// Always `Ok(value)` containing `d::Range`. No output parameters or shared state are changed.
+/// # Examples
+/// Private adapter context; this builds values only and does not send a message.
+/// ```text
+/// let input = lsp_types::Range {
+///     start: lsp_types::Position {
+///         line: 0,
+///         character: 0,
+///     },
+///     end: lsp_types::Position {
+///         line: 0,
+///         character: 0,
+///     },
+/// };
+/// let output = decode_range(input)?;
+/// ```
 pub(in crate::server::wrapper) fn decode_range(
     v: lsp_types::Range,
 ) -> Result<d::Range, ServerError> {
@@ -943,6 +3800,35 @@ pub(in crate::server::wrapper) fn decode_range(
         end: decode_position(v.end)?,
     })
 }
+/// Encode the start and exclusive-end document coordinates for typed LSP output.
+/// No external side effects or file/network I/O; takes input by value without borrowing caller state.
+///
+/// Endpoint conversion copies coordinates; it does not check ordering, bounds or negotiated character
+/// units.
+///
+/// # Mapping
+/// - `start`: convert through [`encode_position`].
+/// - `end`: convert through [`encode_position`].
+///
+/// # Arguments
+/// - `v` `[in]`: owned `d::Range` consumed by conversion; no caller output storage.
+/// # Returns
+/// Always `Ok(value)` containing `lsp_types::Range`. No output parameters or shared state are changed.
+/// # Examples
+/// Private adapter context; this builds values only and does not send a message.
+/// ```text
+/// let input = d::Range {
+///     start: d::Position {
+///         line: 0,
+///         character: 0,
+///     },
+///     end: d::Position {
+///         line: 0,
+///         character: 0,
+///     },
+/// };
+/// let output = encode_range(input)?;
+/// ```
 pub(in crate::server::wrapper) fn encode_range(
     v: d::Range,
 ) -> Result<lsp_types::Range, ServerError> {
@@ -951,6 +3837,27 @@ pub(in crate::server::wrapper) fn encode_range(
         end: encode_position(v.end)?,
     })
 }
+/// Encode reference-query work-progress support for typed LSP output.
+/// No external side effects or file/network I/O; takes input by value without borrowing caller state.
+///
+/// # Mapping
+/// - `work_done_progress_options`: convert through [`encode_work_done_progress_options`].
+///
+/// # Arguments
+/// - `v` `[in]`: owned `d::ReferencesOptions` consumed by conversion; no caller output storage.
+/// # Returns
+/// Always `Ok(value)` containing `lsp_types::ReferencesOptions`. No output parameters or shared state
+/// are changed.
+/// # Examples
+/// Private adapter context; this builds values only and does not send a message.
+/// ```text
+/// let input = d::ReferencesOptions {
+///     work_done_progress_options: d::WorkDoneProgressOptions {
+///         work_done_progress: None,
+///     },
+/// };
+/// let output = encode_references_options(input)?;
+/// ```
 pub(in crate::server::wrapper) fn encode_references_options(
     v: d::ReferencesOptions,
 ) -> Result<lsp_types::ReferencesOptions, ServerError> {
@@ -960,6 +3867,33 @@ pub(in crate::server::wrapper) fn encode_references_options(
         )?,
     })
 }
+/// Encode a registration ID, method name and arbitrary options for typed LSP output.
+/// No external side effects or file/network I/O; takes input by value without borrowing caller state.
+///
+/// # Mapping
+/// - `id`, `method`: move/copy unchanged into the same-named output fields.
+/// - `register_options`: convert through [`data_to_wire`]; preserve `None` versus `Some`.
+///
+/// # Arguments
+/// - `v` `[in]`: owned `d::Registration` consumed by conversion; no caller output storage.
+/// # Returns
+/// `Ok(value)` contains the complete `lsp_types::Registration`; `Err(error)` returns the first
+/// conversion failure.
+/// No output parameters are appended to or overwritten; no partial output is returned.
+/// # Errors
+/// - Non-finite floats in opaque data, including nested data, yield InternalError (-32603) through
+///   [`data_to_wire`].
+/// Already consumed temporary values are dropped on failure; caller-owned shared state is unchanged.
+/// # Examples
+/// Private adapter context; this builds values only and does not send a message.
+/// ```text
+/// let input = d::Registration {
+///     id: "registration-1".into(),
+///     method: "textDocument/hover".into(),
+///     register_options: None,
+/// };
+/// let output = encode_registration(input)?;
+/// ```
 pub(in crate::server::wrapper) fn encode_registration(
     v: d::Registration,
 ) -> Result<lsp_types::Registration, ServerError> {
@@ -969,6 +3903,55 @@ pub(in crate::server::wrapper) fn encode_registration(
         register_options: (v.register_options).map(data_to_wire).transpose()?,
     })
 }
+/// Encode the ordered dynamic-registration entries for typed LSP output.
+/// No external side effects or file/network I/O; takes input by value without borrowing caller state.
+///
+/// # Mapping
+/// - `registrations`: consume each element in order through [`encode_registration`].
+///
+/// # Arguments
+/// - `v` `[in]`: owned `d::RegistrationParams` consumed by conversion; no caller output storage.
+/// # Returns
+/// `Ok(value)` contains the complete `lsp_types::RegistrationParams`; `Err(error)` returns the first
+/// conversion failure.
+/// No output parameters are appended to or overwritten; no partial output is returned.
+/// # Errors
+/// - Non-finite floats in opaque data, including nested data, yield InternalError (-32603) through
+///   [`data_to_wire`].
+/// Already consumed temporary values are dropped on failure; caller-owned shared state is unchanged.
+///
+/// # Algorithm
+/// Build the output using the field mappings above.
+/// Consume list elements in order or rebuild maps by key; collection finishes before exposing output.
+/// Stop at the first nested error and drop incomplete local output.
+/// # Flow
+/// ```text
+///  [map other fields]    [list/map entries]
+///        |                      |
+///    [converted]         <next entry?> <----+
+///        |                /        \       |
+///        |              no         yes     |
+///        |               |          |      |
+///        |               |   [convert entry]
+///        |               |          |      |
+///        |               |          +------+
+///        +-------+-------+
+///                v
+///        [complete output record]
+///
+///  Any failing adapter ----> [drop locals]
+///                                   |
+///                                   v
+///                            [return error]
+/// ```
+/// # Examples
+/// Private adapter context; this builds values only and does not send a message.
+/// ```text
+/// let input = d::RegistrationParams {
+///     registrations: vec![],
+/// };
+/// let output = encode_registration_params(input)?;
+/// ```
 pub(in crate::server::wrapper) fn encode_registration_params(
     v: d::RegistrationParams,
 ) -> Result<lsp_types::RegistrationParams, ServerError> {
@@ -979,6 +3962,26 @@ pub(in crate::server::wrapper) fn encode_registration_params(
             .collect::<Result<Vec<_>, ServerError>>()?,
     })
 }
+/// Decode the client's regular-expression engine and version for business handlers.
+/// No external side effects or file/network I/O; takes input by value without borrowing caller state.
+///
+/// # Mapping
+/// - `engine`, `version`: move/copy unchanged into the same-named output fields.
+///
+/// # Arguments
+/// - `v` `[in]`: owned `lsp_types::RegularExpressionsClientCapabilities` consumed by conversion; no caller output storage.
+/// # Returns
+/// Always `Ok(value)` containing `d::RegularExpressionsClientCapabilities`. No output parameters or
+/// shared state are changed.
+/// # Examples
+/// Private adapter context; this builds values only and does not send a message.
+/// ```text
+/// let input = lsp_types::RegularExpressionsClientCapabilities {
+///     engine: "value".into(),
+///     version: None,
+/// };
+/// let output = decode_regular_expressions_client_capabilities(input)?;
+/// ```
 pub(in crate::server::wrapper) fn decode_regular_expressions_client_capabilities(
     v: lsp_types::RegularExpressionsClientCapabilities,
 ) -> Result<d::RegularExpressionsClientCapabilities, ServerError> {
@@ -987,6 +3990,32 @@ pub(in crate::server::wrapper) fn decode_regular_expressions_client_capabilities
         version: v.version,
     })
 }
+/// Decode the old and new resource URIs, rename options and annotation reference for business handlers.
+/// No external side effects or file/network I/O; takes input by value without borrowing caller state.
+///
+/// This only describes a client operation; it does not rename a file or enforce overwrite policy.
+///
+/// # Mapping
+/// - `annotation_id`: move/copy unchanged into the same-named output fields.
+/// - `old_uri`: convert through [`decode_uri`].
+/// - `new_uri`: convert through [`decode_uri`].
+/// - `options`: convert through [`decode_rename_file_options`]; preserve `None` versus `Some`.
+///
+/// # Arguments
+/// - `v` `[in]`: owned `lsp_types::RenameFile` consumed by conversion; no caller output storage.
+/// # Returns
+/// Always `Ok(value)` containing `d::RenameFile`. No output parameters or shared state are changed.
+/// # Examples
+/// Private adapter context; this builds values only and does not send a message.
+/// ```text
+/// let input = lsp_types::RenameFile {
+///     old_uri: "file:///tmp/example.rs".parse().unwrap(),
+///     new_uri: "file:///tmp/example.rs".parse().unwrap(),
+///     options: None,
+///     annotation_id: None,
+/// };
+/// let output = decode_rename_file(input)?;
+/// ```
 pub(in crate::server::wrapper) fn decode_rename_file(
     v: lsp_types::RenameFile,
 ) -> Result<d::RenameFile, ServerError> {
@@ -997,6 +4026,38 @@ pub(in crate::server::wrapper) fn decode_rename_file(
         annotation_id: v.annotation_id,
     })
 }
+/// Encode the old and new resource URIs, rename options and annotation reference for typed LSP output.
+/// No external side effects or file/network I/O; takes input by value without borrowing caller state.
+///
+/// This only describes a client operation; it does not rename a file or enforce overwrite policy.
+///
+/// # Mapping
+/// - `annotation_id`: move/copy unchanged into the same-named output fields.
+/// - `old_uri`: convert through [`encode_uri`].
+/// - `new_uri`: convert through [`encode_uri`].
+/// - `options`: convert through [`encode_rename_file_options`]; preserve `None` versus `Some`.
+///
+/// # Arguments
+/// - `v` `[in]`: owned `d::RenameFile` consumed by conversion; no caller output storage.
+/// # Returns
+/// `Ok(value)` contains the complete `lsp_types::RenameFile`; `Err(error)` returns the first conversion
+/// failure.
+/// No output parameters are appended to or overwritten; no partial output is returned.
+/// # Errors
+/// - Invalid output URI syntax yields InternalError (-32603) through [`encode_uri`]; no resource is
+///   accessed.
+/// Already consumed temporary values are dropped on failure; caller-owned shared state is unchanged.
+/// # Examples
+/// Private adapter context; this builds values only and does not send a message.
+/// ```text
+/// let input = d::RenameFile {
+///     old_uri: d::Uri("file:///tmp/example.rs".into()),
+///     new_uri: d::Uri("file:///tmp/example.rs".into()),
+///     options: None,
+///     annotation_id: None,
+/// };
+/// let output = encode_rename_file(input)?;
+/// ```
 pub(in crate::server::wrapper) fn encode_rename_file(
     v: d::RenameFile,
 ) -> Result<lsp_types::RenameFile, ServerError> {
@@ -1007,6 +4068,26 @@ pub(in crate::server::wrapper) fn encode_rename_file(
         annotation_id: v.annotation_id,
     })
 }
+/// Decode the overwrite and ignore-existing rename flags for business handlers.
+/// No external side effects or file/network I/O; takes input by value without borrowing caller state.
+///
+/// # Mapping
+/// - `overwrite`, `ignore_if_exists`: move/copy unchanged into the same-named output fields.
+///
+/// # Arguments
+/// - `v` `[in]`: owned `lsp_types::RenameFileOptions` consumed by conversion; no caller output storage.
+/// # Returns
+/// Always `Ok(value)` containing `d::RenameFileOptions`. No output parameters or shared state are
+/// changed.
+/// # Examples
+/// Private adapter context; this builds values only and does not send a message.
+/// ```text
+/// let input = lsp_types::RenameFileOptions {
+///     overwrite: None,
+///     ignore_if_exists: None,
+/// };
+/// let output = decode_rename_file_options(input)?;
+/// ```
 pub(in crate::server::wrapper) fn decode_rename_file_options(
     v: lsp_types::RenameFileOptions,
 ) -> Result<d::RenameFileOptions, ServerError> {
@@ -1015,6 +4096,26 @@ pub(in crate::server::wrapper) fn decode_rename_file_options(
         ignore_if_exists: v.ignore_if_exists,
     })
 }
+/// Encode the overwrite and ignore-existing rename flags for typed LSP output.
+/// No external side effects or file/network I/O; takes input by value without borrowing caller state.
+///
+/// # Mapping
+/// - `overwrite`, `ignore_if_exists`: move/copy unchanged into the same-named output fields.
+///
+/// # Arguments
+/// - `v` `[in]`: owned `d::RenameFileOptions` consumed by conversion; no caller output storage.
+/// # Returns
+/// Always `Ok(value)` containing `lsp_types::RenameFileOptions`. No output parameters or shared state
+/// are changed.
+/// # Examples
+/// Private adapter context; this builds values only and does not send a message.
+/// ```text
+/// let input = d::RenameFileOptions {
+///     overwrite: None,
+///     ignore_if_exists: None,
+/// };
+/// let output = encode_rename_file_options(input)?;
+/// ```
 pub(in crate::server::wrapper) fn encode_rename_file_options(
     v: d::RenameFileOptions,
 ) -> Result<lsp_types::RenameFileOptions, ServerError> {
@@ -1023,6 +4124,46 @@ pub(in crate::server::wrapper) fn encode_rename_file_options(
         ignore_if_exists: v.ignore_if_exists,
     })
 }
+/// Decode the create, rename or delete resource-operation choice for business handlers.
+/// No external side effects or file/network I/O; takes input by value without borrowing caller state.
+///
+/// # Mapping
+/// - `Create` stays `Create`; convert the payload through [`decode_create_file`].
+/// - `Rename` stays `Rename`; convert the payload through [`decode_rename_file`].
+/// - `Delete` stays `Delete`; convert the payload through [`decode_delete_file`].
+///
+/// # Arguments
+/// - `v` `[in]`: owned `lsp_types::ResourceOp` consumed by conversion; no caller output storage.
+/// # Returns
+/// Always `Ok(value)` containing `d::ResourceOp`. No output parameters or shared state are changed.
+///
+/// # Algorithm
+/// Select the input variant and rebuild the same output variant using the payload adapters above.
+/// Containers are consumed rather than cloned.
+/// # Flow
+/// ```text
+///                    <input variant?>
+///                            |
+///           +----------------+----------------+
+///           |                |                |
+///       [Create]         [Rename]         [Delete]
+///           |                |                |
+///     [map payload]    [map payload]    [map payload]
+///           |                |                |
+///           +----------------+----------------+
+///                            |
+///                  [same output choice]
+/// ```
+/// # Examples
+/// Private adapter context; this builds values only and does not send a message.
+/// ```text
+/// let input = lsp_types::ResourceOp::Create(lsp_types::CreateFile {
+///     uri: "file:///tmp/example.rs".parse().unwrap(),
+///     options: None,
+///     annotation_id: None,
+/// });
+/// let output = decode_resource_op(input)?;
+/// ```
 pub(in crate::server::wrapper) fn decode_resource_op(
     v: lsp_types::ResourceOp,
 ) -> Result<d::ResourceOp, ServerError> {
@@ -1032,6 +4173,58 @@ pub(in crate::server::wrapper) fn decode_resource_op(
         lsp_types::ResourceOp::Delete(f0) => d::ResourceOp::Delete(decode_delete_file(f0)?),
     })
 }
+/// Encode the create, rename or delete resource-operation choice for typed LSP output.
+/// No external side effects or file/network I/O; takes input by value without borrowing caller state.
+///
+/// # Mapping
+/// - `Create` stays `Create`; convert the payload through [`encode_create_file`].
+/// - `Rename` stays `Rename`; convert the payload through [`encode_rename_file`].
+/// - `Delete` stays `Delete`; convert the payload through [`encode_delete_file`].
+///
+/// # Arguments
+/// - `v` `[in]`: owned `d::ResourceOp` consumed by conversion; no caller output storage.
+/// # Returns
+/// `Ok(value)` contains the complete `lsp_types::ResourceOp`; `Err(error)` returns the first conversion
+/// failure.
+/// No output parameters are appended to or overwritten; no partial output is returned.
+/// # Errors
+/// - Invalid output URI syntax yields InternalError (-32603) through [`encode_uri`]; no resource is
+///   accessed.
+/// Already consumed temporary values are dropped on failure; caller-owned shared state is unchanged.
+///
+/// # Algorithm
+/// Select the input variant and rebuild the same output variant using the payload adapters above.
+/// Containers are consumed rather than cloned.
+/// A nested failure exits immediately and discards the partially built local value.
+/// # Flow
+/// ```text
+///                    <input variant?>
+///                            |
+///           +----------------+----------------+
+///           |                |                |
+///       [Create]         [Rename]         [Delete]
+///           |                |                |
+///     [map payload]    [map payload]    [map payload]
+///           |                |                |
+///           +----------------+----------------+
+///                            |
+///                  [same output choice]
+///
+///  Payload failure ---> [drop locals]
+///                              |
+///                              v
+///                        [return error]
+/// ```
+/// # Examples
+/// Private adapter context; this builds values only and does not send a message.
+/// ```text
+/// let input = d::ResourceOp::Create(d::CreateFile {
+///     uri: d::Uri("file:///tmp/example.rs".into()),
+///     options: None,
+///     annotation_id: None,
+/// });
+/// let output = encode_resource_op(input)?;
+/// ```
 pub(in crate::server::wrapper) fn encode_resource_op(
     v: d::ResourceOp,
 ) -> Result<lsp_types::ResourceOp, ServerError> {
@@ -1041,6 +4234,25 @@ pub(in crate::server::wrapper) fn encode_resource_op(
         d::ResourceOp::Delete(f0) => lsp_types::ResourceOp::Delete(encode_delete_file(f0)?),
     })
 }
+/// Decode the client's supported resource-operation kind for business handlers.
+/// No external side effects or file/network I/O; takes input by value without borrowing caller state.
+///
+/// # Mapping
+/// - `Create` stays `Create`; no payload to convert.
+/// - `Rename` stays `Rename`; no payload to convert.
+/// - `Delete` stays `Delete`; no payload to convert.
+///
+/// # Arguments
+/// - `v` `[in]`: owned `lsp_types::ResourceOperationKind` consumed by conversion; no caller output storage.
+/// # Returns
+/// Always `Ok(value)` containing `d::ResourceOperationKind`. No output parameters or shared state are
+/// changed.
+/// # Examples
+/// Private adapter context; this builds values only and does not send a message.
+/// ```text
+/// let input = lsp_types::ResourceOperationKind::Create;
+/// let output = decode_resource_operation_kind(input)?;
+/// ```
 pub(in crate::server::wrapper) fn decode_resource_operation_kind(
     v: lsp_types::ResourceOperationKind,
 ) -> Result<d::ResourceOperationKind, ServerError> {
@@ -1050,6 +4262,23 @@ pub(in crate::server::wrapper) fn decode_resource_operation_kind(
         lsp_types::ResourceOperationKind::Delete => d::ResourceOperationKind::Delete,
     })
 }
+/// Encode the save-notification include-text flag for typed LSP output.
+/// No external side effects or file/network I/O; takes input by value without borrowing caller state.
+///
+/// # Mapping
+/// - `include_text`: move/copy unchanged into the same-named output fields.
+///
+/// # Arguments
+/// - `v` `[in]`: owned `d::SaveOptions` consumed by conversion; no caller output storage.
+/// # Returns
+/// Always `Ok(value)` containing `lsp_types::SaveOptions`. No output parameters or shared state are
+/// changed.
+/// # Examples
+/// Private adapter context; this builds values only and does not send a message.
+/// ```text
+/// let input = d::SaveOptions { include_text: None };
+/// let output = encode_save_options(input)?;
+/// ```
 pub(in crate::server::wrapper) fn encode_save_options(
     v: d::SaveOptions,
 ) -> Result<lsp_types::SaveOptions, ServerError> {
@@ -1057,6 +4286,165 @@ pub(in crate::server::wrapper) fn encode_save_options(
         include_text: v.include_text,
     })
 }
+/// Encode the server's optional feature advertisements and experimental data for typed LSP output.
+/// No external side effects or file/network I/O; takes input by value without borrowing caller state.
+///
+/// Each provider keeps its absent, boolean, options or registration form. This does not negotiate
+/// support, register methods or send initialization output.
+///
+/// # Mapping
+/// - `position_encoding`: convert through [`encode_position_encoding_kind`]; preserve `None` versus
+///   `Some`.
+/// - `text_document_sync`: convert through [`encode_text_document_sync_capability`]; preserve `None`
+///   versus `Some`.
+/// - `notebook_document_sync`: retain the left/right choice and convert its payload through
+///   [`encode_notebook_document_sync_options`], [`encode_notebook_document_sync_registration_options`];
+///   preserve `None` versus `Some`.
+/// - `selection_range_provider`: convert through [`encode_selection_range_provider_capability`];
+///   preserve `None` versus `Some`.
+/// - `hover_provider`: convert through [`encode_hover_provider_capability`]; preserve `None` versus
+///   `Some`.
+/// - `completion_provider`: convert through [`encode_completion_options`]; preserve `None` versus
+///   `Some`.
+/// - `signature_help_provider`: convert through [`encode_signature_help_options`]; preserve `None`
+///   versus `Some`.
+/// - `definition_provider`: retain the left/right choice and convert its payload through
+///   [`encode_definition_options`]; preserve `None` versus `Some`.
+/// - `type_definition_provider`: convert through [`encode_type_definition_provider_capability`];
+///   preserve `None` versus `Some`.
+/// - `implementation_provider`: convert through [`encode_implementation_provider_capability`]; preserve
+///   `None` versus `Some`.
+/// - `references_provider`: retain the left/right choice and convert its payload through
+///   [`encode_references_options`]; preserve `None` versus `Some`.
+/// - `document_highlight_provider`: retain the left/right choice and convert its payload through
+///   [`encode_document_highlight_options`]; preserve `None` versus `Some`.
+/// - `document_symbol_provider`: retain the left/right choice and convert its payload through
+///   [`encode_document_symbol_options`]; preserve `None` versus `Some`.
+/// - `workspace_symbol_provider`: retain the left/right choice and convert its payload through
+///   [`encode_workspace_symbol_options`]; preserve `None` versus `Some`.
+/// - `code_action_provider`: convert through [`encode_code_action_provider_capability`]; preserve
+///   `None` versus `Some`.
+/// - `code_lens_provider`: convert through [`encode_code_lens_options`]; preserve `None` versus `Some`.
+/// - `document_formatting_provider`: retain the left/right choice and convert its payload through
+///   [`encode_document_formatting_options`]; preserve `None` versus `Some`.
+/// - `document_range_formatting_provider`: retain the left/right choice and convert its payload through
+///   [`encode_document_range_formatting_options`]; preserve `None` versus `Some`.
+/// - `document_on_type_formatting_provider`: convert through
+///   [`encode_document_on_type_formatting_options`]; preserve `None` versus `Some`.
+/// - `rename_provider`: retain the left/right choice and convert its payload through
+///   [`encode_rename_options`]; preserve `None` versus `Some`.
+/// - `document_link_provider`: convert through [`encode_document_link_options`]; preserve `None` versus
+///   `Some`.
+/// - `color_provider`: convert through [`encode_color_provider_capability`]; preserve `None` versus
+///   `Some`.
+/// - `folding_range_provider`: convert through [`encode_folding_range_provider_capability`]; preserve
+///   `None` versus `Some`.
+/// - `declaration_provider`: convert through [`encode_declaration_capability`]; preserve `None` versus
+///   `Some`.
+/// - `execute_command_provider`: convert through [`encode_execute_command_options`]; preserve `None`
+///   versus `Some`.
+/// - `workspace`: convert through [`encode_workspace_server_capabilities`]; preserve `None` versus
+///   `Some`.
+/// - `call_hierarchy_provider`: convert through [`encode_call_hierarchy_server_capability`]; preserve
+///   `None` versus `Some`.
+/// - `semantic_tokens_provider`: convert through [`encode_semantic_tokens_server_capabilities`];
+///   preserve `None` versus `Some`.
+/// - `moniker_provider`: retain the left/right choice and convert its payload through
+///   [`encode_moniker_server_capabilities`]; preserve `None` versus `Some`.
+/// - `linked_editing_range_provider`: convert through
+///   [`encode_linked_editing_range_server_capabilities`]; preserve `None` versus `Some`.
+/// - `inline_value_provider`: retain the left/right choice and convert its payload through
+///   [`encode_inline_value_server_capabilities`]; preserve `None` versus `Some`.
+/// - `inlay_hint_provider`: retain the left/right choice and convert its payload through
+///   [`encode_inlay_hint_server_capabilities`]; preserve `None` versus `Some`.
+/// - `diagnostic_provider`: convert through [`encode_diagnostic_server_capabilities`]; preserve `None`
+///   versus `Some`.
+/// - `experimental`: convert through [`data_to_wire`]; preserve `None` versus `Some`.
+///
+/// # Arguments
+/// - `v` `[in]`: owned `d::ServerCapabilities` consumed by conversion; no caller output storage.
+/// # Returns
+/// `Ok(value)` contains the complete `lsp_types::ServerCapabilities`; `Err(error)` returns the first
+/// conversion failure.
+/// No output parameters are appended to or overwritten; no partial output is returned.
+/// # Errors
+/// - Non-finite floats in opaque data, including nested data, yield InternalError (-32603) through
+///   [`data_to_wire`].
+/// - JSON serialization/deserialization shape or representation failures in scalar wrappers yield
+///   InternalError (-32603) through [`codec_error`].
+/// Already consumed temporary values are dropped on failure; caller-owned shared state is unchanged.
+///
+/// # Algorithm
+/// Build the output using the field mappings above.
+/// Optional adapters keep `None`; `Some` values are converted before the output is returned.
+/// Stop at the first nested error and drop incomplete local output.
+/// # Flow
+/// ```text
+///                  [owned ServerCapabilities record]
+///                                   |
+///                 +-----------------+------------------+
+///                 v                                    v
+///      [optional provider fields]          [encoding/sync/workspace/data fields]
+///                 |                                    |
+///        <provider present?>                   <field present?>
+///          /            \                        /          \
+///        None           Some                   None         Some
+///         |              |                      |            |
+///    [keep None] [provider's own payload]   [keep None] [mapped adapter]
+///         |              |                      |            |
+///         |    [retain bool or adapt            |            |
+///         |     options/registration]           |            |
+///         |              |                      |            |
+///         +--------------+-----------+----------+------------+
+///                                    v
+///                     [rebuilt wire ServerCapabilities]
+///
+///  Mapped adapter failure ----> [drop locals]
+///                                     |
+///                                     v
+///                              [return error]
+/// ```
+/// # Examples
+/// Private adapter context; this builds values only and does not send a message.
+/// ```text
+/// let input = d::ServerCapabilities {
+///     position_encoding: None,
+///     text_document_sync: None,
+///     notebook_document_sync: None,
+///     selection_range_provider: None,
+///     hover_provider: None,
+///     completion_provider: None,
+///     signature_help_provider: None,
+///     definition_provider: None,
+///     type_definition_provider: None,
+///     implementation_provider: None,
+///     references_provider: None,
+///     document_highlight_provider: None,
+///     document_symbol_provider: None,
+///     workspace_symbol_provider: None,
+///     code_action_provider: None,
+///     code_lens_provider: None,
+///     document_formatting_provider: None,
+///     document_range_formatting_provider: None,
+///     document_on_type_formatting_provider: None,
+///     rename_provider: None,
+///     document_link_provider: None,
+///     color_provider: None,
+///     folding_range_provider: None,
+///     declaration_provider: None,
+///     execute_command_provider: None,
+///     workspace: None,
+///     call_hierarchy_provider: None,
+///     semantic_tokens_provider: None,
+///     moniker_provider: None,
+///     linked_editing_range_provider: None,
+///     inline_value_provider: None,
+///     inlay_hint_provider: None,
+///     diagnostic_provider: None,
+///     experimental: None,
+/// };
+/// let output = encode_server_capabilities(input)?;
+/// ```
 pub(in crate::server::wrapper) fn encode_server_capabilities(
     v: d::ServerCapabilities,
 ) -> Result<lsp_types::ServerCapabilities, ServerError> {
@@ -1243,6 +4631,26 @@ pub(in crate::server::wrapper) fn encode_server_capabilities(
         experimental: (v.experimental).map(data_to_wire).transpose()?,
     })
 }
+/// Encode the server's name and optional version for typed LSP output.
+/// No external side effects or file/network I/O; takes input by value without borrowing caller state.
+///
+/// # Mapping
+/// - `name`, `version`: move/copy unchanged into the same-named output fields.
+///
+/// # Arguments
+/// - `v` `[in]`: owned `d::ServerInfo` consumed by conversion; no caller output storage.
+/// # Returns
+/// Always `Ok(value)` containing `lsp_types::ServerInfo`. No output parameters or shared state are
+/// changed.
+/// # Examples
+/// Private adapter context; this builds values only and does not send a message.
+/// ```text
+/// let input = d::ServerInfo {
+///     name: "item".into(),
+///     version: None,
+/// };
+/// let output = encode_server_info(input)?;
+/// ```
 pub(in crate::server::wrapper) fn encode_server_info(
     v: d::ServerInfo,
 ) -> Result<lsp_types::ServerInfo, ServerError> {
@@ -1251,6 +4659,46 @@ pub(in crate::server::wrapper) fn encode_server_info(
         version: v.version,
     })
 }
+/// Decode the client's cancellation support and retryable method names for business handlers.
+/// No external side effects or file/network I/O; takes input by value without borrowing caller state.
+///
+/// # Mapping
+/// - `cancel`: move/copy unchanged into the same-named output fields.
+/// - `retry_on_content_modified`: consume each element in order; retain element values unchanged.
+///
+/// # Arguments
+/// - `v` `[in]`: owned `lsp_types::StaleRequestSupportClientCapabilities` consumed by conversion; no caller output storage.
+/// # Returns
+/// Always `Ok(value)` containing `d::StaleRequestSupportClientCapabilities`. No output parameters or
+/// shared state are changed.
+///
+/// # Algorithm
+/// Build the output using the field mappings above.
+/// Consume list elements in order or rebuild maps by key; collection finishes before exposing output.
+/// # Flow
+/// ```text
+///  [map other fields]    [list/map entries]
+///        |                      |
+///    [converted]         <next entry?> <----+
+///        |                /        \       |
+///        |              no         yes     |
+///        |               |          |      |
+///        |               |   [convert entry]
+///        |               |          |      |
+///        |               |          +------+
+///        +-------+-------+
+///                v
+///        [complete output record]
+/// ```
+/// # Examples
+/// Private adapter context; this builds values only and does not send a message.
+/// ```text
+/// let input = lsp_types::StaleRequestSupportClientCapabilities {
+///     cancel: false,
+///     retry_on_content_modified: vec![],
+/// };
+/// let output = decode_stale_request_support_client_capabilities(input)?;
+/// ```
 pub(in crate::server::wrapper) fn decode_stale_request_support_client_capabilities(
     v: lsp_types::StaleRequestSupportClientCapabilities,
 ) -> Result<d::StaleRequestSupportClientCapabilities, ServerError> {
@@ -1262,11 +4710,70 @@ pub(in crate::server::wrapper) fn decode_stale_request_support_client_capabiliti
             .collect::<Result<Vec<_>, ServerError>>()?,
     })
 }
+/// Encode the optional stable registration identifier for typed LSP output.
+/// No external side effects or file/network I/O; takes input by value without borrowing caller state.
+///
+/// # Mapping
+/// - `id`: move/copy unchanged into the same-named output fields.
+///
+/// # Arguments
+/// - `v` `[in]`: owned `d::StaticRegistrationOptions` consumed by conversion; no caller output storage.
+/// # Returns
+/// Always `Ok(value)` containing `lsp_types::StaticRegistrationOptions`. No output parameters or shared
+/// state are changed.
+/// # Examples
+/// Private adapter context; this builds values only and does not send a message.
+/// ```text
+/// let input = d::StaticRegistrationOptions { id: None };
+/// let output = encode_static_registration_options(input)?;
+/// ```
 pub(in crate::server::wrapper) fn encode_static_registration_options(
     v: d::StaticRegistrationOptions,
 ) -> Result<lsp_types::StaticRegistrationOptions, ServerError> {
     Ok::<_, ServerError>(lsp_types::StaticRegistrationOptions { id: v.id })
 }
+/// Encode a document selector and optional stable registration identifier for typed LSP output.
+/// No external side effects or file/network I/O; takes input by value without borrowing caller state.
+///
+/// # Mapping
+/// - `id`: move/copy unchanged into the same-named output fields.
+/// - `document_selector`: consume each element in order through [`encode_document_filter`]; preserve
+///   `None` versus `Some`.
+///
+/// # Arguments
+/// - `v` `[in]`: owned `d::StaticTextDocumentRegistrationOptions` consumed by conversion; no caller output storage.
+/// # Returns
+/// Always `Ok(value)` containing `lsp_types::StaticTextDocumentRegistrationOptions`. No output
+/// parameters or shared state are changed.
+///
+/// # Algorithm
+/// Build the output using the field mappings above.
+/// Optional adapters keep `None`; `Some` values are converted before the output is returned.
+/// Consume list elements in order or rebuild maps by key; collection finishes before exposing output.
+/// # Flow
+/// ```text
+///  [map other fields]    [list/map entries]
+///        |                      |
+///    [converted]         <next entry?> <----+
+///        |                /        \       |
+///        |              no         yes     |
+///        |               |          |      |
+///        |               |   [convert entry]
+///        |               |          |      |
+///        |               |          +------+
+///        +-------+-------+
+///                v
+///        [complete output record]
+/// ```
+/// # Examples
+/// Private adapter context; this builds values only and does not send a message.
+/// ```text
+/// let input = d::StaticTextDocumentRegistrationOptions {
+///     document_selector: None,
+///     id: None,
+/// };
+/// let output = encode_static_text_document_registration_options(input)?;
+/// ```
 pub(in crate::server::wrapper) fn encode_static_text_document_registration_options(
     v: d::StaticTextDocumentRegistrationOptions,
 ) -> Result<lsp_types::StaticTextDocumentRegistrationOptions, ServerError> {
@@ -1283,6 +4790,33 @@ pub(in crate::server::wrapper) fn encode_static_text_document_registration_optio
         id: v.id,
     })
 }
+/// Decode the numeric symbol classification for business handlers.
+/// No external side effects or file/network I/O; takes input by value without borrowing caller state.
+///
+/// The JSON scalar representation bridges the private wire wrapper and the business tuple field.
+/// The signed `i32` value is preserved without a known-value whitelist.
+/// Unknown values are not rejected merely for being unknown.
+///
+/// # Mapping
+/// - `v`: serialize the wire scalar, then deserialize into the business wrapper's public tuple field `.0`.
+/// - No integer rounding or known-constant check occurs.
+///
+/// # Arguments
+/// - `v` `[in]`: owned `lsp_types::SymbolKind` consumed by conversion; no caller output storage.
+/// # Returns
+/// `Ok(value)` contains the complete `d::SymbolKind`; `Err(error)` returns the first conversion
+/// failure.
+/// No output parameters are appended to or overwritten; no partial output is returned.
+/// # Errors
+/// - JSON serialization/deserialization shape or representation failures in scalar wrappers yield
+///   InternalError (-32603) through [`codec_error`].
+/// Already consumed temporary values are dropped on failure; caller-owned shared state is unchanged.
+/// # Examples
+/// Private adapter context; this builds values only and does not send a message.
+/// ```text
+/// let input = serde_json::from_value(serde_json::json!(1)).unwrap();
+/// let output = decode_symbol_kind(input)?;
+/// ```
 pub(in crate::server::wrapper) fn decode_symbol_kind(
     v: lsp_types::SymbolKind,
 ) -> Result<d::SymbolKind, ServerError> {
@@ -1291,11 +4825,87 @@ pub(in crate::server::wrapper) fn decode_symbol_kind(
         serde_json::from_value(value).map_err(codec_error)?,
     ))
 }
+/// Encode the numeric symbol classification for typed LSP output.
+/// No external side effects or file/network I/O; takes input by value without borrowing caller state.
+///
+/// The JSON scalar representation bridges the private wire wrapper and the business tuple field.
+/// The signed `i32` value is preserved without a known-value whitelist.
+/// Unknown values are not rejected merely for being unknown.
+///
+/// # Mapping
+/// - `v.0`: serialize the business scalar, then deserialize the same JSON scalar as the wire wrapper.
+/// - No integer rounding or known-constant check occurs.
+///
+/// # Arguments
+/// - `v` `[in]`: owned `d::SymbolKind` consumed by conversion; no caller output storage.
+/// # Returns
+/// `Ok(value)` contains the complete `lsp_types::SymbolKind`; `Err(error)` returns the first conversion
+/// failure.
+/// No output parameters are appended to or overwritten; no partial output is returned.
+/// # Errors
+/// - JSON serialization/deserialization shape or representation failures in scalar wrappers yield
+///   InternalError (-32603) through [`codec_error`].
+/// Already consumed temporary values are dropped on failure; caller-owned shared state is unchanged.
+/// # Examples
+/// Private adapter context; this builds values only and does not send a message.
+/// ```text
+/// let input = d::SymbolKind(0);
+/// let output = encode_symbol_kind(input)?;
+/// ```
 pub(in crate::server::wrapper) fn encode_symbol_kind(
     v: d::SymbolKind,
 ) -> Result<lsp_types::SymbolKind, ServerError> {
     serde_json::from_value(serde_json::to_value(v.0).map_err(codec_error)?).map_err(codec_error)
 }
+/// Decode the client's optional supported symbol-kind list for business handlers.
+/// No external side effects or file/network I/O; takes input by value without borrowing caller state.
+///
+/// # Mapping
+/// - `value_set`: consume each element in order through [`decode_symbol_kind`]; preserve `None` versus
+///   `Some`.
+///
+/// # Arguments
+/// - `v` `[in]`: owned `lsp_types::SymbolKindCapability` consumed by conversion; no caller output storage.
+/// # Returns
+/// `Ok(value)` contains the complete `d::SymbolKindCapability`; `Err(error)` returns the first
+/// conversion failure.
+/// No output parameters are appended to or overwritten; no partial output is returned.
+/// # Errors
+/// - JSON serialization/deserialization shape or representation failures in scalar wrappers yield
+///   InternalError (-32603) through [`codec_error`].
+/// Already consumed temporary values are dropped on failure; caller-owned shared state is unchanged.
+///
+/// # Algorithm
+/// Build the output using the field mappings above.
+/// Optional adapters keep `None`; `Some` values are converted before the output is returned.
+/// Consume list elements in order or rebuild maps by key; collection finishes before exposing output.
+/// Stop at the first nested error and drop incomplete local output.
+/// # Flow
+/// ```text
+///  [map other fields]    [list/map entries]
+///        |                      |
+///    [converted]         <next entry?> <----+
+///        |                /        \       |
+///        |              no         yes     |
+///        |               |          |      |
+///        |               |   [convert entry]
+///        |               |          |      |
+///        |               |          +------+
+///        +-------+-------+
+///                v
+///        [complete output record]
+///
+///  Any failing adapter ----> [drop locals]
+///                                   |
+///                                   v
+///                            [return error]
+/// ```
+/// # Examples
+/// Private adapter context; this builds values only and does not send a message.
+/// ```text
+/// let input = lsp_types::SymbolKindCapability { value_set: None };
+/// let output = decode_symbol_kind_capability(input)?;
+/// ```
 pub(in crate::server::wrapper) fn decode_symbol_kind_capability(
     v: lsp_types::SymbolKindCapability,
 ) -> Result<d::SymbolKindCapability, ServerError> {
@@ -1311,6 +4921,32 @@ pub(in crate::server::wrapper) fn decode_symbol_kind_capability(
             .transpose()?,
     })
 }
+/// Decode the numeric symbol rendering tag for business handlers.
+/// No external side effects or file/network I/O; takes input by value without borrowing caller state.
+///
+/// The JSON scalar representation bridges the private wire wrapper and the business tuple field.
+/// The signed `i32` value is preserved without a known-value whitelist.
+/// Unknown values are not rejected merely for being unknown.
+///
+/// # Mapping
+/// - `v`: serialize the wire scalar, then deserialize into the business wrapper's public tuple field `.0`.
+/// - No integer rounding or known-constant check occurs.
+///
+/// # Arguments
+/// - `v` `[in]`: owned `lsp_types::SymbolTag` consumed by conversion; no caller output storage.
+/// # Returns
+/// `Ok(value)` contains the complete `d::SymbolTag`; `Err(error)` returns the first conversion failure.
+/// No output parameters are appended to or overwritten; no partial output is returned.
+/// # Errors
+/// - JSON serialization/deserialization shape or representation failures in scalar wrappers yield
+///   InternalError (-32603) through [`codec_error`].
+/// Already consumed temporary values are dropped on failure; caller-owned shared state is unchanged.
+/// # Examples
+/// Private adapter context; this builds values only and does not send a message.
+/// ```text
+/// let input = serde_json::from_value(serde_json::json!(1)).unwrap();
+/// let output = decode_symbol_tag(input)?;
+/// ```
 pub(in crate::server::wrapper) fn decode_symbol_tag(
     v: lsp_types::SymbolTag,
 ) -> Result<d::SymbolTag, ServerError> {
@@ -1319,11 +4955,168 @@ pub(in crate::server::wrapper) fn decode_symbol_tag(
         serde_json::from_value(value).map_err(codec_error)?,
     ))
 }
+/// Encode the numeric symbol rendering tag for typed LSP output.
+/// No external side effects or file/network I/O; takes input by value without borrowing caller state.
+///
+/// The JSON scalar representation bridges the private wire wrapper and the business tuple field.
+/// The signed `i32` value is preserved without a known-value whitelist.
+/// Unknown values are not rejected merely for being unknown.
+///
+/// # Mapping
+/// - `v.0`: serialize the business scalar, then deserialize the same JSON scalar as the wire wrapper.
+/// - No integer rounding or known-constant check occurs.
+///
+/// # Arguments
+/// - `v` `[in]`: owned `d::SymbolTag` consumed by conversion; no caller output storage.
+/// # Returns
+/// `Ok(value)` contains the complete `lsp_types::SymbolTag`; `Err(error)` returns the first conversion
+/// failure.
+/// No output parameters are appended to or overwritten; no partial output is returned.
+/// # Errors
+/// - JSON serialization/deserialization shape or representation failures in scalar wrappers yield
+///   InternalError (-32603) through [`codec_error`].
+/// Already consumed temporary values are dropped on failure; caller-owned shared state is unchanged.
+/// # Examples
+/// Private adapter context; this builds values only and does not send a message.
+/// ```text
+/// let input = d::SymbolTag(0);
+/// let output = encode_symbol_tag(input)?;
+/// ```
 pub(in crate::server::wrapper) fn encode_symbol_tag(
     v: d::SymbolTag,
 ) -> Result<lsp_types::SymbolTag, ServerError> {
     serde_json::from_value(serde_json::to_value(v.0).map_err(codec_error)?).map_err(codec_error)
 }
+/// Decode the client's document-feature support records for business handlers.
+/// No external side effects or file/network I/O; takes input by value without borrowing caller state.
+///
+/// # Mapping
+/// - `synchronization`: convert through [`decode_text_document_sync_client_capabilities`]; preserve
+///   `None` versus `Some`.
+/// - `completion`: convert through [`decode_completion_client_capabilities`]; preserve `None` versus
+///   `Some`.
+/// - `hover`: convert through [`decode_hover_client_capabilities`]; preserve `None` versus `Some`.
+/// - `signature_help`: convert through [`decode_signature_help_client_capabilities`]; preserve `None`
+///   versus `Some`.
+/// - `references`: convert through [`decode_dynamic_registration_client_capabilities`]; preserve `None`
+///   versus `Some`.
+/// - `document_highlight`: convert through [`decode_dynamic_registration_client_capabilities`];
+///   preserve `None` versus `Some`.
+/// - `document_symbol`: convert through [`decode_document_symbol_client_capabilities`]; preserve `None`
+///   versus `Some`.
+/// - `formatting`: convert through [`decode_dynamic_registration_client_capabilities`]; preserve `None`
+///   versus `Some`.
+/// - `range_formatting`: convert through [`decode_dynamic_registration_client_capabilities`]; preserve
+///   `None` versus `Some`.
+/// - `on_type_formatting`: convert through [`decode_dynamic_registration_client_capabilities`];
+///   preserve `None` versus `Some`.
+/// - `declaration`: convert through [`decode_goto_capability`]; preserve `None` versus `Some`.
+/// - `definition`: convert through [`decode_goto_capability`]; preserve `None` versus `Some`.
+/// - `type_definition`: convert through [`decode_goto_capability`]; preserve `None` versus `Some`.
+/// - `implementation`: convert through [`decode_goto_capability`]; preserve `None` versus `Some`.
+/// - `code_action`: convert through [`decode_code_action_client_capabilities`]; preserve `None` versus
+///   `Some`.
+/// - `code_lens`: convert through [`decode_dynamic_registration_client_capabilities`]; preserve `None`
+///   versus `Some`.
+/// - `document_link`: convert through [`decode_document_link_client_capabilities`]; preserve `None`
+///   versus `Some`.
+/// - `color_provider`: convert through [`decode_dynamic_registration_client_capabilities`]; preserve
+///   `None` versus `Some`.
+/// - `rename`: convert through [`decode_rename_client_capabilities`]; preserve `None` versus `Some`.
+/// - `publish_diagnostics`: convert through [`decode_publish_diagnostics_client_capabilities`];
+///   preserve `None` versus `Some`.
+/// - `folding_range`: convert through [`decode_folding_range_client_capabilities`]; preserve `None`
+///   versus `Some`.
+/// - `selection_range`: convert through [`decode_selection_range_client_capabilities`]; preserve `None`
+///   versus `Some`.
+/// - `linked_editing_range`: convert through [`decode_dynamic_registration_client_capabilities`];
+///   preserve `None` versus `Some`.
+/// - `call_hierarchy`: convert through [`decode_dynamic_registration_client_capabilities`]; preserve
+///   `None` versus `Some`.
+/// - `semantic_tokens`: convert through [`decode_semantic_tokens_client_capabilities`]; preserve `None`
+///   versus `Some`.
+/// - `moniker`: convert through [`decode_dynamic_registration_client_capabilities`]; preserve `None`
+///   versus `Some`.
+/// - `type_hierarchy`: convert through [`decode_dynamic_registration_client_capabilities`]; preserve
+///   `None` versus `Some`.
+/// - `inline_value`: convert through [`decode_dynamic_registration_client_capabilities`]; preserve
+///   `None` versus `Some`.
+/// - `inlay_hint`: convert through [`decode_inlay_hint_client_capabilities`]; preserve `None` versus
+///   `Some`.
+/// - `diagnostic`: convert through [`decode_diagnostic_client_capabilities`]; preserve `None` versus
+///   `Some`.
+///
+/// # Arguments
+/// - `v` `[in]`: owned `lsp_types::TextDocumentClientCapabilities` consumed by conversion; no caller output storage.
+/// # Returns
+/// `Ok(value)` contains the complete `d::TextDocumentClientCapabilities`; `Err(error)` returns the
+/// first conversion failure.
+/// No output parameters are appended to or overwritten; no partial output is returned.
+/// # Errors
+/// - JSON serialization/deserialization shape or representation failures in scalar wrappers yield
+///   InternalError (-32603) through [`codec_error`].
+/// Already consumed temporary values are dropped on failure; caller-owned shared state is unchanged.
+///
+/// # Algorithm
+/// Build the output using the field mappings above.
+/// Optional adapters keep `None`; `Some` values are converted before the output is returned.
+/// Stop at the first nested error and drop incomplete local output.
+/// # Flow
+/// ```text
+///  [scalar fields]       [optional records]
+///        |                       |
+///     [retain]            <value present?>
+///        |                 /           \
+///        |                no           yes
+///        |                 |            |
+///        |             [None]    [convert payload]
+///        |                 |            |
+///        +-----------------+------------+
+///                          v
+///                 [complete output]
+///
+///  Any failing adapter ----> [drop locals]
+///                                   |
+///                                   v
+///                            [return error]
+/// ```
+/// # Examples
+/// Private adapter context; this builds values only and does not send a message.
+/// ```text
+/// let input = lsp_types::TextDocumentClientCapabilities {
+///     synchronization: None,
+///     completion: None,
+///     hover: None,
+///     signature_help: None,
+///     references: None,
+///     document_highlight: None,
+///     document_symbol: None,
+///     formatting: None,
+///     range_formatting: None,
+///     on_type_formatting: None,
+///     declaration: None,
+///     definition: None,
+///     type_definition: None,
+///     implementation: None,
+///     code_action: None,
+///     code_lens: None,
+///     document_link: None,
+///     color_provider: None,
+///     rename: None,
+///     publish_diagnostics: None,
+///     folding_range: None,
+///     selection_range: None,
+///     linked_editing_range: None,
+///     call_hierarchy: None,
+///     semantic_tokens: None,
+///     moniker: None,
+///     type_hierarchy: None,
+///     inline_value: None,
+///     inlay_hint: None,
+///     diagnostic: None,
+/// };
+/// let output = decode_text_document_client_capabilities(input)?;
+/// ```
 pub(in crate::server::wrapper) fn decode_text_document_client_capabilities(
     v: lsp_types::TextDocumentClientCapabilities,
 ) -> Result<d::TextDocumentClientCapabilities, ServerError> {
@@ -1414,6 +5207,31 @@ pub(in crate::server::wrapper) fn decode_text_document_client_capabilities(
             .transpose()?,
     })
 }
+/// Decode a replacement's optional range, optional old length and new text for business handlers.
+/// No external side effects or file/network I/O; takes input by value without borrowing caller state.
+///
+/// A missing range remains a full-content replacement description. Text and deprecated `range_length`
+/// are retained; no edit is applied.
+///
+/// # Mapping
+/// - `range_length`, `text`: move/copy unchanged into the same-named output fields.
+/// - `range`: convert through [`decode_range`]; preserve `None` versus `Some`.
+///
+/// # Arguments
+/// - `v` `[in]`: owned `lsp_types::TextDocumentContentChangeEvent` consumed by conversion; no caller output storage.
+/// # Returns
+/// Always `Ok(value)` containing `d::TextDocumentContentChangeEvent`. No output parameters or shared
+/// state are changed.
+/// # Examples
+/// Private adapter context; this builds values only and does not send a message.
+/// ```text
+/// let input = lsp_types::TextDocumentContentChangeEvent {
+///     range: None,
+///     range_length: None,
+///     text: "value".into(),
+/// };
+/// let output = decode_text_document_content_change_event(input)?;
+/// ```
 pub(in crate::server::wrapper) fn decode_text_document_content_change_event(
     v: lsp_types::TextDocumentContentChangeEvent,
 ) -> Result<d::TextDocumentContentChangeEvent, ServerError> {
@@ -1423,6 +5241,59 @@ pub(in crate::server::wrapper) fn decode_text_document_content_change_event(
         text: v.text,
     })
 }
+/// Decode a versioned document and ordered plain-or-annotated replacements for business handlers.
+/// No external side effects or file/network I/O; takes input by value without borrowing caller state.
+///
+/// Plain and annotated edit choices stay distinct. Edit order and optional version are retained; no
+/// edit is applied or sorted.
+///
+/// # Mapping
+/// - `text_document`: convert through [`decode_optional_versioned_text_document_identifier`].
+/// - `edits`: consume each element in order through [`decode_text_edit`],
+///   [`decode_annotated_text_edit`].
+///
+/// # Arguments
+/// - `v` `[in]`: owned `lsp_types::TextDocumentEdit` consumed by conversion; no caller output storage.
+/// # Returns
+/// Always `Ok(value)` containing `d::TextDocumentEdit`. No output parameters or shared state are
+/// changed.
+///
+/// # Algorithm
+/// Convert `text_document`, then consume `edits` in order. Each element's `OneOf` choice calls
+/// [`decode_text_edit`] for `Left` or [`decode_annotated_text_edit`] for `Right`. Collect the
+/// converted elements into the new record without applying or sorting them.
+/// # Flow
+/// ```text
+///               [owned TextDocumentEdit record]
+///                               |
+///                  [decode document URI/version]
+///                               |
+///        +--------------> <next edit?> ---- no ----> [rebuilt business record]
+///        |                      |
+///        |                     yes
+///        |                      v
+///        |              <edit element choice>
+///        |              /                   \
+///        |         Left: plain         Right: annotated
+///        |              |                   |
+///        |     [decode_text_edit] [decode_annotated_text_edit]
+///        |              |                   |
+///        |              +---------+---------+
+///        |                        v
+///        +----------- [collect converted element]
+/// ```
+/// # Examples
+/// Private adapter context; this builds values only and does not send a message.
+/// ```text
+/// let input = lsp_types::TextDocumentEdit {
+///     text_document: lsp_types::OptionalVersionedTextDocumentIdentifier {
+///         uri: "file:///tmp/example.rs".parse().unwrap(),
+///         version: None,
+///     },
+///     edits: vec![],
+/// };
+/// let output = decode_text_document_edit(input)?;
+/// ```
 pub(in crate::server::wrapper) fn decode_text_document_edit(
     v: lsp_types::TextDocumentEdit,
 ) -> Result<d::TextDocumentEdit, ServerError> {
@@ -1439,6 +5310,68 @@ pub(in crate::server::wrapper) fn decode_text_document_edit(
             .collect::<Result<Vec<_>, ServerError>>()?,
     })
 }
+/// Encode a versioned document and ordered plain-or-annotated replacements for typed LSP output.
+/// No external side effects or file/network I/O; takes input by value without borrowing caller state.
+///
+/// Plain and annotated edit choices stay distinct. Edit order and optional version are retained; no
+/// edit is applied or sorted.
+///
+/// # Mapping
+/// - `text_document`: convert through [`encode_optional_versioned_text_document_identifier`].
+/// - `edits`: consume each element in order through [`encode_text_edit`],
+///   [`encode_annotated_text_edit`].
+///
+/// # Arguments
+/// - `v` `[in]`: owned `d::TextDocumentEdit` consumed by conversion; no caller output storage.
+/// # Returns
+/// `Ok(value)` contains the complete `lsp_types::TextDocumentEdit`; `Err(error)` returns the first
+/// conversion failure.
+/// No output parameters are appended to or overwritten; no partial output is returned.
+/// # Errors
+/// - Invalid output URI syntax yields InternalError (-32603) through [`encode_uri`]; no resource is
+///   accessed.
+/// Already consumed temporary values are dropped on failure; caller-owned shared state is unchanged.
+///
+/// # Algorithm
+/// Convert `text_document`, then consume `edits` in order. Each element's `OneOf` choice calls
+/// [`encode_text_edit`] for `Left` or [`encode_annotated_text_edit`] for `Right`. Collect the
+/// converted elements into the new record without applying or sorting them.
+/// An invalid document URI returns an error before any edit element is visited; local output is dropped.
+/// # Flow
+/// ```text
+///               [owned TextDocumentEdit record]
+///                               |
+///                  [encode document URI/version] -- invalid URI --> [drop locals]
+///                               |                                       |
+///                               |                                       v
+///                               |                                [return error]
+///                               v
+///        +--------------> <next edit?> ---- no ----> [rebuilt wire record]
+///        |                      |
+///        |                     yes
+///        |                      v
+///        |              <edit element choice>
+///        |              /                   \
+///        |         Left: plain         Right: annotated
+///        |              |                   |
+///        |     [encode_text_edit] [encode_annotated_text_edit]
+///        |              |                   |
+///        |              +---------+---------+
+///        |                        v
+///        +----------- [collect converted element]
+/// ```
+/// # Examples
+/// Private adapter context; this builds values only and does not send a message.
+/// ```text
+/// let input = d::TextDocumentEdit {
+///     text_document: d::OptionalVersionedTextDocumentIdentifier {
+///         uri: d::Uri("file:///tmp/example.rs".into()),
+///         version: None,
+///     },
+///     edits: vec![],
+/// };
+/// let output = encode_text_document_edit(input)?;
+/// ```
 pub(in crate::server::wrapper) fn encode_text_document_edit(
     v: d::TextDocumentEdit,
 ) -> Result<lsp_types::TextDocumentEdit, ServerError> {
@@ -1455,6 +5388,25 @@ pub(in crate::server::wrapper) fn encode_text_document_edit(
             .collect::<Result<Vec<_>, ServerError>>()?,
     })
 }
+/// Decode a document URI without a version for business handlers.
+/// No external side effects or file/network I/O; takes input by value without borrowing caller state.
+///
+/// # Mapping
+/// - `uri`: convert through [`decode_uri`].
+///
+/// # Arguments
+/// - `v` `[in]`: owned `lsp_types::TextDocumentIdentifier` consumed by conversion; no caller output storage.
+/// # Returns
+/// Always `Ok(value)` containing `d::TextDocumentIdentifier`. No output parameters or shared state are
+/// changed.
+/// # Examples
+/// Private adapter context; this builds values only and does not send a message.
+/// ```text
+/// let input = lsp_types::TextDocumentIdentifier {
+///     uri: "file:///tmp/example.rs".parse().unwrap(),
+/// };
+/// let output = decode_text_document_identifier(input)?;
+/// ```
 pub(in crate::server::wrapper) fn decode_text_document_identifier(
     v: lsp_types::TextDocumentIdentifier,
 ) -> Result<d::TextDocumentIdentifier, ServerError> {
@@ -1462,6 +5414,29 @@ pub(in crate::server::wrapper) fn decode_text_document_identifier(
         uri: decode_uri(v.uri)?,
     })
 }
+/// Decode a document URI, language, version and complete contents for business handlers.
+/// No external side effects or file/network I/O; takes input by value without borrowing caller state.
+///
+/// # Mapping
+/// - `language_id`, `version`, `text`: move/copy unchanged into the same-named output fields.
+/// - `uri`: convert through [`decode_uri`].
+///
+/// # Arguments
+/// - `v` `[in]`: owned `lsp_types::TextDocumentItem` consumed by conversion; no caller output storage.
+/// # Returns
+/// Always `Ok(value)` containing `d::TextDocumentItem`. No output parameters or shared state are
+/// changed.
+/// # Examples
+/// Private adapter context; this builds values only and does not send a message.
+/// ```text
+/// let input = lsp_types::TextDocumentItem {
+///     uri: "file:///tmp/example.rs".parse().unwrap(),
+///     language_id: "value".into(),
+///     version: 1,
+///     text: "value".into(),
+/// };
+/// let output = decode_text_document_item(input)?;
+/// ```
 pub(in crate::server::wrapper) fn decode_text_document_item(
     v: lsp_types::TextDocumentItem,
 ) -> Result<d::TextDocumentItem, ServerError> {
@@ -1472,6 +5447,32 @@ pub(in crate::server::wrapper) fn decode_text_document_item(
         text: v.text,
     })
 }
+/// Decode a document identifier and position for business handlers.
+/// No external side effects or file/network I/O; takes input by value without borrowing caller state.
+///
+/// # Mapping
+/// - `text_document`: convert through [`decode_text_document_identifier`].
+/// - `position`: convert through [`decode_position`].
+///
+/// # Arguments
+/// - `v` `[in]`: owned `lsp_types::TextDocumentPositionParams` consumed by conversion; no caller output storage.
+/// # Returns
+/// Always `Ok(value)` containing `d::TextDocumentPositionParams`. No output parameters or shared state
+/// are changed.
+/// # Examples
+/// Private adapter context; this builds values only and does not send a message.
+/// ```text
+/// let input = lsp_types::TextDocumentPositionParams {
+///     text_document: lsp_types::TextDocumentIdentifier {
+///         uri: "file:///tmp/example.rs".parse().unwrap(),
+///     },
+///     position: lsp_types::Position {
+///         line: 0,
+///         character: 0,
+///     },
+/// };
+/// let output = decode_text_document_position_params(input)?;
+/// ```
 pub(in crate::server::wrapper) fn decode_text_document_position_params(
     v: lsp_types::TextDocumentPositionParams,
 ) -> Result<d::TextDocumentPositionParams, ServerError> {
@@ -1480,6 +5481,46 @@ pub(in crate::server::wrapper) fn decode_text_document_position_params(
         position: decode_position(v.position)?,
     })
 }
+/// Encode the optional document-selector filters for typed LSP output.
+/// No external side effects or file/network I/O; takes input by value without borrowing caller state.
+///
+/// # Mapping
+/// - `document_selector`: consume each element in order through [`encode_document_filter`]; preserve
+///   `None` versus `Some`.
+///
+/// # Arguments
+/// - `v` `[in]`: owned `d::TextDocumentRegistrationOptions` consumed by conversion; no caller output storage.
+/// # Returns
+/// Always `Ok(value)` containing `lsp_types::TextDocumentRegistrationOptions`. No output parameters or
+/// shared state are changed.
+///
+/// # Algorithm
+/// Build the output using the field mappings above.
+/// Optional adapters keep `None`; `Some` values are converted before the output is returned.
+/// Consume list elements in order or rebuild maps by key; collection finishes before exposing output.
+/// # Flow
+/// ```text
+///  [map other fields]    [list/map entries]
+///        |                      |
+///    [converted]         <next entry?> <----+
+///        |                /        \       |
+///        |              no         yes     |
+///        |               |          |      |
+///        |               |   [convert entry]
+///        |               |          |      |
+///        |               |          +------+
+///        +-------+-------+
+///                v
+///        [complete output record]
+/// ```
+/// # Examples
+/// Private adapter context; this builds values only and does not send a message.
+/// ```text
+/// let input = d::TextDocumentRegistrationOptions {
+///     document_selector: None,
+/// };
+/// let output = encode_text_document_registration_options(input)?;
+/// ```
 pub(in crate::server::wrapper) fn encode_text_document_registration_options(
     v: d::TextDocumentRegistrationOptions,
 ) -> Result<lsp_types::TextDocumentRegistrationOptions, ServerError> {
@@ -1495,6 +5536,33 @@ pub(in crate::server::wrapper) fn encode_text_document_registration_options(
             .transpose()?,
     })
 }
+/// Decode the numeric reason for a save for business handlers.
+/// No external side effects or file/network I/O; takes input by value without borrowing caller state.
+///
+/// The JSON scalar representation bridges the private wire wrapper and the business tuple field.
+/// The signed `i32` value is preserved without a known-value whitelist.
+/// Unknown values are not rejected merely for being unknown.
+///
+/// # Mapping
+/// - `v`: serialize the wire scalar, then deserialize into the business wrapper's public tuple field `.0`.
+/// - No integer rounding or known-constant check occurs.
+///
+/// # Arguments
+/// - `v` `[in]`: owned `lsp_types::TextDocumentSaveReason` consumed by conversion; no caller output storage.
+/// # Returns
+/// `Ok(value)` contains the complete `d::TextDocumentSaveReason`; `Err(error)` returns the first
+/// conversion failure.
+/// No output parameters are appended to or overwritten; no partial output is returned.
+/// # Errors
+/// - JSON serialization/deserialization shape or representation failures in scalar wrappers yield
+///   InternalError (-32603) through [`codec_error`].
+/// Already consumed temporary values are dropped on failure; caller-owned shared state is unchanged.
+/// # Examples
+/// Private adapter context; this builds values only and does not send a message.
+/// ```text
+/// let input = serde_json::from_value(serde_json::json!(1)).unwrap();
+/// let output = decode_text_document_save_reason(input)?;
+/// ```
 pub(in crate::server::wrapper) fn decode_text_document_save_reason(
     v: lsp_types::TextDocumentSaveReason,
 ) -> Result<d::TextDocumentSaveReason, ServerError> {
@@ -1503,6 +5571,53 @@ pub(in crate::server::wrapper) fn decode_text_document_save_reason(
         serde_json::from_value(value).map_err(codec_error)?,
     ))
 }
+/// Encode the sync-kind-or-detailed-options advertisement for typed LSP output.
+/// No external side effects or file/network I/O; takes input by value without borrowing caller state.
+///
+/// # Mapping
+/// - `Kind` stays `Kind`; convert the payload through [`encode_text_document_sync_kind`].
+/// - `Options` stays `Options`; convert the payload through [`encode_text_document_sync_options`].
+///
+/// # Arguments
+/// - `v` `[in]`: owned `d::TextDocumentSyncCapability` consumed by conversion; no caller output storage.
+/// # Returns
+/// `Ok(value)` contains the complete `lsp_types::TextDocumentSyncCapability`; `Err(error)` returns the
+/// first conversion failure.
+/// No output parameters are appended to or overwritten; no partial output is returned.
+/// # Errors
+/// - JSON serialization/deserialization shape or representation failures in scalar wrappers yield
+///   InternalError (-32603) through [`codec_error`].
+/// Already consumed temporary values are dropped on failure; caller-owned shared state is unchanged.
+///
+/// # Algorithm
+/// Select the input variant and rebuild the same output variant using the payload adapters above.
+/// Containers are consumed rather than cloned.
+/// A nested failure exits immediately and discards the partially built local value.
+/// # Flow
+/// ```text
+///           <input variant?>
+///                   |
+///           +-------+--------+
+///           |                |
+///        [Kind]          [Options]
+///           |                |
+///     [map payload]    [map payload]
+///           |                |
+///           +-------+--------+
+///                   |
+///         [same output choice]
+///
+///  Payload failure ---> [drop locals]
+///                              |
+///                              v
+///                        [return error]
+/// ```
+/// # Examples
+/// Private adapter context; this builds values only and does not send a message.
+/// ```text
+/// let input = d::TextDocumentSyncCapability::Kind(d::TextDocumentSyncKind(0));
+/// let output = encode_text_document_sync_capability(input)?;
+/// ```
 pub(in crate::server::wrapper) fn encode_text_document_sync_capability(
     v: d::TextDocumentSyncCapability,
 ) -> Result<lsp_types::TextDocumentSyncCapability, ServerError> {
@@ -1515,6 +5630,29 @@ pub(in crate::server::wrapper) fn encode_text_document_sync_capability(
         }
     })
 }
+/// Decode the client's registration and save-notification support for business handlers.
+/// No external side effects or file/network I/O; takes input by value without borrowing caller state.
+///
+/// # Mapping
+/// - `dynamic_registration`, `will_save`, `will_save_wait_until`, `did_save`: move/copy unchanged into
+///   the same-named output fields.
+///
+/// # Arguments
+/// - `v` `[in]`: owned `lsp_types::TextDocumentSyncClientCapabilities` consumed by conversion; no caller output storage.
+/// # Returns
+/// Always `Ok(value)` containing `d::TextDocumentSyncClientCapabilities`. No output parameters or
+/// shared state are changed.
+/// # Examples
+/// Private adapter context; this builds values only and does not send a message.
+/// ```text
+/// let input = lsp_types::TextDocumentSyncClientCapabilities {
+///     dynamic_registration: None,
+///     will_save: None,
+///     will_save_wait_until: None,
+///     did_save: None,
+/// };
+/// let output = decode_text_document_sync_client_capabilities(input)?;
+/// ```
 pub(in crate::server::wrapper) fn decode_text_document_sync_client_capabilities(
     v: lsp_types::TextDocumentSyncClientCapabilities,
 ) -> Result<d::TextDocumentSyncClientCapabilities, ServerError> {
@@ -1525,11 +5663,69 @@ pub(in crate::server::wrapper) fn decode_text_document_sync_client_capabilities(
         did_save: v.did_save,
     })
 }
+/// Encode the numeric document synchronization mode for typed LSP output.
+/// No external side effects or file/network I/O; takes input by value without borrowing caller state.
+///
+/// The JSON scalar representation bridges the private wire wrapper and the business tuple field.
+/// The signed `i32` value is preserved without a known-value whitelist.
+/// Unknown values are not rejected merely for being unknown.
+///
+/// # Mapping
+/// - `v.0`: serialize the business scalar, then deserialize the same JSON scalar as the wire wrapper.
+/// - No integer rounding or known-constant check occurs.
+///
+/// # Arguments
+/// - `v` `[in]`: owned `d::TextDocumentSyncKind` consumed by conversion; no caller output storage.
+/// # Returns
+/// `Ok(value)` contains the complete `lsp_types::TextDocumentSyncKind`; `Err(error)` returns the first
+/// conversion failure.
+/// No output parameters are appended to or overwritten; no partial output is returned.
+/// # Errors
+/// - JSON serialization/deserialization shape or representation failures in scalar wrappers yield
+///   InternalError (-32603) through [`codec_error`].
+/// Already consumed temporary values are dropped on failure; caller-owned shared state is unchanged.
+/// # Examples
+/// Private adapter context; this builds values only and does not send a message.
+/// ```text
+/// let input = d::TextDocumentSyncKind(0);
+/// let output = encode_text_document_sync_kind(input)?;
+/// ```
 pub(in crate::server::wrapper) fn encode_text_document_sync_kind(
     v: d::TextDocumentSyncKind,
 ) -> Result<lsp_types::TextDocumentSyncKind, ServerError> {
     serde_json::from_value(serde_json::to_value(v.0).map_err(codec_error)?).map_err(codec_error)
 }
+/// Encode open/close, change and save synchronization settings for typed LSP output.
+/// No external side effects or file/network I/O; takes input by value without borrowing caller state.
+///
+/// # Mapping
+/// - `open_close`, `will_save`, `will_save_wait_until`: move/copy unchanged into the same-named output
+///   fields.
+/// - `change`: convert through [`encode_text_document_sync_kind`]; preserve `None` versus `Some`.
+/// - `save`: convert through [`encode_text_document_sync_save_options`]; preserve `None` versus `Some`.
+///
+/// # Arguments
+/// - `v` `[in]`: owned `d::TextDocumentSyncOptions` consumed by conversion; no caller output storage.
+/// # Returns
+/// `Ok(value)` contains the complete `lsp_types::TextDocumentSyncOptions`; `Err(error)` returns the
+/// first conversion failure.
+/// No output parameters are appended to or overwritten; no partial output is returned.
+/// # Errors
+/// - JSON serialization/deserialization shape or representation failures in scalar wrappers yield
+///   InternalError (-32603) through [`codec_error`].
+/// Already consumed temporary values are dropped on failure; caller-owned shared state is unchanged.
+/// # Examples
+/// Private adapter context; this builds values only and does not send a message.
+/// ```text
+/// let input = d::TextDocumentSyncOptions {
+///     open_close: None,
+///     change: None,
+///     will_save: None,
+///     will_save_wait_until: None,
+///     save: None,
+/// };
+/// let output = encode_text_document_sync_options(input)?;
+/// ```
 pub(in crate::server::wrapper) fn encode_text_document_sync_options(
     v: d::TextDocumentSyncOptions,
 ) -> Result<lsp_types::TextDocumentSyncOptions, ServerError> {
@@ -1543,6 +5739,42 @@ pub(in crate::server::wrapper) fn encode_text_document_sync_options(
             .transpose()?,
     })
 }
+/// Encode the save boolean-or-options choice for typed LSP output.
+/// No external side effects or file/network I/O; takes input by value without borrowing caller state.
+///
+/// # Mapping
+/// - `Supported` stays `Supported`; copy the support boolean unchanged.
+/// - `SaveOptions` stays `SaveOptions`; convert the payload through [`encode_save_options`].
+///
+/// # Arguments
+/// - `v` `[in]`: owned `d::TextDocumentSyncSaveOptions` consumed by conversion; no caller output storage.
+/// # Returns
+/// Always `Ok(value)` containing `lsp_types::TextDocumentSyncSaveOptions`. No output parameters or
+/// shared state are changed.
+///
+/// # Algorithm
+/// Select the input variant and rebuild the same output variant using the payload adapters above.
+/// Containers are consumed rather than cloned.
+/// # Flow
+/// ```text
+///           <input variant?>
+///                   |
+///           +-------+--------+
+///           |                |
+///      [Supported]     [SaveOptions]
+///           |                |
+///     [map payload]    [map payload]
+///           |                |
+///           +-------+--------+
+///                   |
+///         [same output choice]
+/// ```
+/// # Examples
+/// Private adapter context; this builds values only and does not send a message.
+/// ```text
+/// let input = d::TextDocumentSyncSaveOptions::Supported(false);
+/// let output = encode_text_document_sync_save_options(input)?;
+/// ```
 pub(in crate::server::wrapper) fn encode_text_document_sync_save_options(
     v: d::TextDocumentSyncSaveOptions,
 ) -> Result<lsp_types::TextDocumentSyncSaveOptions, ServerError> {
@@ -1555,6 +5787,37 @@ pub(in crate::server::wrapper) fn encode_text_document_sync_save_options(
         }
     })
 }
+/// Decode a replacement range and new text for business handlers.
+/// No external side effects or file/network I/O; takes input by value without borrowing caller state.
+///
+/// Replacement text moves unchanged. Ranges are not validated and no document is edited.
+///
+/// # Mapping
+/// - `new_text`: move/copy unchanged into the same-named output fields.
+/// - `range`: convert through [`decode_range`].
+///
+/// # Arguments
+/// - `v` `[in]`: owned `lsp_types::TextEdit` consumed by conversion; no caller output storage.
+/// # Returns
+/// Always `Ok(value)` containing `d::TextEdit`. No output parameters or shared state are changed.
+/// # Examples
+/// Private adapter context; this builds values only and does not send a message.
+/// ```text
+/// let input = lsp_types::TextEdit {
+///     range: lsp_types::Range {
+///         start: lsp_types::Position {
+///             line: 0,
+///             character: 0,
+///         },
+///         end: lsp_types::Position {
+///             line: 0,
+///             character: 0,
+///         },
+///     },
+///     new_text: "replacement".into(),
+/// };
+/// let output = decode_text_edit(input)?;
+/// ```
 pub(in crate::server::wrapper) fn decode_text_edit(
     v: lsp_types::TextEdit,
 ) -> Result<d::TextEdit, ServerError> {
@@ -1563,6 +5826,38 @@ pub(in crate::server::wrapper) fn decode_text_edit(
         new_text: v.new_text,
     })
 }
+/// Encode a replacement range and new text for typed LSP output.
+/// No external side effects or file/network I/O; takes input by value without borrowing caller state.
+///
+/// Replacement text moves unchanged. Ranges are not validated and no document is edited.
+///
+/// # Mapping
+/// - `new_text`: move/copy unchanged into the same-named output fields.
+/// - `range`: convert through [`encode_range`].
+///
+/// # Arguments
+/// - `v` `[in]`: owned `d::TextEdit` consumed by conversion; no caller output storage.
+/// # Returns
+/// Always `Ok(value)` containing `lsp_types::TextEdit`. No output parameters or shared state are
+/// changed.
+/// # Examples
+/// Private adapter context; this builds values only and does not send a message.
+/// ```text
+/// let input = d::TextEdit {
+///     range: d::Range {
+///         start: d::Position {
+///             line: 0,
+///             character: 0,
+///         },
+///         end: d::Position {
+///             line: 0,
+///             character: 0,
+///         },
+///     },
+///     new_text: "replacement".into(),
+/// };
+/// let output = encode_text_edit(input)?;
+/// ```
 pub(in crate::server::wrapper) fn encode_text_edit(
     v: d::TextEdit,
 ) -> Result<lsp_types::TextEdit, ServerError> {
@@ -1571,6 +5866,43 @@ pub(in crate::server::wrapper) fn encode_text_edit(
         new_text: v.new_text,
     })
 }
+/// Encode the boolean-or-registration type-definition advertisement for typed LSP output.
+/// No external side effects or file/network I/O; takes input by value without borrowing caller state.
+///
+/// # Mapping
+/// - `Simple` stays `Simple`; copy the support boolean unchanged.
+/// - `Options` stays `Options`; convert the payload through
+///   [`encode_static_text_document_registration_options`].
+///
+/// # Arguments
+/// - `v` `[in]`: owned `d::TypeDefinitionProviderCapability` consumed by conversion; no caller output storage.
+/// # Returns
+/// Always `Ok(value)` containing `lsp_types::TypeDefinitionProviderCapability`. No output parameters or
+/// shared state are changed.
+///
+/// # Algorithm
+/// Select the input variant and rebuild the same output variant using the payload adapters above.
+/// Containers are consumed rather than cloned.
+/// # Flow
+/// ```text
+///           <input variant?>
+///                   |
+///           +-------+--------+
+///           |                |
+///       [Simple]         [Options]
+///           |                |
+///     [map payload]    [map payload]
+///           |                |
+///           +-------+--------+
+///                   |
+///         [same output choice]
+/// ```
+/// # Examples
+/// Private adapter context; this builds values only and does not send a message.
+/// ```text
+/// let input = d::TypeDefinitionProviderCapability::Simple(false);
+/// let output = encode_type_definition_provider_capability(input)?;
+/// ```
 pub(in crate::server::wrapper) fn encode_type_definition_provider_capability(
     v: d::TypeDefinitionProviderCapability,
 ) -> Result<lsp_types::TypeDefinitionProviderCapability, ServerError> {
@@ -1585,6 +5917,26 @@ pub(in crate::server::wrapper) fn encode_type_definition_provider_capability(
         }
     })
 }
+/// Encode a registration ID and method name to remove for typed LSP output.
+/// No external side effects or file/network I/O; takes input by value without borrowing caller state.
+///
+/// # Mapping
+/// - `id`, `method`: move/copy unchanged into the same-named output fields.
+///
+/// # Arguments
+/// - `v` `[in]`: owned `d::Unregistration` consumed by conversion; no caller output storage.
+/// # Returns
+/// Always `Ok(value)` containing `lsp_types::Unregistration`. No output parameters or shared state are
+/// changed.
+/// # Examples
+/// Private adapter context; this builds values only and does not send a message.
+/// ```text
+/// let input = d::Unregistration {
+///     id: "registration-1".into(),
+///     method: "textDocument/hover".into(),
+/// };
+/// let output = encode_unregistration(input)?;
+/// ```
 pub(in crate::server::wrapper) fn encode_unregistration(
     v: d::Unregistration,
 ) -> Result<lsp_types::Unregistration, ServerError> {
@@ -1593,6 +5945,44 @@ pub(in crate::server::wrapper) fn encode_unregistration(
         method: v.method,
     })
 }
+/// Encode the ordered unregistration entries for typed LSP output.
+/// No external side effects or file/network I/O; takes input by value without borrowing caller state.
+///
+/// # Mapping
+/// - `unregisterations`: consume each element in order through [`encode_unregistration`].
+///
+/// # Arguments
+/// - `v` `[in]`: owned `d::UnregistrationParams` consumed by conversion; no caller output storage.
+/// # Returns
+/// Always `Ok(value)` containing `lsp_types::UnregistrationParams`. No output parameters or shared
+/// state are changed.
+///
+/// # Algorithm
+/// Build the output using the field mappings above.
+/// Consume list elements in order or rebuild maps by key; collection finishes before exposing output.
+/// # Flow
+/// ```text
+///  [map other fields]    [list/map entries]
+///        |                      |
+///    [converted]         <next entry?> <----+
+///        |                /        \       |
+///        |              no         yes     |
+///        |               |          |      |
+///        |               |   [convert entry]
+///        |               |          |      |
+///        |               |          +------+
+///        +-------+-------+
+///                v
+///        [complete output record]
+/// ```
+/// # Examples
+/// Private adapter context; this builds values only and does not send a message.
+/// ```text
+/// let input = d::UnregistrationParams {
+///     unregisterations: vec![],
+/// };
+/// let output = encode_unregistration_params(input)?;
+/// ```
 pub(in crate::server::wrapper) fn encode_unregistration_params(
     v: d::UnregistrationParams,
 ) -> Result<lsp_types::UnregistrationParams, ServerError> {
@@ -1603,6 +5993,27 @@ pub(in crate::server::wrapper) fn encode_unregistration_params(
             .collect::<Result<Vec<_>, ServerError>>()?,
     })
 }
+/// Decode a document URI and required version for business handlers.
+/// No external side effects or file/network I/O; takes input by value without borrowing caller state.
+///
+/// # Mapping
+/// - `version`: move/copy unchanged into the same-named output fields.
+/// - `uri`: convert through [`decode_uri`].
+///
+/// # Arguments
+/// - `v` `[in]`: owned `lsp_types::VersionedTextDocumentIdentifier` consumed by conversion; no caller output storage.
+/// # Returns
+/// Always `Ok(value)` containing `d::VersionedTextDocumentIdentifier`. No output parameters or shared
+/// state are changed.
+/// # Examples
+/// Private adapter context; this builds values only and does not send a message.
+/// ```text
+/// let input = lsp_types::VersionedTextDocumentIdentifier {
+///     uri: "file:///tmp/example.rs".parse().unwrap(),
+///     version: 1,
+/// };
+/// let output = decode_versioned_text_document_identifier(input)?;
+/// ```
 pub(in crate::server::wrapper) fn decode_versioned_text_document_identifier(
     v: lsp_types::VersionedTextDocumentIdentifier,
 ) -> Result<d::VersionedTextDocumentIdentifier, ServerError> {
@@ -1611,6 +6022,34 @@ pub(in crate::server::wrapper) fn decode_versioned_text_document_identifier(
         version: v.version,
     })
 }
+/// Decode the document and reason for an impending save for business handlers.
+/// No external side effects or file/network I/O; takes input by value without borrowing caller state.
+///
+/// # Mapping
+/// - `text_document`: convert through [`decode_text_document_identifier`].
+/// - `reason`: convert through [`decode_text_document_save_reason`].
+///
+/// # Arguments
+/// - `v` `[in]`: owned `lsp_types::WillSaveTextDocumentParams` consumed by conversion; no caller output storage.
+/// # Returns
+/// `Ok(value)` contains the complete `d::WillSaveTextDocumentParams`; `Err(error)` returns the first
+/// conversion failure.
+/// No output parameters are appended to or overwritten; no partial output is returned.
+/// # Errors
+/// - JSON serialization/deserialization shape or representation failures in scalar wrappers yield
+///   InternalError (-32603) through [`codec_error`].
+/// Already consumed temporary values are dropped on failure; caller-owned shared state is unchanged.
+/// # Examples
+/// Private adapter context; this builds values only and does not send a message.
+/// ```text
+/// let input = lsp_types::WillSaveTextDocumentParams {
+///     text_document: lsp_types::TextDocumentIdentifier {
+///         uri: "file:///tmp/example.rs".parse().unwrap(),
+///     },
+///     reason: serde_json::from_value(serde_json::json!(1)).unwrap(),
+/// };
+/// let output = decode_will_save_text_document_params(input)?;
+/// ```
 pub(in crate::server::wrapper) fn decode_will_save_text_document_params(
     v: lsp_types::WillSaveTextDocumentParams,
 ) -> Result<d::WillSaveTextDocumentParams, ServerError> {
@@ -1619,6 +6058,91 @@ pub(in crate::server::wrapper) fn decode_will_save_text_document_params(
         reason: decode_text_document_save_reason(v.reason)?,
     })
 }
+/// Decode the client's edit, configuration, symbol, folder and workspace-feature support for business
+/// handlers.
+/// No external side effects or file/network I/O; takes input by value without borrowing caller state.
+///
+/// # Mapping
+/// - `apply_edit`, `workspace_folders`, `configuration`: move/copy unchanged into the same-named output
+///   fields.
+/// - `workspace_edit`: convert through [`decode_workspace_edit_client_capabilities`]; preserve `None`
+///   versus `Some`.
+/// - `did_change_configuration`: convert through [`decode_dynamic_registration_client_capabilities`];
+///   preserve `None` versus `Some`.
+/// - `did_change_watched_files`: convert through
+///   [`decode_did_change_watched_files_client_capabilities`]; preserve `None` versus `Some`.
+/// - `symbol`: convert through [`decode_workspace_symbol_client_capabilities`]; preserve `None` versus
+///   `Some`.
+/// - `execute_command`: convert through [`decode_dynamic_registration_client_capabilities`]; preserve
+///   `None` versus `Some`.
+/// - `semantic_tokens`: convert through [`decode_semantic_tokens_workspace_client_capabilities`];
+///   preserve `None` versus `Some`.
+/// - `code_lens`: convert through [`decode_code_lens_workspace_client_capabilities`]; preserve `None`
+///   versus `Some`.
+/// - `file_operations`: convert through [`decode_workspace_file_operations_client_capabilities`];
+///   preserve `None` versus `Some`.
+/// - `inline_value`: convert through [`decode_inline_value_workspace_client_capabilities`]; preserve
+///   `None` versus `Some`.
+/// - `inlay_hint`: convert through [`decode_inlay_hint_workspace_client_capabilities`]; preserve `None`
+///   versus `Some`.
+/// - `diagnostic`: convert through [`decode_diagnostic_workspace_client_capabilities`]; preserve `None`
+///   versus `Some`.
+///
+/// # Arguments
+/// - `v` `[in]`: owned `lsp_types::WorkspaceClientCapabilities` consumed by conversion; no caller output storage.
+/// # Returns
+/// `Ok(value)` contains the complete `d::WorkspaceClientCapabilities`; `Err(error)` returns the first
+/// conversion failure.
+/// No output parameters are appended to or overwritten; no partial output is returned.
+/// # Errors
+/// - JSON serialization/deserialization shape or representation failures in scalar wrappers yield
+///   InternalError (-32603) through [`codec_error`].
+/// Already consumed temporary values are dropped on failure; caller-owned shared state is unchanged.
+///
+/// # Algorithm
+/// Build the output using the field mappings above.
+/// Optional adapters keep `None`; `Some` values are converted before the output is returned.
+/// Stop at the first nested error and drop incomplete local output.
+/// # Flow
+/// ```text
+///  [scalar fields]       [optional records]
+///        |                       |
+///     [retain]            <value present?>
+///        |                 /           \
+///        |                no           yes
+///        |                 |            |
+///        |             [None]    [convert payload]
+///        |                 |            |
+///        +-----------------+------------+
+///                          v
+///                 [complete output]
+///
+///  Any failing adapter ----> [drop locals]
+///                                   |
+///                                   v
+///                            [return error]
+/// ```
+/// # Examples
+/// Private adapter context; this builds values only and does not send a message.
+/// ```text
+/// let input = lsp_types::WorkspaceClientCapabilities {
+///     apply_edit: None,
+///     workspace_edit: None,
+///     did_change_configuration: None,
+///     did_change_watched_files: None,
+///     symbol: None,
+///     execute_command: None,
+///     workspace_folders: None,
+///     configuration: None,
+///     semantic_tokens: None,
+///     code_lens: None,
+///     file_operations: None,
+///     inline_value: None,
+///     inlay_hint: None,
+///     diagnostic: None,
+/// };
+/// let output = decode_workspace_client_capabilities(input)?;
+/// ```
 pub(in crate::server::wrapper) fn decode_workspace_client_capabilities(
     v: lsp_types::WorkspaceClientCapabilities,
 ) -> Result<d::WorkspaceClientCapabilities, ServerError> {
@@ -1661,6 +6185,55 @@ pub(in crate::server::wrapper) fn decode_workspace_client_capabilities(
             .transpose()?,
     })
 }
+/// Decode URI-keyed replacements, versioned operations and change annotations for business handlers.
+/// No external side effects or file/network I/O; takes input by value without borrowing caller state.
+///
+/// `changes` and `document_changes` remain independent; neither is preferred or merged here. URI-keyed
+/// maps are rebuilt, with each edit list kept in order. Edits are not applied.
+///
+/// # Mapping
+/// - `changes`: rebuild the key/value map with URI spelling retained in business keys and ordered value
+///   lists; use [`decode_uri`], [`decode_text_edit`]; preserve `None` versus `Some`.
+/// - `document_changes`: convert through [`decode_document_changes`]; preserve `None` versus `Some`.
+/// - `change_annotations`: rebuild the key/value map with keys retained; use
+///   [`decode_change_annotation`]; preserve `None` versus `Some`.
+///
+/// `changes` and `change_annotations` remain hash maps with unspecified iteration order; edit vectors retain order.
+///
+/// # Arguments
+/// - `v` `[in]`: owned `lsp_types::WorkspaceEdit` consumed by conversion; no caller output storage.
+/// # Returns
+/// Always `Ok(value)` containing `d::WorkspaceEdit`. No output parameters or shared state are changed.
+///
+/// # Algorithm
+/// Build the output using the field mappings above.
+/// Optional adapters keep `None`; `Some` values are converted before the output is returned.
+/// Consume list elements in order or rebuild maps by key; collection finishes before exposing output.
+/// # Flow
+/// ```text
+///  [map other fields]    [list/map entries]
+///        |                      |
+///    [converted]         <next entry?> <----+
+///        |                /        \       |
+///        |              no         yes     |
+///        |               |          |      |
+///        |               |   [convert entry]
+///        |               |          |      |
+///        |               |          +------+
+///        +-------+-------+
+///                v
+///        [complete output record]
+/// ```
+/// # Examples
+/// Private adapter context; this builds values only and does not send a message.
+/// ```text
+/// let input = lsp_types::WorkspaceEdit {
+///     changes: None,
+///     document_changes: None,
+///     change_annotations: None,
+/// };
+/// let output = decode_workspace_edit(input)?;
+/// ```
 pub(in crate::server::wrapper) fn decode_workspace_edit(
     v: lsp_types::WorkspaceEdit,
 ) -> Result<d::WorkspaceEdit, ServerError> {
@@ -1695,6 +6268,67 @@ pub(in crate::server::wrapper) fn decode_workspace_edit(
             .transpose()?,
     })
 }
+/// Encode URI-keyed replacements, versioned operations and change annotations for typed LSP output.
+/// No external side effects or file/network I/O; takes input by value without borrowing caller state.
+///
+/// `changes` and `document_changes` remain independent; neither is preferred or merged here. URI-keyed
+/// maps are rebuilt, with each edit list kept in order. Edits are not applied.
+///
+/// # Mapping
+/// - `changes`: rebuild the key/value map with syntax-checked URI keys and ordered value lists; use
+///   [`encode_uri`], [`encode_text_edit`]; preserve `None` versus `Some`.
+/// - `document_changes`: convert through [`encode_document_changes`]; preserve `None` versus `Some`.
+/// - `change_annotations`: rebuild the key/value map with keys retained; use
+///   [`encode_change_annotation`]; preserve `None` versus `Some`.
+///
+/// `changes` and `change_annotations` remain hash maps with unspecified iteration order; edit vectors retain order.
+///
+/// # Arguments
+/// - `v` `[in]`: owned `d::WorkspaceEdit` consumed by conversion; no caller output storage.
+/// # Returns
+/// `Ok(value)` contains the complete `lsp_types::WorkspaceEdit`; `Err(error)` returns the first
+/// conversion failure.
+/// No output parameters are appended to or overwritten; no partial output is returned.
+/// # Errors
+/// - Invalid output URI syntax yields InternalError (-32603) through [`encode_uri`]; no resource is
+///   accessed.
+/// Already consumed temporary values are dropped on failure; caller-owned shared state is unchanged.
+///
+/// # Algorithm
+/// Build the output using the field mappings above.
+/// Optional adapters keep `None`; `Some` values are converted before the output is returned.
+/// Consume list elements in order or rebuild maps by key; collection finishes before exposing output.
+/// Stop at the first nested error and drop incomplete local output.
+/// # Flow
+/// ```text
+///  [map other fields]    [list/map entries]
+///        |                      |
+///    [converted]         <next entry?> <----+
+///        |                /        \       |
+///        |              no         yes     |
+///        |               |          |      |
+///        |               |   [convert entry]
+///        |               |          |      |
+///        |               |          +------+
+///        +-------+-------+
+///                v
+///        [complete output record]
+///
+///  Any failing adapter ----> [drop locals]
+///                                   |
+///                                   v
+///                            [return error]
+/// ```
+/// # Examples
+/// Private adapter context; this builds values only and does not send a message.
+/// ```text
+/// let input = d::WorkspaceEdit {
+///     changes: None,
+///     document_changes: None,
+///     change_annotations: None,
+/// };
+/// let output = encode_workspace_edit(input)?;
+/// ```
 pub(in crate::server::wrapper) fn encode_workspace_edit(
     v: d::WorkspaceEdit,
 ) -> Result<lsp_types::WorkspaceEdit, ServerError> {
@@ -1729,6 +6363,57 @@ pub(in crate::server::wrapper) fn encode_workspace_edit(
             .transpose()?,
     })
 }
+/// Decode the client's edit-version, resource-operation, failure and annotation support for business
+/// handlers.
+/// No external side effects or file/network I/O; takes input by value without borrowing caller state.
+///
+/// # Mapping
+/// - `document_changes`, `normalizes_line_endings`: move/copy unchanged into the same-named output
+///   fields.
+/// - `resource_operations`: consume each element in order through [`decode_resource_operation_kind`];
+///   preserve `None` versus `Some`.
+/// - `failure_handling`: convert through [`decode_failure_handling_kind`]; preserve `None` versus
+///   `Some`.
+/// - `change_annotation_support`: convert through
+///   [`decode_change_annotation_workspace_edit_client_capabilities`]; preserve `None` versus `Some`.
+///
+/// # Arguments
+/// - `v` `[in]`: owned `lsp_types::WorkspaceEditClientCapabilities` consumed by conversion; no caller output storage.
+/// # Returns
+/// Always `Ok(value)` containing `d::WorkspaceEditClientCapabilities`. No output parameters or shared
+/// state are changed.
+///
+/// # Algorithm
+/// Build the output using the field mappings above.
+/// Optional adapters keep `None`; `Some` values are converted before the output is returned.
+/// Consume list elements in order or rebuild maps by key; collection finishes before exposing output.
+/// # Flow
+/// ```text
+///  [map other fields]    [list/map entries]
+///        |                      |
+///    [converted]         <next entry?> <----+
+///        |                /        \       |
+///        |              no         yes     |
+///        |               |          |      |
+///        |               |   [convert entry]
+///        |               |          |      |
+///        |               |          +------+
+///        +-------+-------+
+///                v
+///        [complete output record]
+/// ```
+/// # Examples
+/// Private adapter context; this builds values only and does not send a message.
+/// ```text
+/// let input = lsp_types::WorkspaceEditClientCapabilities {
+///     document_changes: None,
+///     resource_operations: None,
+///     failure_handling: None,
+///     normalizes_line_endings: None,
+///     change_annotation_support: None,
+/// };
+/// let output = decode_workspace_edit_client_capabilities(input)?;
+/// ```
 pub(in crate::server::wrapper) fn decode_workspace_edit_client_capabilities(
     v: lsp_types::WorkspaceEditClientCapabilities,
 ) -> Result<d::WorkspaceEditClientCapabilities, ServerError> {
@@ -1752,6 +6437,29 @@ pub(in crate::server::wrapper) fn decode_workspace_edit_client_capabilities(
             .transpose()?,
     })
 }
+/// Encode workspace-folder and file-operation advertisements for typed LSP output.
+/// No external side effects or file/network I/O; takes input by value without borrowing caller state.
+///
+/// # Mapping
+/// - `workspace_folders`: convert through [`encode_workspace_folders_server_capabilities`]; preserve
+///   `None` versus `Some`.
+/// - `file_operations`: convert through [`encode_workspace_file_operations_server_capabilities`];
+///   preserve `None` versus `Some`.
+///
+/// # Arguments
+/// - `v` `[in]`: owned `d::WorkspaceServerCapabilities` consumed by conversion; no caller output storage.
+/// # Returns
+/// Always `Ok(value)` containing `lsp_types::WorkspaceServerCapabilities`. No output parameters or
+/// shared state are changed.
+/// # Examples
+/// Private adapter context; this builds values only and does not send a message.
+/// ```text
+/// let input = d::WorkspaceServerCapabilities {
+///     workspace_folders: None,
+///     file_operations: None,
+/// };
+/// let output = encode_workspace_server_capabilities(input)?;
+/// ```
 pub(in crate::server::wrapper) fn encode_workspace_server_capabilities(
     v: d::WorkspaceServerCapabilities,
 ) -> Result<lsp_types::WorkspaceServerCapabilities, ServerError> {
@@ -1764,6 +6472,29 @@ pub(in crate::server::wrapper) fn encode_workspace_server_capabilities(
             .transpose()?,
     })
 }
+/// Encode workspace-symbol work-progress and resolve support for typed LSP output.
+/// No external side effects or file/network I/O; takes input by value without borrowing caller state.
+///
+/// # Mapping
+/// - `resolve_provider`: move/copy unchanged into the same-named output fields.
+/// - `work_done_progress_options`: convert through [`encode_work_done_progress_options`].
+///
+/// # Arguments
+/// - `v` `[in]`: owned `d::WorkspaceSymbolOptions` consumed by conversion; no caller output storage.
+/// # Returns
+/// Always `Ok(value)` containing `lsp_types::WorkspaceSymbolOptions`. No output parameters or shared
+/// state are changed.
+/// # Examples
+/// Private adapter context; this builds values only and does not send a message.
+/// ```text
+/// let input = d::WorkspaceSymbolOptions {
+///     work_done_progress_options: d::WorkDoneProgressOptions {
+///         work_done_progress: None,
+///     },
+///     resolve_provider: None,
+/// };
+/// let output = encode_workspace_symbol_options(input)?;
+/// ```
 pub(in crate::server::wrapper) fn encode_workspace_symbol_options(
     v: d::WorkspaceSymbolOptions,
 ) -> Result<lsp_types::WorkspaceSymbolOptions, ServerError> {

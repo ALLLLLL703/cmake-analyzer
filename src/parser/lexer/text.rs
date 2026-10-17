@@ -1,8 +1,28 @@
+//! Borrow lexical payloads and query checkpoint nesting without source mutation or I/O.
+//! Raw token spans remain unchanged even when payload views omit wrappers.
+//! Contains AI-generated documentation additions.
+
 use super::model::LexContent;
 use crate::model::{Spanned, TextSpan};
 
 impl super::model::LexedBuffer {
-    /// Nesting at a byte boundary; quoted/bracket payloads and comments do not affect depth.
+    /// Read checkpoint nesting at a byte boundary; no side effects.
+    /// Quoted/bracket payloads and comments do not affect depth. Inside a whole token
+    /// the result is its preceding checkpoint state, not a character-by-character rescan.
+    ///
+    /// # Arguments
+    /// - `self` `[in]`: lexical result with sorted checkpoints; unchanged.
+    /// - `offset` `[in]`: source byte boundary to query; not validated against the source.
+    ///
+    /// # Returns
+    /// Depth from the last checkpoint at or before offset, or zero if none.
+    ///
+    /// # Examples
+    /// ```
+    /// use cmake_analyzer::parser::lexer::model::{Lexer, RawBuffer};
+    /// let result = Lexer::new(RawBuffer::new("f(x)")).parse();
+    /// assert_eq!(result.parenthesis_depth(2), 1);
+    /// ```
     pub fn parenthesis_depth(&self, offset: usize) -> usize {
         self.checkpoints[..self
             .checkpoints
@@ -13,7 +33,46 @@ impl super::model::LexedBuffer {
 }
 
 impl Spanned<LexContent> {
-    /// Payload view; the stored span continues to cover the complete token.
+    /// Derive a payload range without modifying the stored raw token span; no side effects.
+    ///
+    /// # Arguments
+    /// - `self` `[in]`: located token; original span/kind remain unchanged.
+    /// - `source` `[in]`: matching UTF-8 snapshot used to validate the raw span and wrappers.
+    ///
+    /// # Returns
+    /// `Some` raw span for words/parentheses, quote-stripped span for strings, or bracket-stripped span with one initial LF/CRLF omitted. `None` for invalid raw bounds or rejected wrappers.
+    ///
+    /// # Algorithm
+    /// Validate the raw slice. Leave unquoted forms unchanged. Remove ASCII quote or
+    /// bracket delimiter widths, adjust the starting scalar column, then skip at most
+    /// one initial bracket newline and update its row. This is a view, not unescaping.
+    /// It assumes lexer-produced bracket tokens; it is not a replacement delimiter lexer.
+    ///
+    /// # Flow
+    /// ```text
+    ///           [validate raw span]
+    ///                   |
+    ///               <token kind?>
+    ///            /      |       \
+    ///       [word]   [quoted]  [bracket]
+    ///          |        |         |
+    ///    [unchanged] [trim 1] [trim delimiter]
+    ///          |        |         |
+    ///          |        |   [skip initial newline]
+    ///          +--------+---------+
+    ///                   |
+    ///           [return payload span]
+    /// ```
+    ///
+    /// # Examples
+    /// ```
+    /// use cmake_analyzer::parser::lexer::model::{Lexer, RawBuffer};
+    /// let source = "[=[\n中]=]";
+    /// let result = Lexer::new(RawBuffer::new(source)).parse();
+    /// let payload = result.lex[0].payload_span(source).unwrap();
+    /// assert_eq!(payload.text(source), Some("中"));
+    /// assert_eq!((payload.row, payload.column), (1, 0));
+    /// ```
     pub fn payload_span(&self, source: &str) -> Option<TextSpan> {
         let raw = self.span.text(source)?;
         let mut span = self.span;
@@ -66,6 +125,22 @@ impl Spanned<LexContent> {
         Some(span)
     }
 
+    /// Borrow token payload text without allocation, expansion or other side effects.
+    ///
+    /// # Arguments
+    /// - `self` `[in]`: located token whose raw span remains unchanged.
+    /// - `source` `[in]`: matching source snapshot to borrow from.
+    ///
+    /// # Returns
+    /// `Some` payload slice using [`Self::payload_span`] rules; `None` for invalid bounds or wrappers.
+    ///
+    /// # Examples
+    /// ```
+    /// use cmake_analyzer::parser::lexer::model::{Lexer, RawBuffer};
+    /// let source = "\"hi\"";
+    /// let result = Lexer::new(RawBuffer::new(source)).parse();
+    /// assert_eq!(result.lex[0].text(source), Some("hi"));
+    /// ```
     pub fn text<'a>(&self, source: &'a str) -> Option<&'a str> {
         self.payload_span(source)?.text(source)
     }

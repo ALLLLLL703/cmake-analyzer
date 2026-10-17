@@ -1,6 +1,26 @@
 // AI-generated tests.
+//! Flat workspace symbols across owners, dependencies and standalone overlays.
+//! Queries deliberately leave filtering to the client; disabled symbol settings omit results.
 use super::session::{HEADER, Project, Session, uri};
 use serde_json::{Value, json};
+/// Request workspace symbols with a deliberately nonmatching query and require success.
+/// Tests expect server-side results to remain unfiltered for client-side filtering.
+///
+/// # Arguments
+/// - `client` `[in,out]`: writes the request and consumes its reply; unrelated messages append
+///   to pending.
+/// - `id` `[in]`: request/response correlation ID.
+///
+/// # Returns
+/// An owned clone of result, normally the flat symbol array.
+///
+/// # Panics
+/// Panics on transport/deadline failure or a response error.
+///
+/// # Examples
+/// ```text
+/// let items = symbols(&mut client, 10).await;
+/// ```
 async fn symbols(client: &mut Session, id: i32) -> Value {
     client.send(json!({"jsonrpc":"2.0","id":id,"method":"workspace/symbol","params":{"query":"client-filters-this"}})).await;
     let response = client.response(id).await;
@@ -8,6 +28,45 @@ async fn symbols(client: &mut Session, id: i32) -> Value {
     response["result"].clone()
 }
 #[tokio::test]
+/// Check workspace symbols flatten nested scopes, deduplicate owners and read pending overlays.
+/// Creates temporary files and an analyzer session; successful completion stops the session and
+/// removes fixtures.
+///
+/// # Arguments
+/// None.
+///
+/// # Returns
+/// `()` if every assertion passes; no output parameter.
+///
+/// # Panics
+/// Panics on any failed assertion or unwrapped fixture/transport/process failure.
+/// Cleanup is explicit on the success path; a panic may leave a fixture tree.
+///
+/// # Algorithm
+/// Two roots share a function module and a standalone file is open. Require
+/// CURRENT/SECOND/Shared/INNER/DETACHED exactly once, no disk OLD, and INNER
+/// container/URI/line. Replace CURRENT with UPDATED and immediately require UPDATED with
+/// CURRENT absent.
+///
+/// # Flow
+/// ```text
+/// [Temporary sources + settings]      [Expected: flat unique current symbols]
+///              |                              |
+///              v                              |
+/// [LSP scenario messages]                 |
+///              |                              |
+///              +-------------+----------------+
+///                            v
+///                  [Compare assertions]
+///                            |
+///                            v
+///             [Finish session + remove tree]
+/// ```
+///
+/// # Examples
+/// ```text
+/// related_buffers_flatten_nested_symbols_deduplicate_owners_and_observe_edits(); // #[tokio::test] supplies the runtime
+/// ```
 async fn related_buffers_flatten_nested_symbols_deduplicate_owners_and_observe_edits() {
     let p = Project::new().await;
     let a = p
@@ -72,6 +131,43 @@ async fn related_buffers_flatten_nested_symbols_deduplicate_owners_and_observe_e
     p.remove().await;
 }
 #[tokio::test]
+/// Check document_symbols.enable=false excludes that workspace from workspace/symbol.
+/// Creates temporary files and an analyzer session; successful completion stops the session and
+/// removes fixtures.
+///
+/// # Arguments
+/// None.
+///
+/// # Returns
+/// `()` if every assertion passes; no output parameter.
+///
+/// # Panics
+/// Panics on any failed assertion or unwrapped fixture/transport/process failure.
+/// Cleanup is explicit on the success path; a panic may leave a fixture tree.
+///
+/// # Algorithm
+/// Write HIDDEN and disable document symbols before startup. Send a nonempty workspace query
+/// and require an empty array; do not open the document or execute source.
+///
+/// # Flow
+/// ```text
+/// [Temporary sources + settings]      [Expected: empty workspace symbols]
+///              |                              |
+///              v                              |
+/// [LSP scenario messages]                 |
+///              |                              |
+///              +-------------+----------------+
+///                            v
+///                  [Compare assertions]
+///                            |
+///                            v
+///             [Finish session + remove tree]
+/// ```
+///
+/// # Examples
+/// ```text
+/// symbol_settings_apply_to_workspace_results(); // #[tokio::test] supplies the runtime
+/// ```
 async fn symbol_settings_apply_to_workspace_results() {
     let p = Project::new().await;
     p.write("CMakeLists.txt", "set(HIDDEN yes)\n").await;

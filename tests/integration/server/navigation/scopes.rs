@@ -1,8 +1,48 @@
 // AI-generated Workspace identity and standalone macro navigation tests.
+//! Workspace-qualified variable navigation and standalone macro parameters.
+//! Shared source spans deduplicate without merging unrelated owner-local declarations.
 use super::{definition, references};
 use crate::server::session::{Project, Session, uri};
 use serde_json::json;
 #[tokio::test]
+/// Check shared V uses retain both owner-local declarations and deduplicate the shared use.
+/// Creates temporary files and an analyzer session; successful completion stops the session and
+/// removes fixtures.
+///
+/// # Arguments
+/// None.
+///
+/// # Returns
+/// `()` if every assertion passes; no output parameter.
+///
+/// # Panics
+/// Panics on any failed assertion or unwrapped fixture/transport/process failure.
+/// Cleanup is explicit on the success path; a panic may leave a fixture tree.
+///
+/// # Algorithm
+/// Open one included reference owned by roots a/b with separate V declarations. Definition must
+/// return both exact declaration spans; references contain three locations with declarations
+/// and one without.
+///
+/// # Flow
+/// ```text
+/// [Temporary sources + settings]      [Expected: 2 definitions / 3 or 1 references]
+///              |                              |
+///              v                              |
+/// [LSP scenario messages]                 |
+///              |                              |
+///              +-------------+----------------+
+///                            v
+///                  [Compare assertions]
+///                            |
+///                            v
+///             [Finish session + remove tree]
+/// ```
+///
+/// # Examples
+/// ```text
+/// shared_source_resolves_each_workspace_without_mixing_file_ids(); // #[tokio::test] supplies the runtime
+/// ```
 async fn shared_source_resolves_each_workspace_without_mixing_file_ids() {
     let p = Project::new().await;
     let shared = p.write("shared.cmake", "message(\"${V}\")\n").await;
@@ -42,6 +82,44 @@ async fn shared_source_resolves_each_workspace_without_mixing_file_ids() {
     p.remove().await;
 }
 #[tokio::test]
+/// Check standalone macro formal P and global P keep separate navigation identities.
+/// Creates temporary files and an analyzer session; successful completion stops the session and
+/// removes fixtures.
+///
+/// # Arguments
+/// None.
+///
+/// # Returns
+/// `()` if every assertion passes; no output parameter.
+///
+/// # Panics
+/// Panics on any failed assertion or unwrapped fixture/transport/process failure.
+/// Cleanup is explicit on the success path; a panic may leave a fixture tree.
+///
+/// # Algorithm
+/// Declare global P and macro M(P), then navigate the macro reference, outside reference and M
+/// invocation. Require formal/global/macro ranges respectively and two formal references
+/// including its declaration.
+///
+/// # Flow
+/// ```text
+/// [Temporary sources + settings]      [Expected: formal / global / macro ranges]
+///              |                              |
+///              v                              |
+/// [LSP scenario messages]                 |
+///              |                              |
+///              +-------------+----------------+
+///                            v
+///                  [Compare assertions]
+///                            |
+///                            v
+///             [Finish session + remove tree]
+/// ```
+///
+/// # Examples
+/// ```text
+/// standalone_macro_parameters_remain_distinct_from_surrounding_variables(); // #[tokio::test] supplies the runtime
+/// ```
 async fn standalone_macro_parameters_remain_distinct_from_surrounding_variables() {
     let p = Project::new().await;
     let text = "set(P global)\nmacro(M P)\nmessage(\"${P}\")\nendmacro()\nmessage(\"${P}\")\nM(argument)\n";

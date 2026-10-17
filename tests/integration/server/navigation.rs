@@ -1,4 +1,7 @@
 // AI-generated definition/reference navigation tests.
+//! Bound-symbol definitions and references through framed LSP requests.
+//! [`definition`] and [`references`] add one header line to fixture coordinates; child
+//! modules cover dependencies, scopes and targets without changing source bindings.
 use super::session::{HEADER, Project, Session, uri};
 use serde_json::{Value, json};
 use std::path::Path;
@@ -8,6 +11,26 @@ mod dependencies;
 mod scopes;
 #[path = "navigation/targets.rs"]
 mod targets;
+/// Send textDocument/definition at a body-relative position.
+///
+/// # Arguments
+/// - `client` `[in,out]`: writes the request and consumes its reply; unrelated messages append
+///   to pending.
+/// - `path` `[in]`: document path converted to a fixture URI.
+/// - `line` `[in]`: zero-based body line; one is added for HEADER.
+/// - `character` `[in]`: zero-based UTF-16 column, passed unchanged.
+/// - `id` `[in]`: request/response correlation ID.
+///
+/// # Returns
+/// The full response envelope; result is locations or null, or error may be present.
+///
+/// # Panics
+/// Panics on transport/deadline failure; no success assertion is made here.
+///
+/// # Examples
+/// ```text
+/// let reply = definition(&mut client, &root, 0, 0, 10).await;
+/// ```
 pub(super) async fn definition(
     client: &mut Session,
     path: &Path,
@@ -18,6 +41,28 @@ pub(super) async fn definition(
     client.send(json!({"jsonrpc":"2.0","id":id,"method":"textDocument/definition","params":{"textDocument":{"uri":uri(path)},"position":{"line":line+1,"character":character}}})).await;
     client.response(id).await
 }
+/// Send textDocument/references at a header-free body position.
+///
+/// # Arguments
+/// - `client` `[in,out]`: writes the request and consumes its reply; unrelated messages append
+///   to pending.
+/// - `path` `[in]`: document path converted to a fixture URI.
+/// - `line` `[in]`: zero-based body line; one is added for HEADER.
+/// - `character` `[in]`: zero-based UTF-16 column.
+/// - `include` `[in]`: value of context.includeDeclaration sent unchanged.
+/// - `id` `[in]`: request/response correlation ID.
+///
+/// # Returns
+/// The full response envelope, normally a location array in result; errors are not asserted
+/// here.
+///
+/// # Panics
+/// Panics on session transport/deadline failures.
+///
+/// # Examples
+/// ```text
+/// let reply = references(&mut client, &root, 0, 4, true, 11).await;
+/// ```
 async fn references(
     client: &mut Session,
     path: &Path,
@@ -30,6 +75,46 @@ async fn references(
     client.response(id).await
 }
 #[tokio::test]
+/// Check cross-file bindings, declaration inclusion and UTF-16 navigation rather than name
+/// guesses.
+/// Creates temporary files and an analyzer session; successful completion stops the session and
+/// removes fixtures.
+///
+/// # Arguments
+/// None.
+///
+/// # Returns
+/// `()` if every assertion passes; no output parameter.
+///
+/// # Panics
+/// Panics on any failed assertion or unwrapped fixture/transport/process failure.
+/// Cleanup is explicit on the success path; a panic may leave a fixture tree.
+///
+/// # Algorithm
+/// Import External/V, navigate a case-folded function call and an emoji-prefixed variable, and
+/// compare exact declaration/use ranges. Toggle includeDeclaration for reference counts; bind
+/// ARG to its formal. Unknown variables and non-symbol argument positions return null
+/// definitions or empty references.
+///
+/// # Flow
+/// ```text
+/// [Temporary sources + settings]      [Expected: bound locations + null exclusions]
+///              |                              |
+///              v                              |
+/// [LSP scenario messages]                 |
+///              |                              |
+///              +-------------+----------------+
+///                            v
+///                  [Compare assertions]
+///                            |
+///                            v
+///             [Finish session + remove tree]
+/// ```
+///
+/// # Examples
+/// ```text
+/// cross_file_functions_variables_parameters_and_utf16_ranges_use_bound_symbols(); // #[tokio::test] supplies the runtime
+/// ```
 async fn cross_file_functions_variables_parameters_and_utf16_ranges_use_bound_symbols() {
     let p = Project::new().await;
     let shared = p
@@ -84,6 +169,45 @@ async fn cross_file_functions_variables_parameters_and_utf16_ranges_use_bound_sy
     p.remove().await;
 }
 #[tokio::test]
+/// Check builtin message references stay distinct from later user-shadow calls.
+/// Creates temporary files and an analyzer session; successful completion stops the session and
+/// removes fixtures.
+///
+/// # Arguments
+/// None.
+///
+/// # Returns
+/// `()` if every assertion passes; no output parameter.
+///
+/// # Panics
+/// Panics on any failed assertion or unwrapped fixture/transport/process failure.
+/// Cleanup is explicit on the success path; a panic may leave a fixture tree.
+///
+/// # Algorithm
+/// Include another builtin call and then define message. Before the shadow, require null
+/// definition and three builtin references excluding the later call; afterward require the user
+/// declaration and distinct one/two reference counts. The function keyword itself has no
+/// definition.
+///
+/// # Flow
+/// ```text
+/// [Temporary sources + settings]      [Expected: separate builtin / user sets]
+///              |                              |
+///              v                              |
+/// [LSP scenario messages]                 |
+///              |                              |
+///              +-------------+----------------+
+///                            v
+///                  [Compare assertions]
+///                            |
+///                            v
+///             [Finish session + remove tree]
+/// ```
+///
+/// # Examples
+/// ```text
+/// builtin_calls_have_no_definition_and_do_not_merge_with_shadowing_functions(); // #[tokio::test] supplies the runtime
+/// ```
 async fn builtin_calls_have_no_definition_and_do_not_merge_with_shadowing_functions() {
     let p = Project::new().await;
     p.write("shared.cmake", "message(shared)\n").await;
@@ -127,6 +251,44 @@ async fn builtin_calls_have_no_definition_and_do_not_merge_with_shadowing_functi
     p.remove().await;
 }
 #[tokio::test]
+/// Check repeated includes deduplicate locations and navigation reads pending dependency edits.
+/// Creates temporary files and an analyzer session; successful completion stops the session and
+/// removes fixtures.
+///
+/// # Arguments
+/// None.
+///
+/// # Returns
+/// `()` if every assertion passes; no output parameter.
+///
+/// # Panics
+/// Panics on any failed assertion or unwrapped fixture/transport/process failure.
+/// Cleanup is explicit on the success path; a panic may leave a fixture tree.
+///
+/// # Algorithm
+/// Include the same V declaration twice: require three locations with declaration, two without.
+/// Open and edit the dependency to move its declaration, immediately query from the root and
+/// require one definition at its new line.
+///
+/// # Flow
+/// ```text
+/// [Temporary sources + settings]      [Expected: deduplicated moved definition]
+///              |                              |
+///              v                              |
+/// [LSP scenario messages]                 |
+///              |                              |
+///              +-------------+----------------+
+///                            v
+///                  [Compare assertions]
+///                            |
+///                            v
+///             [Finish session + remove tree]
+/// ```
+///
+/// # Examples
+/// ```text
+/// repeated_visits_deduplicate_locations_and_pending_edits_refresh_navigation(); // #[tokio::test] supplies the runtime
+/// ```
 async fn repeated_visits_deduplicate_locations_and_pending_edits_refresh_navigation() {
     let p = Project::new().await;
     let shared = p
@@ -167,6 +329,44 @@ async fn repeated_visits_deduplicate_locations_and_pending_edits_refresh_navigat
     p.remove().await;
 }
 #[tokio::test]
+/// Check standalone formal/global V bindings and percent-encoded closed-file definition URIs.
+/// Creates temporary files and an analyzer session; successful completion stops the session and
+/// removes fixtures.
+///
+/// # Arguments
+/// None.
+///
+/// # Returns
+/// `()` if every assertion passes; no output parameter.
+///
+/// # Panics
+/// Panics on any failed assertion or unwrapped fixture/transport/process failure.
+/// Cleanup is explicit on the success path; a panic may leave a fixture tree.
+///
+/// # Algorithm
+/// Navigate local and global V uses in an unowned file and require distinct declaration ranges
+/// plus two formal references. Restart with a root importing a filename containing spaces, #
+/// and Chinese characters; require its percent-encoded closed-file URI.
+///
+/// # Flow
+/// ```text
+/// [Temporary sources + settings]      [Expected: scoped ranges + encoded URI]
+///              |                              |
+///              v                              |
+/// [LSP scenario messages]                 |
+///              |                              |
+///              +-------------+----------------+
+///                            v
+///                  [Compare assertions]
+///                            |
+///                            v
+///             [Finish session + remove tree]
+/// ```
+///
+/// # Examples
+/// ```text
+/// standalone_scopes_and_encoded_closed_file_uris_do_not_guess_by_name(); // #[tokio::test] supplies the runtime
+/// ```
 async fn standalone_scopes_and_encoded_closed_file_uris_do_not_guess_by_name() {
     let p = Project::new().await;
     let standalone = p

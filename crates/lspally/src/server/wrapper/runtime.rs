@@ -1,4 +1,10 @@
 // AI-generated implementation.
+//! Bounded session assembly, reader-side control and ordered business execution.
+//!
+//! Replies bypass the business queue, preventing deadlock when a handler calls the
+//! client. Cancellation/trace controls take effect in the reader before their hooks.
+//! Normal exit and EOF cancel the session and join the worker and writer; cancellation
+//! drops handler futures rather than preempting application-spawned blocking work.
 use super::{dispatch, lifecycle::*, transport};
 use crate::{rpc, server::model::*};
 use std::{
@@ -15,7 +21,74 @@ use tokio::{
 };
 
 impl<S: ILanguageServer> Wrapper<S> {
-    /// Business calls run in arrival order. The reader and writer remain independent.
+    /// Serve one connection with independent reader/writer tasks and one ordered business worker.
+    /// Consumes streams and performs asynchronous I/O; queues and client waits are bounded.
+    /// Application-owned document state and spawned tasks remain the server implementation's concern.
+    ///
+    /// # Arguments
+    /// - `self` `[in]`: wrapper consumed; its server is shared with the worker and limits configure this
+    ///   session. Input/output queue and pending-request counts are clamped to at least one.
+    /// - `input` `[in,out]`: owned read stream advanced by framing; dropped when the session ends.
+    /// - `output` `[in,out]`: owned write stream receiving framed JSON only; cancellation may interrupt
+    ///   output rather than drain it. Logs go to stderr, not this stream.
+    ///
+    /// # Returns
+    /// `Ok(Graceful)` for a valid exit while the shutdown-request flag is set, `Ok(Abnormal)` for
+    /// exit without that flag, or `Ok(Disconnected)` for EOF/session closure. The flag is set at
+    /// shutdown admission, so graceful status is not proof the shutdown hook finished. All normal
+    /// return paths join worker/writer; non-disconnected exit also awaits the server's exit hook
+    /// with a closed client context. `Err` reports transport, worker/join or exit-hook failure.
+    ///
+    /// # Errors
+    /// Propagates framing/read, queue saturation, write/flush and task failures. Worker and writer
+    /// are both joined even if the worker panics; their errors take precedence over the reader result.
+    /// An early worker stop is an error. Closure retires outgoing waits and cancels incoming calls;
+    /// queued work/output need not complete. Dropping this entire future is not the joined shutdown path.
+    ///
+    /// # Panics
+    /// Panics if polled without a Tokio runtime, because it spawns tasks, or if either queue
+    /// capacity exceeds Tokio's `Semaphore::MAX_PERMITS`. An exit-hook panic is not caught.
+    ///
+    /// # Algorithm
+    /// Create session state and bounded queues, spawn writer/worker, and race the reader against
+    /// worker completion. Close session, drop input sender, join both tasks, then dispatch the exit
+    /// hook only for protocol exit. Incoming queries/notifications run in arrival order; responses
+    /// bypass that queue so a handler can await an outgoing client call without blocking its reply.
+    ///
+    /// # Flow
+    /// ```text
+    ///      [input stream] --> [reader] ---- replies ---> [outgoing waits]
+    ///                            |
+    ///                     [bounded input queue]
+    ///                            v
+    ///                        [worker] ---- client call ---+
+    ///                            |                        |
+    ///                            +----------+-------------+
+    ///                                       v
+    ///                               [bounded output queue]
+    ///                                       |
+    ///                                   [writer] --> [output stream]
+    ///                                       |
+    ///               [reader exits / worker stops]
+    ///                            |
+    ///                     [close + join both]
+    ///                            |
+    ///                   <protocol exit / EOF?>
+    ///                      /             \
+    ///                  [exit hook]    [no hook]
+    ///                      \             /
+    ///                        [status/error]
+    /// ```
+    /// # Examples
+    /// Supply an implementation and a connected stream on a Tokio runtime; no document state is created here.
+    /// ```no_run
+    /// use lspally::server::{ILanguageServer, Wrapper};
+    /// # async fn serve<S: ILanguageServer>(server: S, stream: tokio::net::TcpStream) -> std::io::Result<()> {
+    /// let (input, output) = stream.into_split();
+    /// let status = Wrapper::new(server).run(input, output).await?;
+    /// # Ok(())
+    /// # }
+    /// ```
     pub async fn run<R, W>(self, input: R, output: W) -> io::Result<ExitStatus>
     where
         R: AsyncRead + Unpin + Send + 'static,
@@ -66,11 +139,88 @@ impl<S: ILanguageServer> Wrapper<S> {
         }
         Ok(status)
     }
+    /// Serve one LSP connection on process stdin/stdout through [`Self::run`].
+    /// Reads stdin and reserves stdout for framed protocol bytes; notification failures use stderr.
+    ///
+    /// # Arguments
+    /// - `self` `[in]`: wrapper consumed to configure and run the session.
+    ///
+    /// # Returns
+    /// `Ok(ExitStatus)` with the same exit/EOF meanings and joined cleanup as [`Self::run`];
+    /// `Err` for transport, worker or exit-hook failures.
+    ///
+    /// # Errors
+    /// Propagates all errors from [`Self::run`], including stdin/stdout failures and queue saturation.
+    ///
+    /// # Panics
+    /// Inherits [`Self::run`]'s runtime and oversized-queue panics. Exit-hook panics propagate.
+    ///
+    /// # Examples
+    /// Supply a business implementation and connect the host's standard streams to an LSP client.
+    /// ```no_run
+    /// use lspally::server::{ILanguageServer, Wrapper};
+    /// # async fn serve<S: ILanguageServer>(server: S) -> std::io::Result<()> {
+    /// let status = Wrapper::new(server).run_stdio().await?;
+    /// # Ok(())
+    /// # }
+    /// ```
     pub async fn run_stdio(self) -> io::Result<ExitStatus> {
         self.run(tokio::io::stdin(), tokio::io::stdout()).await
     }
 }
 
+/// Read frames and apply protocol controls without awaiting business handlers or output flushes.
+/// Consumes input, routes replies directly, tracks incoming IDs and appends admitted work to the queue.
+///
+/// # Arguments
+/// - `input` `[in,out]`: stream advanced through frames; no rewind on invalid/truncated input.
+/// - `limits` `[in]`: header/body byte limits passed to the framing reader.
+/// - `queue` `[in,out]`: shared sender receives admitted requests/notifications via nonblocking append.
+/// - `session` `[in,out]`: shared lifecycle/trace/cancellation state and pending maps updated per message;
+///   reader-generated error packets are appended to its output queue without waiting for flush.
+///
+/// # Returns
+/// `Ok(Disconnected)` for clean EOF or session closure; valid exit returns `Graceful` when the
+/// shutdown-request flag is set, otherwise `Abnormal`. `Err` for framing/I/O or queue failures.
+/// Does not call the exit business hook or join tasks; the outer run method owns cleanup.
+///
+/// # Errors
+/// Propagates framing/read failures and full/closed output queues. A full request queue sends
+/// -32000 and rolls back admission state; a closed request queue fails the connection. A full/closed
+/// notification queue fails the connection rather than silently losing document edits. Invalid JSON
+/// (-32700), invalid envelopes/duplicate IDs (-32600) and phase errors enqueue replies then continue
+/// if output capacity permits; invalid notifications/control parameters may be ignored.
+///
+/// # Algorithm
+/// Decode one frame and classify it. Replies bypass business work. Requests reserve lifecycle
+/// admission and a cancellation token before a nonblocking enqueue. Notifications gate initialization,
+/// set trace/cancel tokens immediately, then enqueue hooks. Valid exit returns immediately, without
+/// waiting for admitted shutdown work; malformed exit parameters are ignored.
+///
+/// # Flow
+/// ```text
+///              [frame + JSON decode] <--------------------------+
+///                        |                                     |
+///                   <message kind?>                            |
+///               /            |             \                   |
+///          [response]     [request]     [notification]           |
+///               |            |             |                   |
+///        [deliver waiter] [phase + ID] <exit?>                  |
+///               |            |         /     \                  |
+///               |        [try queue] [return] [control + gate]  |
+///               |          /   \                    |           |
+///               |     [error] [queued]         [try queue]      |
+///               |          \   /                /      \        |
+///               +-----------+------------ [queued]  [Err stop] |
+///                           +----------------------------------+
+/// ```
+/// # Examples
+/// Private runtime context: `queue` is the sender paired with the business worker.
+/// ```text
+/// let status = read(&mut tokio::io::BufReader::new(tokio::io::empty()),
+///     &Limits::default(), &queue, &session).await?;
+/// assert_eq!(status, ExitStatus::Disconnected);
+/// ```
 async fn read<R: AsyncRead + Unpin>(
     input: &mut BufReader<R>,
     limits: &Limits,
@@ -202,6 +352,41 @@ async fn read<R: AsyncRead + Unpin>(
         }
     }
 }
+/// Validate request admission and reserve initialize/shutdown state; no I/O.
+/// A successful admission is not successful handler completion.
+///
+/// # Arguments
+/// - `session` `[in,out]`: reads phase; initialize overwrites it with INITIALIZING, and shutdown
+///   sets its requested flag. Other methods leave state unchanged.
+/// - `method` `[in]`: exact request method string, including custom methods.
+///
+/// # Returns
+/// `None` when admitted; `Some(error)` for repeated initialize, pre-running calls or shutdown-time
+/// calls. Rejections do not mutate state.
+///
+/// # Algorithm
+/// Initialize requires NEW. All other methods require at least RUNNING and no shutdown flag;
+/// shutdown then sets its flag so later requests are rejected before the worker reaches it.
+///
+/// # Flow
+/// ```text
+///                   <initialize?>
+///                   /           \
+///                 yes           no
+///                  |             |
+///               <NEW?>   <running + no shutdown?>
+///               /    \         /           \
+///            [set] [error]   [allow]       [error]
+///              |               |
+///              |        [flag if shutdown]
+///              \               /
+///                  [None]
+/// ```
+/// # Examples
+/// ```text
+/// assert!(request_phase(&session, "initialize").is_none()); // NEW session
+/// assert!(request_phase(&session, "initialize").is_some()); // now INITIALIZING
+/// ```
 fn request_phase(session: &Session, method: &str) -> Option<ServerError> {
     let phase = session.phase.load(Ordering::Acquire);
     if method == "initialize" {
@@ -218,6 +403,22 @@ fn request_phase(session: &Session, method: &str) -> Option<ServerError> {
     }
     None
 }
+/// Undo failed initialize/shutdown admission after queue rejection or handler failure; no I/O.
+/// Other method names do nothing.
+///
+/// # Arguments
+/// - `session` `[in,out]`: initialize overwrites phase with NEW; shutdown clears its flag and
+///   overwrites phase with RUNNING. Other session fields remain unchanged.
+/// - `method` `[in]`: method whose failed admission/execution must be rolled back.
+///
+/// # Returns
+/// `()` after the method-specific state update.
+///
+/// # Examples
+/// ```text
+/// rollback_phase(&session, "shutdown");
+/// assert!(!session.shutdown_requested.load(Ordering::Acquire));
+/// ```
 fn rollback_phase(session: &Session, method: &str) {
     match method {
         "initialize" => session.phase.store(NEW, Ordering::Release),
@@ -228,6 +429,60 @@ fn rollback_phase(session: &Session, method: &str) {
         _ => {}
     }
 }
+/// Run admitted business calls serially and send one flushed reply per completed request.
+/// Mutates lifecycle/correlation state and writes notification failures to stderr.
+///
+/// # Arguments
+/// - `server` `[in]`: shared business implementation; its hooks may perform application side effects.
+/// - `session` `[in,out]`: shared incoming map loses completed IDs, phases advance/roll back, successful
+///   shutdown retires outgoing waits, and replies append to its writer queue.
+/// - `queue` `[in,out]`: owned receiver consumed in arrival order until closure or sender exhaustion.
+///
+/// # Returns
+/// `Ok(())` when session closure or queue exhaustion stops work; `Err` if sending a reply fails.
+/// Handler errors become protocol error replies for requests, or stderr reports for notifications.
+///
+/// # Errors
+/// A failed flush/closed writer becomes an I/O error. Request cancellation becomes -32800 and
+/// rolls back lifecycle admission where applicable; session closure instead drops the active
+/// handler future and returns without a reply or per-request map removal (outer cleanup clears it).
+///
+/// # Panics
+/// Business-handler panics propagate to the spawned task; the outer runner joins and reports them.
+///
+/// # Algorithm
+/// Race each dequeue with closure. For requests, race dispatch with closure and its cancellation
+/// (closure/cancellation are prioritized), retire its incoming ID, adjust lifecycle, then await
+/// reply flush. Notifications race closure only and get fresh untracked cancellation tokens.
+/// Successful shutdown sets SHUT_DOWN and retires outgoing waits; failed shutdown returns RUNNING.
+///
+/// # Flow
+/// ```text
+///                 [dequeue] <-------------------------------+
+///                     |                                     |
+///                <request?>                                 |
+///                /        \                                 |
+///              yes        no                                |
+///               |          |                                |
+///      [dispatch / cancel] [notification hook]               |
+///               |          |                                |
+///        [remove ID]  [log error if any] --------------------+
+///               |                                           |
+///      [phase / outgoing cleanup]                           |
+///               |                                           |
+///         [send + flush] -- success ------------------------+
+///               |
+///            [Err stop]
+///    Closure during dequeue/dispatch: drop the active wait and return Ok.
+///    Closure during send/flush: the send error follows the Err stop path.
+/// ```
+/// # Examples
+/// Private runtime context; closing the queue ends the worker without invoking a handler.
+/// ```text
+/// let (sender, queue) = tokio::sync::mpsc::channel(1);
+/// drop(sender);
+/// work(server.clone(), session.clone(), queue).await?;
+/// ```
 async fn work<S: ILanguageServer>(
     server: Arc<S>,
     session: Arc<Session>,
@@ -291,6 +546,26 @@ async fn work<S: ILanguageServer>(
         }
     }
 }
+/// Append a reader-generated error reply without waiting for socket flush; no direct stream I/O.
+/// This keeps the reader available for replies while a business handler awaits a client call.
+///
+/// # Arguments
+/// - `session` `[in,out]`: shared writer queue receives one appended packet if capacity exists.
+/// - `id` `[in]`: originating key, or `None` for an unidentifiable/malformed request.
+/// - `code` `[in]`: JSON-RPC/LSP failure code.
+/// - `message` `[in]`: owned error description moved into the response.
+///
+/// # Returns
+/// `Ok(())` when queued, not necessarily sent/flushed; `Err` if the queue is full or closed.
+///
+/// # Errors
+/// Returns an I/O error on nonblocking queue failure. The acknowledgement receiver is intentionally
+/// dropped, so later write failures are observed by the writer/run path, not by this call.
+///
+/// # Examples
+/// ```text
+/// send_error(&session, None, -32700, "Invalid JSON".into())?;
+/// ```
 fn send_error(
     session: &Session,
     id: Option<rpc::RequestId>,

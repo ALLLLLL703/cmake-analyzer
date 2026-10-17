@@ -1,3 +1,9 @@
+//! Reuse closed command payloads and rebuild dependent semantic facts after edits.
+//!
+//! IDs are dense snapshot-local indices, not persistent identities. Edits remap byte
+//! spans and can rebuild structure or template seeds. Reference/value passes still run
+//! for the resulting document. Version-input changes use a full parse; no project runs.
+// Contains AI-generated documentation additions.
 // AI-authored incremental semantic analysis.
 use super::model::*;
 use crate::{
@@ -13,6 +19,31 @@ use std::{
 };
 
 impl IncrementalSemanticer {
+    /// Create a per-file semantic cache with one complete static parse. May query host CMake version when no declaration is present; never executes project code.
+    ///
+    /// # Arguments
+    /// - `source` `[in]`: source text converted into shared immutable storage.
+    /// - `parsed` `[in]`: parser snapshot consumed by the cache; spans must match source.
+    /// - `file` `[in]`: file identity retained in every published snapshot.
+    ///
+    /// # Returns
+    /// Cache with all commands counted as recomputed and both rebuild flags true.
+    ///
+    /// # Examples
+    /// ```
+    /// use cmake_analyzer::parser::{
+    ///     lexer::model::IncrementalLexer,
+    ///     nparser::model::IncrementalNParser,
+    ///     semanticer::model::{FileId, IncrementalSemanticer},
+    /// };
+    /// # tokio::runtime::Runtime::new().unwrap().block_on(async {
+    /// let source = "cmake_minimum_required(VERSION 3.31)\nset(x yes)";
+    /// let lexer = IncrementalLexer::new(source);
+    /// let parser = IncrementalNParser::new(source, &lexer.buffer);
+    /// let cache = IncrementalSemanticer::new(source, parser.buffer, FileId { id: 0 }).await;
+    /// assert_eq!(cache.buffer.commands.len(), 2);
+    /// # });
+    /// ```
     pub async fn new(source: impl Into<Arc<str>>, parsed: NParsedBuffer, file: FileId) -> Self {
         let source = source.into();
         let mut analyzer = Semanticer::new(parsed, HashMap::new());
@@ -32,6 +63,69 @@ impl IncrementalSemanticer {
             templates_rebuilt: true,
         }
     }
+    /// Replace the published snapshot after an edit, reusing closed command payloads where byte ranges survive. Mutates only the cache; version-input changes may trigger a host version query, never project execution.
+    ///
+    /// # Arguments
+    /// - `self` `[in,out]`: overwrites source, parser state, snapshot, work counts and rebuild flags; may refresh variable seed.
+    /// - `source` `[in]`: new shared source snapshot.
+    /// - `parsed` `[in]`: new parser nodes matching source.
+    /// - `change` `[in]`: mapping from old to new source byte ranges.
+    ///
+    /// # Returns
+    /// () after publishing a new Arc snapshot; existing Arc clones remain unchanged.
+    ///
+    /// # Panics
+    /// Requires internally consistent dense block/command IDs and a change mapping for the cached source. Structure reuse indexes those arenas directly.
+    ///
+    /// # Algorithm
+    /// Changed version declarations force a full parse. Otherwise map old closed commands into new ranges, reuse exact surviving node extents and rescan the rest. Compare structure/template fingerprints, rebuild or remap dependent data, then always bind comments, references, values and symbols before replacing the snapshot.
+    ///
+    /// # Flow
+    /// ```text
+    ///  [old snapshot]       [new nodes + edit]
+    ///        |                       |
+    ///        +-----------+-----------+
+    ///                    v
+    ///          <version input changed?>
+    ///              /            \
+    ///            yes            no
+    ///             |              |
+    ///        [full parse] [reuse spans / rescan]
+    ///             |              |
+    ///             |     <structure/template changed?>
+    ///             |        /                 \
+    ///             |    [rebuild]         [reuse/remap]
+    ///             |        |                 |
+    ///             |        +--------+--------+
+    ///             |                 v
+    ///             |    [comments/references/values/symbols]
+    ///             |                 |
+    ///             +--------+--------+
+    ///                      v
+    ///             [publish new Arc snapshot]
+    /// ```
+    ///
+    /// # Examples
+    /// ```
+    /// use cmake_analyzer::parser::{
+    ///     lexer::model::IncrementalLexer,
+    ///     nparser::model::IncrementalNParser,
+    ///     semanticer::model::{FileId, IncrementalSemanticer},
+    /// };
+    /// # tokio::runtime::Runtime::new().unwrap().block_on(async {
+    /// let source = "cmake_minimum_required(VERSION 3.31)\nset(x yes)";
+    /// let lexer = IncrementalLexer::new(source);
+    /// let parser = IncrementalNParser::new(source, &lexer.buffer);
+    /// use cmake_analyzer::model::incremental::SourceChange;
+    /// let mut cache = IncrementalSemanticer::new(source, parser.buffer, FileId { id: 0 }).await;
+    /// let changed = "cmake_minimum_required(VERSION 3.31)\nset(x no)";
+    /// let lexer = IncrementalLexer::new(changed);
+    /// let parser = IncrementalNParser::new(changed, &lexer.buffer);
+    /// let change = SourceChange::between(source, changed);
+    /// cache.update(changed, parser.buffer, &change).await;
+    /// assert_eq!(cache.work.recomputed, 1);
+    /// # });
+    /// ```
     pub async fn update(
         &mut self,
         source: impl Into<Arc<str>>,
@@ -179,6 +273,19 @@ impl IncrementalSemanticer {
         self.work = work;
     }
 }
+/// Collect complete cmake_minimum_required source strings for catalog invalidation. No side effects.
+///
+/// # Arguments
+/// - `source` `[in]`: source matching parsed spans.
+/// - `parsed` `[in]`: parser snapshot scanned in source order.
+///
+/// # Returns
+/// Owned command strings; invalid full spans are omitted.
+///
+/// # Examples
+/// ```text
+/// let keys = version_input(source, &parsed);
+/// ```
 fn version_input(source: &str, parsed: &NParsedBuffer) -> Vec<String> {
     parsed
         .nodes
@@ -198,6 +305,18 @@ fn version_input(source: &str, parsed: &NParsedBuffer) -> Vec<String> {
         .collect()
 }
 // Dense IDs require relinking when commands are inserted/deleted or structural keywords move.
+/// Fingerprint dense command count and structural keyword inputs for relinking. No side effects.
+///
+/// # Arguments
+/// - `buffer` `[in]`: current semantic snapshot.
+///
+/// # Returns
+/// Tuple of total command count and keyword tuples: command position, lowercase name, closed flag and argument payload strings.
+///
+/// # Examples
+/// ```text
+/// let (count, keywords) = structure(&buffer);
+/// ```
 fn structure(buffer: &SemanticedBuffer) -> (usize, Vec<(usize, String, bool, Vec<String>)>) {
     (
         buffer.commands.len(),
@@ -217,6 +336,40 @@ fn structure(buffer: &SemanticedBuffer) -> (usize, Vec<(usize, String, bool, Vec
             .collect(),
     )
 }
+/// Fingerprint commands that can change specialized builtin names. No side effects.
+///
+/// # Arguments
+/// - `buffer` `[in]`: semantic command inputs.
+///
+/// # Returns
+/// Ordered keys retaining relevant command names/forms/payloads; ordinary set/option/unset commands retain only their first argument unless they set a template-domain variable.
+///
+/// # Algorithm
+/// First collect literal function/macro names. Then retain domain-producing commands, their calls and feature hints; reduce ordinary assignments to the output-name information needed by specialization.
+///
+/// # Flow
+/// ```text
+///  [commands]           [literal definitions]
+///      |                         |
+///      +------------+------------+
+///                   v
+///        <domain/feature/call input?>
+///           /                 \
+///         yes                 no
+///          |                   |
+///  [full form/payload key] <assignment?>
+///          |                /      \
+///          |        [first/domain] [omit]
+///          |                |       |
+///          +----------------+-------+
+///                           v
+///                     [ordered keys]
+/// ```
+///
+/// # Examples
+/// ```text
+/// let keys = template_inputs(&buffer);
+/// ```
 fn template_inputs(buffer: &SemanticedBuffer) -> Vec<String> {
     let definitions: HashSet<_> = buffer
         .commands
@@ -289,6 +442,19 @@ fn template_inputs(buffer: &SemanticedBuffer) -> Vec<String> {
         })
         .collect()
 }
+/// Build unbound builtin and specialized variable records, deduplicated by name. No I/O or project execution.
+///
+/// # Arguments
+/// - `analyzer` `[in]`: template-specialization engine.
+/// - `buffer` `[in]`: version and command hints.
+///
+/// # Returns
+/// Owned variable seed without unresolved placeholder names; unsupported versions fall back to baseline names.
+///
+/// # Examples
+/// ```text
+/// let variables = seed(&analyzer, &buffer);
+/// ```
 fn seed(analyzer: &Semanticer, buffer: &SemanticedBuffer) -> Vec<SemanticVariable> {
     let mut variables = buffer
         .version

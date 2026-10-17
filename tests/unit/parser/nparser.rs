@@ -1,3 +1,7 @@
+//! Command parser models preserve borrowed argument text, outer-parenthesis state and inherited
+//! lexer error spans. Tests mutate local buffers only.
+
+// Contains AI-generated documentation edits.
 // Contains AI-generated tests or test edits.
 
 use cmake_analyzer::{
@@ -11,6 +15,27 @@ use cmake_analyzer::{
     },
 };
 
+/// Build a command from lexer spans, append quoted/bracket arguments and insert it into a parsed
+/// buffer. Check closed defaults, raw versus payload text, pointer borrowing and an unquoted
+/// argument over the name span.
+///
+/// Only local values and analysis buffers are created or changed; no file, network or process side
+/// effects.
+///
+/// # Arguments
+/// None. The test builds its own fixture and expected results.
+///
+/// # Returns
+/// `()` after all checks pass; no data or output parameter is returned.
+///
+/// # Panics
+/// If a stated invariant fails or an unwrapped fixture/setup operation fails.
+///
+/// # Examples
+/// Local test-module call:
+/// ```text
+/// command_and_argument_models_refer_to_source_without_owning_strings();
+/// ```
 #[test]
 fn command_and_argument_models_refer_to_source_without_owning_strings() {
     let source = "call(\"中\" [=[\r\nraw]=])";
@@ -38,6 +63,41 @@ fn command_and_argument_models_refer_to_source_without_owning_strings() {
     assert_eq!(parsed.nodes.len(), 1);
 }
 
+/// Parse complete, nested and progressively truncated calls, including a Unicode argument.
+///
+/// Only local values and analysis buffers are created or changed; no file, network or process side
+/// effects.
+///
+/// # Arguments
+/// None. The test builds its own fixture and expected results.
+///
+/// # Returns
+/// `()` after all checks pass; no data or output parameter is returned.
+///
+/// # Panics
+/// If a stated invariant fails.
+///
+/// # Algorithm
+/// Require one command and either closed state or the original outer opening-parenthesis span.
+///
+/// # Flow
+/// ```text
+///   [complete/truncated calls]
+///    |
+///   [parse command]---------------------> [outer opening span]
+///                                        |
+///                                       [compare Closed or Unclosed]
+///                                        |
+///                                       < checks hold? >
+///                                        /         \
+///                                      [pass]     [panic]
+/// ```
+///
+/// # Examples
+/// Local test-module call:
+/// ```text
+/// parsed_commands_record_closed_or_outer_unclosed_parentheses();
+/// ```
 #[test]
 fn parsed_commands_record_closed_or_outer_unclosed_parentheses() {
     for source in [
@@ -73,6 +133,26 @@ fn parsed_commands_record_closed_or_outer_unclosed_parentheses() {
     }
 }
 
+/// Construct an unexpected-string error node using a quoted token's span; its outer range must
+/// recover the full original quoted source.
+///
+/// Only local values and analysis buffers are created or changed; no file, network or process side
+/// effects.
+///
+/// # Arguments
+/// None. The test builds its own fixture and expected results.
+///
+/// # Returns
+/// `()` after all checks pass; no data or output parameter is returned.
+///
+/// # Panics
+/// If a stated invariant fails.
+///
+/// # Examples
+/// Local test-module call:
+/// ```text
+/// unexpected_string_error_keeps_its_text_via_the_outer_span();
+/// ```
 #[test]
 fn unexpected_string_error_keeps_its_text_via_the_outer_span() {
     let source = "\"unexpected\"";
@@ -84,6 +164,26 @@ fn unexpected_string_error_keeps_its_text_via_the_outer_span() {
     assert_eq!(node.span.text(source), Some(source));
 }
 
+/// Forward an unfinished bracket lexer's errors into a fresh parsed buffer. Require one
+/// lexical-error node and the exact inherited range.
+///
+/// Only local values and analysis buffers are created or changed; no file, network or process side
+/// effects.
+///
+/// # Arguments
+/// None. The test builds its own fixture and expected results.
+///
+/// # Returns
+/// `()` after all checks pass; no data or output parameter is returned.
+///
+/// # Panics
+/// If a stated invariant fails.
+///
+/// # Examples
+/// Local test-module call:
+/// ```text
+/// inherited_lexical_errors_keep_their_existing_spans();
+/// ```
 #[test]
 fn inherited_lexical_errors_keep_their_existing_spans() {
     let parser = NParser::new(Lexer::new(RawBuffer::new("[=[unfinished")).parse());

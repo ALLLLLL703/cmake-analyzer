@@ -1,3 +1,6 @@
+//! Reuse unchanged per-command effects while rebinding all source and target locations.
+//! Updates replace owned outputs; readers of older shared results remain unchanged. No I/O.
+// Contains AI-generated documentation additions.
 // AI-authored incremental build fact extraction.
 use super::model::*;
 use crate::{
@@ -10,6 +13,23 @@ use std::{
 };
 
 impl IncrementalBuildStruct {
+    /// Extract a full build result and initialize per-command reuse ranges. No I/O; semantic input
+    /// is unchanged.
+    ///
+    /// # Arguments
+    /// - `semantic` `[in]`: Semantic snapshot to extract.
+    /// - `origin` `[in]`: Identity stamped onto facts and diagnostics.
+    ///
+    /// # Returns
+    /// Cache whose work counts all commands as recomputed and none reused.
+    ///
+    /// # Examples
+    /// ```
+    /// use cmake_analyzer::parser::build_struct::model::{AnalysisKey, IncrementalBuildStruct};
+    /// use cmake_analyzer::parser::semanticer::model::SemanticedBuffer;
+    /// let semantic = SemanticedBuffer::default();
+    /// let cache = IncrementalBuildStruct::new(&semantic, AnalysisKey { file: 0, revision: 1 });
+    /// ```
     pub fn new(semantic: &SemanticedBuffer, origin: AnalysisKey) -> Self {
         let buffer = BuildStructAnalyzer::new(semantic, origin).analyze();
         let units = units(semantic, &buffer);
@@ -22,6 +42,48 @@ impl IncrementalBuildStruct {
             },
         }
     }
+    /// Replace cached build output while reusing unaffected command effects. Rebinds sources and
+    /// target reads; old Arc readers stay immutable. No I/O.
+    ///
+    /// # Arguments
+    /// - `self` `[in,out]` : Overwrites buffer, units and work counters; does not append to old
+    ///   output.
+    /// - `semantic` `[in]`: New semantic snapshot.
+    /// - `origin` `[in]`: New file/revision identity.
+    /// - `change` `[in]`: Unchanged-range mapping between old and new source.
+    ///
+    /// # Returns
+    /// () after publishing the replacement result.
+    ///
+    /// # Algorithm
+    /// Match mapped full spans and schema Arc identity. Extract changed commands only, merge old
+    /// payloads with fresh source references in command order, clear reused target bindings, then
+    /// rebind all local targets and rebuild unit ranges.
+    ///
+    /// # Flow
+    /// ```text
+    /// [old spans]       [new commands]
+    ///       |                 |
+    ///       +----> [span/schema match]
+    ///                     /       \
+    ///                 reuse      extract
+    ///                     \       /
+    ///                  [ordered merge]
+    ///                         |
+    ///                  [bind targets]
+    ///                         |
+    ///                [replace Arc/counters]
+    /// ```
+    ///
+    /// # Examples
+    /// ```
+    /// use cmake_analyzer::parser::build_struct::model::{AnalysisKey, IncrementalBuildStruct};
+    /// use cmake_analyzer::{parser::semanticer::model::SemanticedBuffer, model::incremental::SourceChange};
+    /// let semantic = SemanticedBuffer::default();
+    /// let mut cache = IncrementalBuildStruct::new(&semantic, AnalysisKey { file: 0, revision: 1 });
+    /// let change = SourceChange::between("", "");
+    /// cache.update(&semantic, AnalysisKey { file: 0, revision: 2 }, &change);
+    /// ```
     pub fn update(
         &mut self,
         semantic: &SemanticedBuffer,
@@ -116,6 +178,37 @@ impl IncrementalBuildStruct {
         self.buffer = Arc::new(buffer);
     }
 }
+/// Index each command into contiguous fact and diagnostic ranges. No mutation or I/O.
+///
+/// # Arguments
+/// - `semantic` `[in]`: Commands whose source order defines units.
+/// - `buffer` `[in]`: Extraction output ordered by the same commands.
+///
+/// # Returns
+/// One unit per semantic command, including empty-output commands.
+///
+/// # Algorithm
+/// Walk commands and advance independent fact/diagnostic cursors while their origin matches the
+/// command. Save each consumed half-open range together with the full span and shared schema
+/// identity.
+///
+/// # Flow
+/// ```text
+/// [command order]
+///        |
+///  [save cursor starts]
+///       /            \
+///  [matching facts] [matching diagnostics]
+///       |            |
+///       +----[save ranges/schema]
+///                       |
+///                [next command]
+/// ```
+///
+/// # Examples
+/// ```text
+/// let cached_units = units(semantic, &build);
+/// ```
 fn units(semantic: &SemanticedBuffer, buffer: &BuildStruct) -> Vec<BuildUnit> {
     let (mut facts, mut diagnostics) = (0, 0);
     semantic

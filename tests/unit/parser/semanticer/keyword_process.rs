@@ -1,3 +1,7 @@
+//! Private process/CTest schema tests attached by `schema::builtin::all_process`. In-memory parsing
+//! proves completion, output-variable and path roles; process names in fixtures are never executed.
+
+// Contains AI-generated documentation edits.
 // AI-generated tests.
 use super::schemas;
 use crate::parser::{
@@ -11,6 +15,26 @@ use crate::parser::{
 };
 use std::collections::{BTreeSet, HashMap};
 
+/// Find one enclosing-family grammar and wrap it with the shared builtin schema constructor.
+/// Allocates schema data only; does not inspect the host or run CMake.
+///
+/// # Arguments
+/// - `version` `[in]`: CMake (major, minor) selecting the grammar catalog.
+/// - `name` `[in]`: Exact command name expected in that catalog.
+///
+/// # Returns
+/// An owned CommandSchema from the shared make_schema helper, retaining the selected typed
+/// arguments.
+///
+/// # Panics
+/// If the requested command is absent at that version.
+///
+/// # Examples
+/// Local test-module context:
+/// ```text
+/// let grammar = schema((4, 4), "execute_process");
+/// assert!(!grammar.args.is_empty());
+/// ```
 fn schema(version: (u32, u32), name: &str) -> CommandSchema {
     let (_, args) = schemas(version)
         .into_iter()
@@ -19,6 +43,26 @@ fn schema(version: (u32, u32), name: &str) -> CommandSchema {
     super::super::make_schema(name, args)
 }
 
+/// Probe argument keyword completions with cancellation disabled and own the returned words. Calls
+/// [`schema`] and the production matcher; no process or file side effects.
+///
+/// # Arguments
+/// - `version` `[in]`: CMake (major, minor) selecting the schema.
+/// - `name` `[in]`: Exact command name in this grammar family.
+/// - `args` `[in]`: Argument prefix through the active final slot; an empty final string means no
+///   letters typed there.
+///
+/// # Returns
+/// Sorted, deduplicated owned keyword strings; empty when no literal fits the active slot.
+///
+/// # Panics
+/// If the requested command is absent at that version.
+///
+/// # Examples
+/// Local test-module context:
+/// ```text
+/// assert_eq!(keywords((4, 4), "execute_process", &["COM"]), ["COMMAND"]);
+/// ```
 fn keywords(version: (u32, u32), name: &str, args: &[&str]) -> Vec<String> {
     completion_keywords(&schema(version, name), args, || false)
         .into_iter()
@@ -26,6 +70,43 @@ fn keywords(version: (u32, u32), name: &str, args: &[&str]) -> Vec<String> {
         .collect()
 }
 
+/// Collect all explicit process-grammar literals into a sorted unique set. Traverses modeled groups
+/// without executing the process names represented by the schema.
+///
+/// # Arguments
+/// - `args` `[in]`: Argument sequence, recursively including optional/repeated/intersection groups
+///   and choices.
+///
+/// # Returns
+/// A new BTreeSet of owned keyword spellings; scalar roles contribute no words.
+///
+/// # Panics
+/// If an Unmodeled node appears; other non-keyword leaves are ignored.
+///
+/// # Algorithm
+/// Insert literal leaves, union recursively collected group/choice words and ignore typed scalars.
+/// Unmodeled nodes fail the test immediately.
+///
+/// # Flow
+/// ```text
+///       [argument node]
+///               |
+///      +--------+--------+
+///      |                 |
+/// [group/choice]      [leaf]
+///      |             /  |   \
+///  [recurse]    keyword scalar unmodeled
+///      |           |     |       |
+///      +------> [insert] [skip] [panic]
+///                  |
+///           [sorted unique set]
+/// ```
+///
+/// # Examples
+/// Local test-module context:
+/// ```text
+/// assert!(literal_words(&[K::Keyword("COMMAND".into())]).contains("COMMAND"));
+/// ```
 fn literal_words(args: &[K]) -> BTreeSet<String> {
     let mut words = BTreeSet::new();
     for arg in args {
@@ -48,6 +129,40 @@ fn literal_words(args: &[K]) -> BTreeSet<String> {
     words
 }
 
+/// Build representative required operands for process-grammar witnesses. Omits optional groups and
+/// uses each repeat minimum and first choice; no external side effects.
+///
+/// # Arguments
+/// - `args` `[in]`: Process-schema argument sequence to approximate with representative text.
+///
+/// # Returns
+/// Owned strings containing literal spellings and operand placeholders. This is a witness helper,
+/// not a general validator or exhaustive signature generator.
+///
+/// # Algorithm
+/// Keep literal nodes, omit optionals, repeat representatives min times and choose the first
+/// branch. Other nodes become one operand placeholder.
+///
+/// # Flow
+/// ```text
+///       [argument node]
+///                |
+///       +--------+---------+
+///       |                  |
+/// [group/repeat/choice]  [leaf/optional]
+///       |                  |
+/// [recurse as required] [literal/operand/omit]
+///       |                  |
+///       +--------+---------+
+///                v
+///       [concatenate arguments]
+/// ```
+///
+/// # Examples
+/// Local test-module context:
+/// ```text
+/// assert_eq!(minimum(&[K::Keyword("COMMAND".into()), K::Value]), ["COMMAND", "operand"]);
+/// ```
 fn minimum(args: &[K]) -> Vec<String> {
     args.iter()
         .flat_map(|arg| match arg {
@@ -61,6 +176,47 @@ fn minimum(args: &[K]) -> Vec<String> {
 }
 
 // Derive literal witnesses from structure, then check the real completion matcher.
+/// Append literal-position witnesses by walking structured grammar branches. Each witness pairs
+/// prior representative arguments with the next keyword; no I/O or input mutation.
+///
+/// # Arguments
+/// - `args` `[in]`: Argument sequence walked recursively through groups and alternatives.
+/// - `prefix` `[in]`: Owned preceding argument strings; extended locally as each node is passed.
+/// - `result` `[in,out]`: Existing witness vector; append (preceding arguments, keyword) pairs
+///   without clearing earlier entries.
+///
+/// # Returns
+/// `()` after appending witnesses. Prefixes exclude the active keyword; callers append that word
+/// before probing completion.
+///
+/// # Algorithm
+/// For each node, record a literal or visit every branch with a cloned prefix. Then extend the
+/// local prefix with minimum representatives before visiting following siblings.
+///
+/// # Flow
+/// ```text
+///       [node + prior prefix]
+///                 |
+///        +--------+--------+
+///        |                 |
+///    [keyword]        [group/choice]
+///        |                 |
+/// [append witness]  [visit branches]
+///        |                 |
+///        +--------+--------+
+///                 v
+///      [extend prefix with minimum]
+///                 |
+///           [next sibling]
+/// ```
+///
+/// # Examples
+/// Local test-module context:
+/// ```text
+/// let mut examples = Vec::new();
+/// witnesses(&[K::Keyword("NAME".into())], vec![], &mut examples);
+/// assert_eq!(examples, vec![(vec![], "NAME".into())]);
+/// ```
 fn witnesses(args: &[K], prefix: Vec<String>, result: &mut Vec<(Vec<String>, String)>) {
     let mut prefix = prefix;
     for arg in args {
@@ -80,6 +236,42 @@ fn witnesses(args: &[K], prefix: Vec<String>, result: &mut Vec<(Vec<String>, Str
     }
 }
 
+/// Build minimal argument-prefix witnesses for each process schema literal across CMake 3.0–3.31
+/// and 4.0–4.4.
+///
+/// Only local values and analysis buffers are created or changed; no file, network or process side
+/// effects.
+///
+/// # Arguments
+/// None. The test builds its own fixture and expected results.
+///
+/// # Returns
+/// `()` after all checks pass; no data or output parameter is returned.
+///
+/// # Panics
+/// If a stated invariant fails.
+///
+/// # Algorithm
+/// Require completion to rediscover each literal at its own structured position.
+///
+/// # Flow
+/// ```text
+///   [all supported process schemas]
+///    |
+///   [generate literal witnesses]-------------> [production prefix matcher]
+///                                             |
+///                                            [require witnessed keyword]
+///                                             |
+///                                            < checks hold? >
+///                                             /         \
+///                                           [pass]     [panic]
+/// ```
+///
+/// # Examples
+/// Local test-module call:
+/// ```text
+/// keyword_process_every_literal_is_reachable_in_its_structured_slot();
+/// ```
 #[test]
 fn keyword_process_every_literal_is_reachable_in_its_structured_slot() {
     for version in (0..=31)
@@ -102,6 +294,42 @@ fn keyword_process_every_literal_is_reachable_in_its_structured_slot() {
     }
 }
 
+/// Compare schemas just before/at process, CTest, host-query and instrumentation introductions.
+///
+/// Only local values and analysis buffers are created or changed; no file, network or process side
+/// effects.
+///
+/// # Arguments
+/// None. The test builds its own fixture and expected results.
+///
+/// # Returns
+/// `()` after all checks pass; no data or output parameter is returned.
+///
+/// # Panics
+/// If a stated invariant fails.
+///
+/// # Algorithm
+/// Inspect literal catalogs and targeted PRESET/QUIET/CAPTURE_CMAKE_ERROR probes so newer words
+/// cannot leak into older versions.
+///
+/// # Flow
+/// ```text
+///   [command/option gate tables]
+///    |
+///   [compare old/new literal catalogs]----------> [contextual preset/capture probes]
+///                                                |
+///                                               [check introductions]
+///                                                |
+///                                               < checks hold? >
+///                                                /         \
+///                                              [pass]     [panic]
+/// ```
+///
+/// # Examples
+/// Local test-module call:
+/// ```text
+/// keyword_process_command_and_keyword_introduction_boundaries();
+/// ```
 #[test]
 fn keyword_process_command_and_keyword_introduction_boundaries() {
     for (introduced, name) in [
@@ -240,6 +468,42 @@ fn keyword_process_command_and_keyword_introduction_boundaries() {
     }
 }
 
+/// Probe command/script/registry/package required operands and cmake_language modes.
+///
+/// Only local values and analysis buffers are created or changed; no file, network or process side
+/// effects.
+///
+/// # Arguments
+/// None. The test builds its own fixture and expected results.
+///
+/// # Returns
+/// `()` after all checks pass; no data or output parameter is returned.
+///
+/// # Panics
+/// If a stated invariant fails.
+///
+/// # Algorithm
+/// Require no keywords inside opaque values, mode-specific options and correct
+/// variable/executable/target completion roles.
+///
+/// # Flow
+/// ```text
+///   [process mode/scalar prefixes]
+///    |
+///   [probe keywords + name roles]-----------> [opaque required values]
+///                                            |
+///                                           [check empty or typed result]
+///                                            |
+///                                           < checks hold? >
+///                                            /         \
+///                                          [pass]     [panic]
+/// ```
+///
+/// # Examples
+/// Local test-module call:
+/// ```text
+/// keyword_process_required_operands_modes_and_opaque_values();
+/// ```
 #[test]
 fn keyword_process_required_operands_modes_and_opaque_values() {
     for (name, prefix) in [
@@ -316,6 +580,44 @@ fn keyword_process_required_operands_modes_and_opaque_values() {
     );
 }
 
+/// Parse a two-command fixture with an explicit required version and injected process schema.
+/// Creates local lexer/parser/semantic state only; does not run the named command.
+///
+/// # Arguments
+/// - `version` `[in]`: CMake (major, minor) written into the header and used for schema lookup.
+/// - `name` `[in]`: Exact process-family command name inserted after the header.
+/// - `args` `[in]`: Raw CMake argument text inserted inside the command parentheses, not shell
+///   arguments.
+///
+/// # Returns
+/// Semantic analysis for file 1; command index 1 is the supplied command, including diagnostics,
+/// output writes and path roles.
+///
+/// # Panics
+/// If the requested command has no schema at that version.
+///
+/// # Algorithm
+/// Format the version header and one command, lex/parse it, then inject this family schema into a
+/// fresh semantic analyzer before parsing as file 1.
+///
+/// # Flow
+/// ```text
+/// [version/name/args]
+///             |
+///     [two-command source]
+///             |
+///        [lex/parse] -------> [semantic analyzer]
+///                                   ^       |
+///        [injected schema] ---------+       v
+///                                     [file-1 buffer]
+/// ```
+///
+/// # Examples
+/// Local test-module context (await inside an async test):
+/// ```text
+/// let buffer = analyze((4, 4), "execute_process", "COMMAND tool OUTPUT_VARIABLE result").await;
+/// assert_eq!(buffer.commands[1].name, "execute_process");
+/// ```
 async fn analyze(
     version: (u32, u32),
     name: &str,
@@ -335,6 +637,43 @@ async fn analyze(
     .await
 }
 
+/// Parse complete 4.4 process, CTest, host-query, deferred-language and diagnostic fixtures with
+/// injected schemas.
+///
+/// Only local values and analysis buffers are created or changed; no file, network or process side
+/// effects.
+///
+/// # Arguments
+/// None. The test builds its own fixture and expected results.
+///
+/// # Returns
+/// `()` after all checks pass; no data or output parameter is returned.
+///
+/// # Panics
+/// If a stated invariant fails.
+///
+/// # Algorithm
+/// Compare exactly the names with recorded writes against expected result/output variables; no
+/// fixture tool is run.
+///
+/// # Flow
+/// ```text
+///   [complete process call table]
+///    |
+///   [lex/parse injected schemas]-----------> [variable changing records]
+///                                           |
+///                                          [compare exact output-name set]
+///                                           |
+///                                          < checks hold? >
+///                                           /         \
+///                                         [pass]     [panic]
+/// ```
+///
+/// # Examples
+/// Direct local call outside any Tokio runtime (the test attribute creates its runtime):
+/// ```text
+/// keyword_process_preserves_full_call_output_roles();
+/// ```
 #[tokio::test]
 async fn keyword_process_preserves_full_call_output_roles() {
     for (name, args, outputs) in [
@@ -446,6 +785,43 @@ async fn keyword_process_preserves_full_call_output_roles() {
     }
 }
 
+/// Parse complete process/CTest/package calls and compare indexed file, directory and output-path
+/// positions.
+///
+/// Only local values and analysis buffers are created or changed; no file, network or process side
+/// effects.
+///
+/// # Arguments
+/// None. The test builds its own fixture and expected results.
+///
+/// # Returns
+/// `()` after all checks pass; no data or output parameter is returned.
+///
+/// # Panics
+/// If a stated invariant fails.
+///
+/// # Algorithm
+/// Search hints must not become required input paths; invalid mixed signatures must record no
+/// variable writes.
+///
+/// # Flow
+/// ```text
+///   [complete process/path calls]
+///    |
+///   [analyze typed paths]------------------> [invalid signature cases]
+///                                           |
+///                                          [compare paths; require no writes]
+///                                           |
+///                                          < checks hold? >
+///                                           /         \
+///                                         [pass]     [panic]
+/// ```
+///
+/// # Examples
+/// Direct local call outside any Tokio runtime (the test attribute creates its runtime):
+/// ```text
+/// keyword_process_preserves_paths_and_does_not_require_search_hints_to_exist();
+/// ```
 #[tokio::test]
 async fn keyword_process_preserves_paths_and_does_not_require_search_hints_to_exist() {
     for (name, args, expected) in [
@@ -524,6 +900,42 @@ async fn keyword_process_preserves_paths_and_does_not_require_search_hints_to_ex
     }
 }
 
+/// Probe execute_process option values after an opaque COMMAND payload.
+///
+/// Only local values and analysis buffers are created or changed; no file, network or process side
+/// effects.
+///
+/// # Arguments
+/// None. The test builds its own fixture and expected results.
+///
+/// # Returns
+/// `()` after all checks pass; no data or output parameter is returned.
+///
+/// # Panics
+/// If a stated invariant fails.
+///
+/// # Algorithm
+/// Check versioned fatal-error/encoding/echo choices and no invented keywords for output-variable
+/// or working-directory scalars.
+///
+/// # Flow
+/// ```text
+///   [versioned execute options]
+///    |
+///   [probe after COMMAND payload]----------> [scalar output/path options]
+///                                           |
+///                                          [compare choices or empty result]
+///                                           |
+///                                          < checks hold? >
+///                                           /         \
+///                                         [pass]     [panic]
+/// ```
+///
+/// # Examples
+/// Local test-module call:
+/// ```text
+/// keyword_process_opaque_command_options_keep_required_value_slots();
+/// ```
 #[test]
 fn keyword_process_opaque_command_options_keep_required_value_slots() {
     for (version, option, expected) in [
@@ -555,6 +967,43 @@ fn keyword_process_opaque_command_options_keep_required_value_slots() {
     }
 }
 
+/// Compare the 4.4 process schema names with the explicit 22-command set and walk every grammar to
+/// reject unmodeled tails.
+///
+/// Only local values and analysis buffers are created or changed; no file, network or process side
+/// effects.
+///
+/// # Arguments
+/// None. The test builds its own fixture and expected results.
+///
+/// # Returns
+/// `()` after all checks pass; no data or output parameter is returned.
+///
+/// # Panics
+/// If a stated invariant fails.
+///
+/// # Algorithm
+/// Compare the 4.4 process schema names with the explicit 22-command set and walk every grammar to
+/// reject unmodeled tails.
+///
+/// # Flow
+/// ```text
+///   [4.4 process catalog]
+///    |
+///   [compare exact 22-name set]----------> [walk argument literals]
+///                                         |
+///                                        [reject unmodeled tails]
+///                                         |
+///                                        < checks hold? >
+///                                         /         \
+///                                       [pass]     [panic]
+/// ```
+///
+/// # Examples
+/// Local test-module call:
+/// ```text
+/// keyword_process_owns_all_assigned_commands_without_unmodeled_tails();
+/// ```
 #[test]
 fn keyword_process_owns_all_assigned_commands_without_unmodeled_tails() {
     let commands = schemas((4, 4));
@@ -591,6 +1040,42 @@ fn keyword_process_owns_all_assigned_commands_without_unmodeled_tails() {
     }
 }
 
+/// Probe CDASH_UPLOAD option introductions and reject unsupported capture/TLS spellings.
+///
+/// Only local values and analysis buffers are created or changed; no file, network or process side
+/// effects.
+///
+/// # Arguments
+/// None. The test builds its own fixture and expected results.
+///
+/// # Returns
+/// `()` after all checks pass; no data or output parameter is returned.
+///
+/// # Panics
+/// If a stated invariant fails.
+///
+/// # Algorithm
+/// Compare minimal ctest_run_script operands before/after 4.0, when at least one script becomes
+/// required.
+///
+/// # Flow
+/// ```text
+///   [legacy CDASH_UPLOAD prefixes]
+///    |
+///   [check option introductions]------------> [ctest_run_script minima]
+///                                            |
+///                                           [compare pre/post 4.0]
+///                                            |
+///                                           < checks hold? >
+///                                            /         \
+///                                          [pass]     [panic]
+/// ```
+///
+/// # Examples
+/// Local test-module call:
+/// ```text
+/// keyword_process_legacy_submission_and_script_boundaries();
+/// ```
 #[test]
 fn keyword_process_legacy_submission_and_script_boundaries() {
     for (word, introduced) in [

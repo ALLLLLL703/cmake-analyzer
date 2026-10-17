@@ -1,9 +1,25 @@
+//! Exact CMake bracket-delimiter recognition; advances cursor only, no I/O.
+//! Scanning retains raw delimiters; payload stripping is a separate text view.
+//! Contains AI-generated documentation additions.
+
 use crate::model::{Spanned, TextSpan};
 
 use super::model::{LexError, LexResult, Lexer};
 
 impl Lexer<'_> {
-    /// Returns the byte length of a bracket opener at the current cursor.
+    /// Recognize `[` followed by zero or more `=` and another `[` at the cursor; no side effects.
+    ///
+    /// # Arguments
+    /// - `self` `[in]`: scanner at a possible opener; unchanged.
+    ///
+    /// # Returns
+    /// `Some` opening-delimiter byte length, at least two; `None` for invalid offset or non-opener.
+    ///
+    /// # Examples
+    /// ```text
+    /// let lexer = Lexer::new(RawBuffer::new("[==[x]==]"));
+    /// assert_eq!(lexer.bracket_opening_len(), Some(4));
+    /// ```
     pub(super) fn bracket_opening_len(&self) -> Option<usize> {
         let rest = self
             .buffer
@@ -17,7 +33,54 @@ impl Lexer<'_> {
         (rest.get(equals + 1) == Some(&b'[')).then_some(equals + 2)
     }
 
-    /// Called at a validated opener. Removes delimiters and one initial newline.
+    /// Consume an exact bracket-delimited unit, advancing past the close or to EOF; no I/O.
+    /// Does not strip or rewrite source bytes; the token payload view strips wrappers later.
+    ///
+    /// # Arguments
+    /// - `self` `[in,out]`: scanner positioned on a validated bracket opener; cursor advanced in place.
+    /// - `opening_len` `[in]`: validated opening-delimiter byte length, at least two.
+    /// - `span` `[in]`: diagnostic start; local copy gets EOF as end on failure. For comments it starts at `#`.
+    ///
+    /// # Returns
+    /// `Ok(())` after a matching close; `Err` located from the supplied start through EOF.
+    ///
+    /// # Errors
+    /// Returns `UnclosedBracketArgument` after advancing to EOF if no exact closing
+    /// delimiter exists. The comment caller relabels it `UnclosedBracketComment`.
+    ///
+    /// # Panics
+    /// An unvalidated opener length below two can underflow; a length past the source
+    /// can make the initial content slice panic. Call `bracket_opening_len` first.
+    ///
+    /// # Algorithm
+    /// Begin after the opener and at most one initial LF/CRLF. Search for `]`, the exact
+    /// number of `=` bytes, and `]`. Do not nest brackets or process escapes. A rejected
+    /// candidate leaves its final `]` available as the start of another candidate.
+    ///
+    /// # Flow
+    /// ```text
+    ///         [validated opener]
+    ///                  |
+    ///     [skip one initial LF/CRLF]
+    ///                  |
+    ///         [find next closing candidate] <----+
+    ///                  |                        |
+    ///           <equals count + final ]?>        |
+    ///              /                \          |
+    ///            yes                no ---------+
+    ///             |                  | EOF
+    ///     [cursor past close]   [cursor = EOF]
+    ///             |                  |
+    ///          [Ok(())]           [Err(span)]
+    /// ```
+    ///
+    /// # Examples
+    /// ```text
+    /// let mut lexer = Lexer::new(RawBuffer::new("[=[\nraw]=]"));
+    /// let span = lexer.buffer.current_byte_to_span();
+    /// let len = lexer.bracket_opening_len().unwrap();
+    /// lexer.advance_bracket_argument(len, span).unwrap();
+    /// ```
     pub(super) fn advance_bracket_argument(
         &mut self,
         opening_len: usize,

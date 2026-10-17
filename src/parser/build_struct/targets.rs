@@ -1,5 +1,43 @@
+//! Extract structural target flags and source operands without configuring targets or I/O.
+// Contains AI-generated documentation additions.
 // AI-generated implementation.
 use super::model::{Argument, TargetDeclaration, TargetKind};
+/// Extract constructor flags, aliases and source operands without creating targets or accessing
+/// files.
+///
+/// # Arguments
+/// - `command` `[in]`: Lowercase native constructor name.
+/// - `name` `[in]`: Owned declared-name operand.
+/// - `arguments` `[in]`: Owned operands after the name, retained in shared storage.
+///
+/// # Returns
+/// Declaration with no references yet; imports and aliases have no sources.
+///
+/// # Algorithm
+/// Scan leading literal flags until a source/dynamic operand. ALIAS consumes an original target
+/// instead of sources. Custom targets take only the SOURCES group up to a known command keyword;
+/// other nonimported constructors retain the trailing operands as sources.
+///
+/// # Flow
+/// ```text
+/// [constructor]
+///       |
+///  <custom?>
+///    /       \
+///  yes       scan flags
+///   |           |
+/// [SOURCES] <import/alias?>
+///   |         /       \
+///   |       empty    trailing operands
+///   +---------+----------+
+///             |
+///      [shared declaration]
+/// ```
+///
+/// # Examples
+/// ```text
+/// let declaration = target("add_library", name, arguments);
+/// ```
 pub(super) fn target(command: &str, name: Argument, arguments: Vec<Argument>) -> TargetDeclaration {
     let mut kind = match command {
         "add_executable" => TargetKind::Executable,

@@ -1,4 +1,6 @@
 // AI-generated configured script execution and precedence regression tests.
+//! Explicit script profiles, dynamic import observations and configure-flag rejection.
+//! Real CMake -P runs are requested through actions; temporary outputs are removed afterward.
 use super::{
     actions::{actions, execute},
     hovers::hover,
@@ -7,6 +9,47 @@ use super::{
 };
 use serde_json::json;
 #[tokio::test]
+/// Check a reloaded nested -P profile executes only on command and installs dynamic import
+/// observations.
+/// Creates temporary files and an analyzer session; successful completion stops the session and
+/// removes fixtures. Execution scenarios may run real CMake or a local stub and write temporary
+/// output.
+///
+/// # Arguments
+/// None.
+///
+/// # Returns
+/// `()` if every assertion passes; no output parameter.
+///
+/// # Panics
+/// Panics on any failed assertion or unwrapped fixture/transport/process failure.
+/// Cleanup is explicit on the success path; a panic may leave a fixture tree.
+///
+/// # Algorithm
+/// Initially no actions exist. Reload script mapping/runtime arguments, list runScript with
+/// script profile and require no marker until execute. Await success, inspect runtime function
+/// comments and dependency definition, expanded CHOICE/script path and cleared unknown-function
+/// diagnostics; no build directory/cache is created.
+///
+/// # Flow
+/// ```text
+/// [Temporary sources + settings]      [Expected: script observations / no configure files]
+///              |                              |
+///              v                              |
+/// [LSP scenario messages]                 |
+///              |                              |
+///              +-------------+----------------+
+///                            v
+///                  [Compare assertions]
+///                            |
+///                            v
+///             [Finish session + remove tree]
+/// ```
+///
+/// # Examples
+/// ```text
+/// configured_nested_script_reloads_from_startup_settings_and_observes_dynamic_imports(); // #[tokio::test] supplies the runtime
+/// ```
 async fn configured_nested_script_reloads_from_startup_settings_and_observes_dynamic_imports() {
     let p = Project::new().await;
     let text = "file(WRITE \"${CMAKE_CURRENT_LIST_DIR}/../script-ran\" yes)\nfunction(resolve output)\nset(${output} \"${CMAKE_CURRENT_LIST_DIR}/../modules\" PARENT_SCOPE)\nendfunction()\nresolve(DIR)\ninclude(\"${DIR}/observed.cmake\")\nscript_fn()\nmessage(\"${CHOICE}\")\nmessage(\"${CMAKE_SCRIPT_MODE_FILE}\")\n";
@@ -115,6 +158,46 @@ async fn configured_nested_script_reloads_from_startup_settings_and_observes_dyn
     p.remove().await;
 }
 #[tokio::test]
+/// Check explicit -P mapping overrides CMakeLists.txt inference and rejects configure-only
+/// flags.
+/// Creates temporary files and an analyzer session; successful completion stops the session and
+/// removes fixtures. Execution scenarios may run real CMake or a local stub and write temporary
+/// output.
+///
+/// # Arguments
+/// None.
+///
+/// # Returns
+/// `()` if every assertion passes; no output parameter.
+///
+/// # Panics
+/// Panics on any failed assertion or unwrapped fixture/transport/process failure.
+/// Cleanup is explicit on the success path; a panic may leave a fixture tree.
+///
+/// # Algorithm
+/// Map CMakeLists.txt to script mode with -G Ninja and require runScript listing but -32602
+/// execution with no marker. Remove flags, reload one workspace, execute successfully and
+/// inspect expanded CMAKE_SCRIPT_MODE_FILE; require no cache.
+///
+/// # Flow
+/// ```text
+/// [Temporary sources + settings]      [Expected: script precedence / -32602 flags]
+///              |                              |
+///              v                              |
+/// [LSP scenario messages]                 |
+///              |                              |
+///              +-------------+----------------+
+///                            v
+///                  [Compare assertions]
+///                            |
+///                            v
+///             [Finish session + remove tree]
+/// ```
+///
+/// # Examples
+/// ```text
+/// explicit_script_mapping_overrides_cmakelists_filename_and_rejects_configure_flags(); // #[tokio::test] supplies the runtime
+/// ```
 async fn explicit_script_mapping_overrides_cmakelists_filename_and_rejects_configure_flags() {
     let p = Project::new().await;
     let text = "file(WRITE \"${CMAKE_CURRENT_LIST_DIR}/script-ran\" yes)\nmessage(\"${CMAKE_SCRIPT_MODE_FILE}\")\n";

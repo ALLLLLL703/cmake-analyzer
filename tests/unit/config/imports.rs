@@ -1,7 +1,48 @@
+//! Independent import-indexing and diagnostic-level overrides, including relative package paths and
+//! invalid enum values.
+
+// Contains AI-generated documentation edits.
 // AI-generated tests.
 use super::{ConfigSources, ConfigStore, NEXT};
 use cmake_analyzer::{config::DiagnosticLevel, workspace::model::ExternalIndex};
 use std::sync::atomic::Ordering;
+/// Merge user function-only includes and package prefixes, project disabled package
+/// indexing/variable warnings and an explicit function-warning level.
+///
+/// Writes, reloads and removes temporary configuration files. Enabled module defaults may inspect
+/// PATH CMake with --version; no project configure or script execution.
+///
+/// # Arguments
+/// None. The test builds its own fixture and expected results.
+///
+/// # Returns
+/// `()` after all checks pass; no data or output parameter is returned.
+///
+/// # Panics
+/// If a stated invariant fails or an unwrapped fixture/setup operation fails.
+///
+/// # Algorithm
+/// Check normalized paths, then replace the project layer with invalid modes, types, levels and a
+/// misspelled rule.
+///
+/// # Flow
+/// ```text
+///   [import/rule layers]
+///    |
+///   [check modes + path base]----------> [invalid enums / keys]
+///                                       |
+///                                      [reject reload]
+///                                       |
+///                                      < checks hold? >
+///                                       /         \
+///                                     [pass]     [panic]
+/// ```
+///
+/// # Examples
+/// Direct local call outside any Tokio runtime (the test attribute creates its runtime):
+/// ```text
+/// import_modes_paths_and_diagnostic_levels_layer_independently_and_validate();
+/// ```
 #[tokio::test]
 async fn import_modes_paths_and_diagnostic_levels_layer_independently_and_validate() {
     let root = std::env::temp_dir().join(format!(

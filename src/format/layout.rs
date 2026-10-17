@@ -1,3 +1,7 @@
+//! Pure command/block layout using immutable semantic and lexical ranges. Builds a
+//! new string, retaining literal/comment bytes; no files, processes or snapshot mutation.
+//!
+//! Contains AI-generated documentation additions.
 use super::{
     model::{Error, Options, Writer},
     trivia,
@@ -9,6 +13,48 @@ use crate::parser::{
     },
 };
 
+/// Render validated commands with branch/block indentation, preserving raw lexemes.
+/// Allocates a new Writer; no I/O or mutation of inputs.
+///
+/// # Arguments
+/// - `source` `[in]`: original source with matching byte ranges.
+/// - `lexed` `[in]`: matching lexical tokens/comments.
+/// - `buffer` `[in]`: validated semantic commands in source order.
+/// - `options` `[in]`: already validated positive widths.
+/// - `stop` `[in]`: caller cancellation predicate.
+///
+/// # Returns
+/// `Ok(String)` is the completed output with normalized final newline; `Err` discards partial in-memory output.
+///
+/// # Errors
+/// Cancellation or invalid command/trivia ranges encountered by child renderers.
+///
+/// # Panics
+/// Inconsistent source byte ranges may panic when sliced; widths must already be validated.
+///
+/// # Algorithm
+/// Select CRLF only when the first LF is preceded by CR. Stream commands in order, render
+/// preceding trivia, dedent closing/branch keywords, render calls and increase indentation for openers. Finish trailing trivia.
+///
+/// # Flow
+/// ```text
+///  [source newline style] ---> [Writer]
+///                                |
+///                          [next command] <--------+
+///                                |                |
+///                     [trivia + dedent if needed] |
+///                                |                |
+///                          [render call]          |
+///                                |                |
+///                     [indent opener + cursor] ---+
+///                                | EOF
+///                        [trailing trivia + finish]
+/// ```
+///
+/// # Examples
+/// ```text
+/// let output = render(source, &lexed, &semantics, Options::default(), &|| false)?;
+/// ```
 pub(super) fn render(
     source: &str,
     lexed: &LexedBuffer,
@@ -73,11 +119,70 @@ pub(super) fn render(
     trivia::render(source, lexed, cursor..source.len(), level, &mut out, stop)?;
     Ok(out.finish())
 }
+/// Decide whether adjacent argument forms need one separating space. Pure comparison; no side effects.
+///
+/// # Arguments
+/// - `previous` `[in]`: previous argument form, or None before the first.
+/// - `current` `[in]`: next argument form.
+///
+/// # Returns
+/// True except before the first argument, immediately after left parentheses or immediately before right parentheses.
+///
+/// # Examples
+/// ```text
+/// assert!(separated(Some(SemanticArgForm::Unquoted), SemanticArgForm::Unquoted));
+/// ```
 fn separated(previous: Option<SemanticArgForm>, current: SemanticArgForm) -> bool {
     previous.is_some_and(|previous| {
         previous != SemanticArgForm::LeftParen && current != SemanticArgForm::RightParen
     })
 }
+/// Append one command using compact or vertical argument layout without altering raw argument text.
+/// Only the in-memory writer changes; no I/O or process execution.
+///
+/// # Arguments
+/// - `source` `[in]`: matching original UTF-8 text.
+/// - `lexed` `[in]`: tokens and comment ranges used to locate delimiters/attachments.
+/// - `command` `[in]`: one closed semantic command with source-qualified argument ranges.
+/// - `level` `[in]`: current block indentation depth.
+/// - `out` `[in,out]`: receives appended name/delimiters/arguments/trivia; columns and breaks update, never cleared.
+/// - `stop` `[in]`: cancellation predicate checked between arguments.
+///
+/// # Returns
+/// `Ok(())` after the closing parenthesis; `Err` may leave partial text appended to out, which the outer renderer discards.
+///
+/// # Errors
+/// InvalidSyntax for missing/invalid spans or delimiters/trivia; Cancelled on a requested stop.
+///
+/// # Panics
+/// Inconsistent UTF-8 comment/command boundaries may panic on slicing; out must use validated widths.
+///
+/// # Algorithm
+/// Find the lexical opening delimiter and comments. Measure scalar/tab columns without
+/// splitting lexemes. Compact only when there are no internal comments/multiline arguments and
+/// width fits; otherwise emit each argument on a continuation line and track nested parentheses.
+///
+/// # Flow
+/// ```text
+///  [name + args + comments]
+///              |
+///     [locate delimiters + measure]
+///              |
+///        <fits, plain?>
+///         /          \
+///       yes          no
+///        |            |
+///  [compact args] [trivia + vertical args]
+///        |            |
+///        |       [nested depth updates]
+///        \            /
+///         [closing delimiter appended]
+/// ```
+///
+/// # Examples
+/// ```text
+/// render_command(source, &lexed, &command, 0, &mut out, &|| false)?;
+/// ```
 fn render_command(
     source: &str,
     lexed: &LexedBuffer,

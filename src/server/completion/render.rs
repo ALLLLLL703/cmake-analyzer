@@ -1,3 +1,6 @@
+//! Convert byte-based completion plans into negotiated client-coordinate edits.
+//! Rendering changes no server text and performs no I/O; the client applies the returned edit.
+
 use super::{
     arguments,
     model::{Candidate, Kind, Site},
@@ -5,6 +8,24 @@ use super::{
 use crate::server::text::TextIndex;
 use lspally::server::model::*;
 
+/// Render one client edit, replacing only the planned byte span.
+/// Does not apply the edit or perform I/O.
+///
+/// # Arguments
+/// - `candidate` `[in]`: Owned label, presentation kind and optional required snippet parameters.
+/// - `site` `[in]`: Full replacement span and existing-parenthesis flag; wrappers and other arguments lie outside the span.
+/// - `index` `[in]`: TextIndex for this exact source revision and negotiated encoding.
+///
+/// # Returns
+/// `Ok(item)` contains one text edit and plain-text format, or snippet format when parameters exist and no parentheses already follow.
+///
+/// # Errors
+/// `Err` reports invalid analysis byte boundaries or client-coordinate overflow during range conversion.
+///
+/// # Examples
+/// ```text
+/// let item = render::item(candidate, &site, &index)?;
+/// ```
 pub(super) fn item(
     candidate: Candidate,
     site: &Site,

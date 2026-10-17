@@ -1,3 +1,8 @@
+//! Coordinate background CMake execution without giving jobs mutable service state.
+//! Saved-source checks guard both launch and installation. Run IDs reject completions
+//! from removed or superseded jobs. Cancellation removes the live marker immediately;
+//! the task remains in the join set until reaped. Only this opt-in path runs project
+//! CMake code; shutdown cancels and joins every tracked task.
 // AI-authored background CMake coordination; the actor remains available for edits.
 use super::{
     super::{action::model::ActionRequest, model::*},
@@ -10,6 +15,46 @@ use crate::runtime_cmake::{
 use lspally::server::model::*;
 use std::{collections::BTreeMap, path::PathBuf, sync::Arc, time::Duration};
 impl Service {
+    /// Read all known source inputs and require exact equality with their analyzed/editor text.
+    /// Ignores runtime documents inside the observed build directory; never saves buffers or changes caches.
+    ///
+    /// # Arguments
+    /// - `self` `[in]`: Known snapshots and owner-qualified open texts read without modifying caches.
+    /// - `owner` `[in]`: Valid current project index whose static/runtime/open inputs are checked.
+    ///
+    /// # Returns
+    /// `Ok(())` when every collected input matches disk; `Err` on unreadable or different text.
+    ///
+    /// # Errors
+    /// Disk read/UTF-8 errors become internal errors; differing text produces an invalid-parameters error asking for save/refresh.
+    ///
+    /// # Panics
+    /// Panics if owner is not a current projects index.
+    ///
+    /// # Algorithm
+    /// Collect static visits, then non-build runtime documents, then owner-qualified open texts into a path map, with later sources replacing earlier ones. Read each file asynchronously and stop on the first mismatch.
+    ///
+    /// # Flow
+    /// ```text
+    ///  [Static snapshots]     [Runtime outside build]
+    ///          |                        |
+    ///          +-----------+------------+
+    ///                      v
+    ///               [Path/text map] <---- [Owned open buffers override]
+    ///                      |
+    ///               [Read each file]
+    ///                      |
+    ///            <Exact text match?>
+    ///              /             \
+    ///             no             yes
+    ///             |               |
+    ///          [Error]       [Next file / Ok]
+    /// ```
+    ///
+    /// # Examples
+    /// ```text
+    /// service.require_saved(owner).await?;
+    /// ```
     pub(in crate::server) async fn require_saved(&self, owner: usize) -> ServerResult<()> {
         let project = &self.projects[owner];
         let mut inputs: BTreeMap<PathBuf, Arc<str>> = BTreeMap::new();
@@ -51,6 +96,45 @@ impl Service {
         }
         Ok(())
     }
+    /// Reject unsaved owned buffers, invalidate changed known disk inputs and flush refreshed analysis.
+    /// Reads disk and mutates Workspace caches; does not launch CMake.
+    ///
+    /// # Arguments
+    /// - `self` `[in,out]`: Workspace disk caches invalidated and dirty analysis flushed; editor buffers remain unchanged.
+    /// - `owner` `[in]`: Valid current project index whose cached static/runtime sources are refreshed.
+    ///
+    /// # Returns
+    /// `Ok(())` after the flush; `Err` for unsaved text, read/cache errors or flush admission/synchronization errors.
+    ///
+    /// # Errors
+    /// Unreadable/non-UTF-8 inputs, open text differing from disk, Workspace invalidation errors, or flush failures. Some earlier invalidations may remain.
+    ///
+    /// # Panics
+    /// Panics if owner is not a current projects index.
+    ///
+    /// # Algorithm
+    /// Snapshot known static/runtime texts, verify all owned open buffers are saved, compare known files with disk, mark changed inputs invalid/dirty, then flush all service projects.
+    ///
+    /// # Flow
+    /// ```text
+    ///  [Known static/runtime text]      [Owned opens]
+    ///               |                        |
+    ///               |                <Saved on disk?>
+    ///               |                 /           \
+    ///               |                no           yes
+    ///               |                |             |
+    ///               |             [Error]          |
+    ///               +------------------------------+
+    ///               v
+    ///        [Invalidate changed disk inputs]
+    ///               |
+    ///            [Flush]
+    /// ```
+    ///
+    /// # Examples
+    /// ```text
+    /// service.refresh_configure_inputs(owner).await?;
+    /// ```
     async fn refresh_configure_inputs(&mut self, owner: usize) -> ServerResult<()> {
         let mut known = BTreeMap::new();
         if let Some(graph) = self.projects[owner].workspace.root_graph() {
@@ -91,6 +175,49 @@ impl Service {
         }
         self.flush().await
     }
+    /// Validate an action and launch a tracked background configure/script process.
+    /// Reads and refreshes inputs, reserves a run ID/build directory, starts a job and notifies the client; does not await process completion.
+    ///
+    /// # Arguments
+    /// - `self` `[in,out]`: Analysis caches may refresh; run counter increments and job/running records are added before the start notification.
+    /// - `request` `[in]`: Consumed action selection with root/profile/URI and launch-time cancellation.
+    ///
+    /// # Returns
+    /// `Ok(Some(Data::Object))` with started=true and numeric run ID after the start message succeeds; never Ok(None). `Err` on validation/setup/message failure. A message error can occur after the job has already started.
+    ///
+    /// # Errors
+    /// Stale/invalid action project, disabled runtime, missing mode, invalid script arguments, occupied root/job limit, unsaved/unreadable inputs, invalid or reused build directory, cancellation before launch, exhausted run IDs, or client message failure. Process/trace failures arrive later through configure_finished.
+    ///
+    /// # Panics
+    /// Tokio job spawning requires an active runtime; internal project-index invariants must hold.
+    ///
+    /// # Algorithm
+    /// Resolve owner/settings, validate mode and job slots, refresh inputs then resolve the owner again and require saved sources. Scripts use startup cwd; configure uses the entry parent and a separate unused build directory. Check request cancellation once before incrementing the run counter, spawn execute with an independent job signal, record the marker and send the started notification.
+    ///
+    /// # Flow
+    /// ```text
+    ///  [Action + effective runtime settings]
+    ///                  |
+    ///         [Validate + refresh inputs]
+    ///                  |
+    ///              <Mode?>
+    ///             /       \
+    ///         script     configure
+    ///           |           |
+    ///      [Startup cwd] [Check separate build]
+    ///           +-----------+
+    ///                  v
+    ///       [Check cancellation + allocate ID]
+    ///                  |
+    ///       [Spawn task + insert running marker]
+    ///                  |
+    ///          [Notify client + return ID]
+    /// ```
+    ///
+    /// # Examples
+    /// ```text
+    /// let started = service.start_runtime(request).await?;
+    /// ```
     pub(in crate::server) async fn start_runtime(
         &mut self,
         request: ActionRequest,
@@ -204,6 +331,19 @@ impl Service {
             ("run".into(), Data::Unsigned(run.value())),
         ]))))
     }
+    /// Cancel every accepted runtime job and remove all installed runtime layers.
+    /// Does not await tasks; static analysis remains and all path caches are marked dirty.
+    ///
+    /// # Arguments
+    /// - `self` `[in,out]`: Running markers drained/cancelled, runtime layers removed and path caches marked dirty; join-set tasks remain.
+    ///
+    /// # Returns
+    /// `()` after draining running markers and clearing observations; jobs remain in the join set until reaped.
+    ///
+    /// # Examples
+    /// ```text
+    /// service.invalidate_runtime();
+    /// ```
     pub(super) fn invalidate_runtime(&mut self) {
         for (_, task) in std::mem::take(&mut self.running) {
             task.cancel.cancel();
@@ -213,10 +353,76 @@ impl Service {
             project.paths_dirty = true;
         }
     }
+    /// Invalidate runtime work and await every outstanding task, including already stale jobs.
+    /// Process cancellation/reaping is delegated to each job; join results are intentionally discarded.
+    ///
+    /// # Arguments
+    /// - `self` `[in,out]`: Runtime markers/layers invalidated and the job set drained; static projects/documents are retained.
+    ///
+    /// # Returns
+    /// `()` once the join set is empty.
+    ///
+    /// # Algorithm
+    /// Signal all running markers through invalidate_runtime, then drain join_next until no tracked task remains.
+    ///
+    /// # Flow
+    /// ```text
+    ///  [Running markers]          [Stale/unreaped jobs]
+    ///          |                          |
+    ///      [Cancel all]                   |
+    ///          +------------+-------------+
+    ///                       v
+    ///                 [join_next] <--------+
+    ///                       |              |
+    ///                 <Got a task?> -- yes-+
+    ///                       | no
+    ///                    [Return]
+    /// ```
+    ///
+    /// # Examples
+    /// ```text
+    /// service.stop_configures().await;
+    /// ```
     pub(super) async fn stop_configures(&mut self) {
         self.invalidate_runtime();
         while self.jobs.join_next().await.is_some() {}
     }
+    /// Accept only current job results, recheck saved sources and install observations into the matching profile.
+    /// Mutates runtime membership/path state and clears publication keys on success; logs join failures or sends a completion/failure message.
+    ///
+    /// # Arguments
+    /// - `self` `[in,out]`: Matching marker removed; accepted observations, membership/path caches and publication keys updated.
+    /// - `completion` `[in]`: Consumed join result containing the root, execution mode, run ID and process trace/error.
+    ///
+    /// # Returns
+    /// `()`; stale/unowned completions are silently discarded, task failures log to stderr, and install/process failures are reported to the client. Client-message failure is ignored.
+    ///
+    /// # Algorithm
+    /// Reject failed joins or mismatched run IDs, then remove the marker and find the nonstandalone matching profile. Require known inputs still saved, check newly observed open sources against disk, install the trace with the job signal, extend membership and clear diagnostic keys. Report success or the validation/process/install error.
+    ///
+    /// # Flow
+    /// ```text
+    ///  [Joined completion]
+    ///           |
+    ///      <Current run ID?> -- no --> [Discard]
+    ///           | yes
+    ///  [Remove marker + find profile]
+    ///           |
+    ///  [Recheck saved + observed inputs]
+    ///           |
+    ///      <Install succeeds?>
+    ///        /           \
+    ///       no           yes
+    ///       |             |
+    ///  [Error message] [Members/path dirty + clear keys]
+    ///                     |
+    ///               [Success message]
+    /// ```
+    ///
+    /// # Examples
+    /// ```text
+    /// service.configure_finished(completion).await;
+    /// ```
     pub(super) async fn configure_finished(
         &mut self,
         completion: Result<RuntimeCompletion, tokio::task::JoinError>,

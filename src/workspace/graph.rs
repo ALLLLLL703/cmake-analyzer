@@ -1,3 +1,7 @@
+//! Iteratively visit dependencies in source order with conservative values and bounded work.
+//! Includes/packages share caller scope and directory; subdirectories fork both contexts.
+//! Reads files and search metadata but never configures or executes project code.
+// Contains AI-generated documentation additions.
 // AI-generated implementation.
 // review over(except for the build_graph)
 mod values;
@@ -13,29 +17,137 @@ use std::{
     sync::Arc,
 };
 
+/// Suspended command-order replay state for one dependency visit. No I/O on construction.
+///
+/// [`Task::Resume`] owns this state while children run; [`RootGraph`] holds the accumulated
+/// effects.
+///
+/// # Flow
+/// ```text
+/// [caller frame]             [child task]
+///        |                        |
+///   [suspended] <--- stack ---- [Enter]
+///        |                        |
+///        +---- [Resume after child]+
+/// ```
+///
+/// # Examples
+/// ```text
+/// let next_fact = frame.next;
+/// ```
 struct Frame {
+    /// Graph visit being resumed Example: `frame.invocation`.
     invocation: usize,
+    /// Immutable file result read by this visit Example: `frame.snapshot.build.facts.len()`.
     snapshot: Arc<DocumentSnapshot>,
+    /// Next build-fact index, advanced before visiting a dependency Example: `frame.next`.
     next: usize,
+    /// Next semantic command whose value effects have not been replayed Example:
+    /// `frame.next_command` .
     next_command: usize,
+    /// Directory builtin context used for value expansion Example:
+    /// `frame.directories.file.as_path()` .
     directories: ValueDirectories,
+    /// File-local scope ID to graph-scope index for this visit only Example:
+    /// `frame.local_scopes.get(&0)` .
     local_scopes: HashMap<u32, usize>,
+    /// Current dependency depth, root zero Example: `frame.depth`.
     depth: usize,
 }
 // Stack order: enter a child, finish it, then continue the caller. See README.md.
+/// Explicit depth-first traversal step; avoids recursive async graph walking. Constructing it has
+/// no side effects.
+///
+/// [`Frame`] retains suspended caller state; [`Workspace::build_graph`] consumes this stack.
+///
+/// # Flow
+/// ```text
+/// [Enter] ----> [Resume]
+///     |             |
+///  [active set]  <dependency?>
+///                   /      \
+///             [child Enter] [next fact]
+///                   |          |
+///                   +----> [Exit]
+///                             |
+///                        [remove active]
+/// ```
+///
+/// # Examples
+/// ```text
+/// tasks.push(Task::Exit(file));
+/// ```
 enum Task {
+    /// Attempt a bounded file visit, resolve external policy, then load a snapshot Example:
+    /// `Task::Enter { file, parent: None, scope: 0, directory, edge: None, depth: 0 }` .
     Enter {
+        /// File identity to load. Example:
+        /// `Task::Enter { file, parent: None, scope: 0, directory, edge: None, depth: 0 }` .
         file: PathBuf,
+        /// Caller visit or None for root. Example:
+        /// `Task::Enter { parent: None, file, scope: 0, directory, edge: None, depth: 0 }` .
         parent: Option<usize>,
+        /// Graph scope inherited or forked by the caller. Example:
+        /// `Task::Enter { scope: 0, file, parent: None, directory, edge: None, depth: 0 }` .
         scope: usize,
+        /// Source/binary context for the entered file. Example:
+        /// `Task::Enter { directory, file, parent: None, scope: 0, edge: None, depth: 0 }` .
         directory: DirectoryContext,
+        /// Origin edge index updated after successful entry. Example:
+        /// `Task::Enter { edge: None, file, parent: None, scope: 0, directory, depth: 0 }` .
         edge: Option<usize>,
+        /// Dependency nesting count with root zero. Example:
+        /// `Task::Enter { depth: 0, file, parent: None, scope: 0, directory, edge: None }` .
         depth: usize,
     },
-    Resume(Frame),
-    Exit(PathBuf),
+    /// Continue value/fact replay after a child completes Example: `Task::Resume(frame)`.
+    Resume(/** Suspended caller state. Example: `Task::Resume(frame)`. */ Frame),
+    /// Remove the file from the active call path after all children finish Example:
+    /// `Task::Exit(file)` .
+    Exit(/** File identity to remove from the active set. Example: `Task::Exit(file)`. */ PathBuf),
 }
 // A file's scope 0 is not another file's scope 0. Map IDs anew for each visit.
+/// Map a file-local scope into this visit's graph scopes, copying parent state at first use. No
+/// I/O.
+///
+/// # Arguments
+/// - `local` `[in]`: Optional semantic scope number; None selects the visit scope.
+/// - `invocation` `[in]`: Existing graph visit index.
+/// - `semantics` `[in]`: File-local scope ancestry for this snapshot.
+/// - `map` `[in,out]`: Per-visit mapping; appends each newly created scope ID.
+/// - `graph` `[in,out]`: Appends cloned child scopes; existing scope values are not overwritten.
+///
+/// # Returns
+/// Graph scope index for this local context.
+///
+/// # Panics
+/// Panics for invalid invocation or graph-parent scope indices; callers use IDs from the graph
+/// under construction.
+///
+/// # Algorithm
+/// Return the visit base for no local scope, or reuse an existing mapping. Otherwise map the
+/// semantic parent first, clone its current graph state, record parent ancestry and allocate one
+/// graph scope for this visit.
+///
+/// # Flow
+/// ```text
+/// [local scope]
+///       |
+///  <already mapped?> -- yes --> [existing graph ID]
+///       | no
+///  [map semantic parent]
+///       |
+///  [clone current parent state]
+///       /                \
+///  [append graph scope] [record visit mapping]
+///       \                /
+///          [new graph ID]
+/// ```
+///
+/// # Examples
+/// ```text
+/// let scope = local_scope(Some(0), visit_id, semantics, &mut mapping, &mut graph);
+/// ```
 fn local_scope(
     local: Option<u32>,
     invocation: usize,
@@ -68,6 +180,48 @@ fn local_scope(
     id
 }
 impl Workspace {
+    /// Build an ordered, bounded static dependency graph from one entry. Reads sources/search
+    /// metadata but never executes project code; per-file analysis may inspect CMake version.
+    ///
+    /// # Arguments
+    /// - `self` `[in,out]` : Workspace document caches may be loaded/updated; the returned graph is
+    ///   not installed by this method.
+    /// - `root` `[in]`: Entry file and source/binary/script context.
+    ///
+    /// # Returns
+    /// New graph, possibly partial, with read/cycle/limit diagnostics rather than a returned I/O
+    /// error.
+    ///
+    /// # Algorithm
+    /// Use Enter/Resume/Exit tasks so each resolved child completes before the caller's next fact.
+    /// Track active lexical paths for cycles and loaded snapshots for unique-file limits; canonical
+    /// saved paths select external policy. Functions-only descendants keep that mode; none skips
+    /// loading and invalidates values. Full visits advance conservative values, retain
+    /// conditional/deferred candidate edges without visiting them, expand only known single-value
+    /// paths, share include/package scopes, and fork subdirectory state.
+    ///
+    /// # Flow
+    /// ```text
+    /// [Enter file] ----> <cycle/budget?> ---- yes --> [diagnostic]
+    ///       | no
+    ///  <external policy?>
+    ///    /        |        \
+    ///  none    functions    full
+    ///   |         |          |
+    /// [invalidate] |     [advance values]
+    ///              +-----[next dependency]
+    ///                          |
+    ///                     <resolvable?>
+    ///                      /         \
+    ///               [child Enter] [resume caller]
+    ///                      |             |
+    ///                      +----> [Exit: remove active]
+    /// ```
+    ///
+    /// # Examples
+    /// ```text
+    /// let graph = workspace.build_graph(&root).await;
+    /// ```
     pub(super) async fn build_graph(&mut self, root: &Root) -> RootGraph {
         let mut graph = RootGraph::default();
         graph.scopes.push(VariableScope {
@@ -417,6 +571,26 @@ impl Workspace {
     }
     // Return the chosen file and checked paths, including missing earlier choices.
     /// Resolve using Workspace module precedence; direct file candidates may not exist yet.
+    /// Resolve a navigation dependency using an optional saved graph scope. Probes filesystem
+    /// metadata but does not load/execute the chosen script.
+    ///
+    /// # Arguments
+    /// - `self` `[in]`: Workspace search configuration and overlay identities; unchanged.
+    /// - `dependency` `[in]` : Request with a literal first operand; dynamic requests decline
+    ///   lookup.
+    /// - `caller` `[in]`: List-file identity used to select builtin-module precedence.
+    /// - `directory` `[in]`: Current source directory and optional binary context.
+    /// - `scope` `[in]` : Optional graph-scope index supplying known values; invalid/absent means
+    ///   no bindings.
+    ///
+    /// # Returns
+    /// (chosen path, checked candidate paths). Chosen direct paths may not exist; unresolved lookup
+    /// returns None. Candidates include missing higher-priority choices.
+    ///
+    /// # Examples
+    /// ```text
+    /// let (target, checked) = workspace.resolve_dependency_at(dependency, caller, directory, Some(scope)).await;
+    /// ```
     pub(crate) async fn resolve_dependency_at(
         &self,
         dependency: &Dependency,
@@ -434,6 +608,26 @@ impl Workspace {
         )
         .await
     }
+    /// Dispatch literal dependency lookup with explicit contextual values. Probes files/environment
+    /// only; no source loading, graph mutation or execution.
+    ///
+    /// # Arguments
+    /// - `self` `[in]`: Workspace search configuration and overlay identities; unchanged.
+    /// - `dependency` `[in]` : Request with a literal first operand; dynamic requests decline
+    ///   lookup.
+    /// - `caller` `[in]`: List-file identity used to select builtin-module precedence.
+    /// - `directory` `[in]`: Current source directory and optional binary context.
+    /// - `values` `[in]` : Optional conservative search hints such as CMAKE_MODULE_PATH and package
+    ///   roots.
+    ///
+    /// # Returns
+    /// (chosen path, candidate paths); nonliteral requests or disabled package lookup return (None,
+    /// empty). Direct file candidates may be missing.
+    ///
+    /// # Examples
+    /// ```text
+    /// let (target, candidates) = workspace.resolve_dependency_in(dependency, caller, directory, Some(values)).await;
+    /// ```
     pub(crate) async fn resolve_dependency_in(
         &self,
         dependency: &Dependency,
@@ -455,6 +649,45 @@ impl Workspace {
                 .await
         }
     }
+    /// Resolve source-directory paths or bare modules with caller-sensitive precedence. Reads
+    /// metadata/overlay identities, not file contents; no execution.
+    ///
+    /// # Arguments
+    /// - `self` `[in]`: Workspace search configuration and overlay identities; unchanged.
+    /// - `dependency` `[in]` : Request with a literal first operand; dynamic requests decline
+    ///   lookup.
+    /// - `caller` `[in]`: List-file identity used to select builtin-module precedence.
+    /// - `directory` `[in]`: Current source directory and optional binary context.
+    /// - `values` `[in]`: Known CMAKE_MODULE_PATH list, when available.
+    ///
+    /// # Returns
+    /// (chosen path, checked paths). Subdirectories/direct paths are returned without existence
+    /// checks; bare modules choose the first overlay or existing file, otherwise None with all
+    /// checked candidates.
+    ///
+    /// # Algorithm
+    /// Append CMakeLists.txt for subdirectories. Treat absolute, extension-bearing or
+    /// multi-component include paths as direct source-relative paths. For bare names, append .cmake
+    /// and probe ordered search roots, preserving missing earlier candidates. Disabled module
+    /// lookup blocks only bare-name search.
+    ///
+    /// # Flow
+    /// ```text
+    /// [literal operand]
+    ///        |
+    ///  <subdirectory/direct path?>
+    ///       /                \
+    ///  [normalize only]   <lookup enabled?>
+    ///       |               /         \
+    ///  [candidate path]    no       [search roots]
+    ///                       |            |
+    ///                    [none]     [first file/overlay]
+    /// ```
+    ///
+    /// # Examples
+    /// ```text
+    /// let (target, checked) = workspace.resolve_module(dependency, caller, directory, None).await;
+    /// ```
     pub(super) async fn resolve_module(
         &self,
         dependency: &Dependency,
@@ -503,6 +736,45 @@ impl Workspace {
         }
         (None, candidates)
     }
+    /// Assemble module roots without reading directories. Builtin callers search builtin first;
+    /// others search it last. No mutation occurs.
+    ///
+    /// # Arguments
+    /// - `self` `[in]`: Configured explicit and builtin module directories.
+    /// - `caller` `[in]`: Caller identity; exact parent equality identifies a builtin caller.
+    /// - `directory` `[in]`: Source directory used to join relative module paths.
+    /// - `values` `[in]`: Optional known semicolon-separated CMAKE_MODULE_PATH.
+    ///
+    /// # Returns
+    /// Ordered roots: builtin first for builtin caller, known variable paths, configured paths,
+    /// then builtin for other callers. Duplicates are retained.
+    ///
+    /// # Algorithm
+    /// Determine builtin precedence by exact caller-parent equality. Insert known CMAKE_MODULE_PATH
+    /// entries before configured module paths, joining relative entries to the visit source. Put
+    /// the supplied builtin directory first for builtin callers and last for others.
+    ///
+    /// # Flow
+    /// ```text
+    /// [caller parent]        [builtin directory]
+    ///         |                      |
+    ///         +----> <same directory?>
+    ///                  /         \
+    ///            builtin first   defer builtin
+    ///                  |         |
+    ///                  +----+----+
+    ///                       |
+    ///       [known CMAKE_MODULE_PATH entries]
+    ///                       |
+    ///         [configured module paths]
+    ///                       |
+    ///           [builtin last if deferred]
+    /// ```
+    ///
+    /// # Examples
+    /// ```text
+    /// let roots = workspace.module_search_paths(caller, directory, Some(values));
+    /// ```
     pub(super) fn module_search_paths(
         &self,
         caller: &Path,

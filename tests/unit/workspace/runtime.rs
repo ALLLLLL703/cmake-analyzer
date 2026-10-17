@@ -1,4 +1,9 @@
 // AI-generated end-to-end real CMake trace/layer tests; projects use no compiler languages.
+
+//! Check runtime-layer installation against a real CMake configure of trusted test-authored text.
+//! Creates a compiler-free temporary project and build tree, runs CMake, and removes the tree on drop.
+//! Documentation examples are local-context text, not additional configure invocations.
+
 use super::Project;
 use cmake_analyzer::{
     config::Runtime,
@@ -10,6 +15,45 @@ use cmake_analyzer::{
 };
 use lspally::server::model::Cancellation;
 use std::{sync::Arc, time::Duration};
+/// Configure the trusted compiler-free Trace fixture with CACHEV=custom and install its captured runtime trace.
+/// Writes temporary sources and a dedicated-build tree, spawns/reaps real CMake, loads trace sources, and removes the project tree on drop. Not used as an executable documentation example.
+///
+/// # Arguments
+/// None; the test constructs its own fixtures.
+///
+/// # Returns
+/// `()` after all checks pass.
+///
+/// # Panics
+/// If fixture setup or any documented assertion fails.
+///
+/// # Algorithm
+/// Compare static and observed dependencies, including empty files; require functions/repeated calls, normal/cache/unknown value distinctions, immutable static snapshot identity, atomic cancellation, and runtime invalidation on overlay edit.
+///
+/// # Flow
+/// ```text
+/// [trusted Trace fixture] --> [static snapshot / graph]
+///           |                         |
+///           v                         v
+/// [CMake configure / trace] --> [install runtime layer]
+///                                     |
+///                                     v
+///                        [dependencies / calls / values]
+///                                     |
+///                                     v
+/// [pre-cancelled new trace] --> [old layer retained]
+///                                     |
+///                                     v
+/// [root overlay edit] --------> [runtime layer cleared]
+/// ```
+///
+/// # Examples
+/// Local test-module context, outside any running Tokio runtime:
+/// the macro-generated test wrapper runs its own runtime and returns `()`.
+/// Prefer the test harness; ignored measurements require explicit selection.
+/// ```text
+/// observed_dependencies_values_functions_and_repeated_calls_stay_separate();
+/// ```
 #[tokio::test]
 async fn observed_dependencies_values_functions_and_repeated_calls_stay_separate() {
     let p = Project::new().await;

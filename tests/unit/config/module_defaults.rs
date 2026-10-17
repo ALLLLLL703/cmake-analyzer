@@ -1,7 +1,48 @@
+//! Entry-relative module defaults without creating module directories, and explicit empty-array
+//! replacement.
+
+// Contains AI-generated documentation edits.
 // AI-generated project module default and override tests.
 use cmake_analyzer::config::{ConfigSources, ConfigStore, Modules};
 use std::sync::atomic::Ordering;
 
+/// Query two separate entry directories and require each one's three default module paths without
+/// creating those paths.
+///
+/// Writes, reloads and removes temporary configuration files. Enabled module defaults may inspect
+/// PATH CMake with --version; no project configure or script execution.
+///
+/// # Arguments
+/// None. The test builds its own fixture and expected results.
+///
+/// # Returns
+/// `()` after all checks pass; no data or output parameter is returned.
+///
+/// # Panics
+/// If a stated invariant fails or an unwrapped fixture/setup operation fails.
+///
+/// # Algorithm
+/// Reload after writing an empty search array and relative builtin directory; defaults must be
+/// replaced, not appended.
+///
+/// # Flow
+/// ```text
+///   [entries a and b]
+///    |
+///   [resolve default paths]----------> [explicit empty array]
+///                                     |
+///                                    [replace defaults on reload]
+///                                     |
+///                                    < checks hold? >
+///                                     /         \
+///                                   [pass]     [panic]
+/// ```
+///
+/// # Examples
+/// Direct local call outside any Tokio runtime (the test attribute creates its runtime):
+/// ```text
+/// project_paths_follow_each_entry_and_explicit_empty_arrays_replace_defaults();
+/// ```
 #[tokio::test]
 async fn project_paths_follow_each_entry_and_explicit_empty_arrays_replace_defaults() {
     let root = std::env::temp_dir().join(format!(

@@ -1,8 +1,49 @@
 // AI-generated contextual warning publication tests.
+//! Context-dependent warning publications, not references-request navigation.
+//! A root edit changes an imported file report without changing that file version.
 use super::session::{Project, Session, uri};
 use serde_json::json;
 
 #[tokio::test]
+/// Check imported bindings suppress unknowns and root value changes republish unchanged module
+/// versions.
+/// Creates temporary files and an analyzer session; successful completion stops the session and
+/// removes fixtures.
+///
+/// # Arguments
+/// None.
+///
+/// # Returns
+/// `()` if every assertion passes; no output parameter.
+///
+/// # Panics
+/// Panics on any failed assertion or unwrapped fixture/transport/process failure.
+/// Cleanup is explicit on the success path; a panic may leave a fixture tree.
+///
+/// # Algorithm
+/// Open a root defining V and calling imported external_fn, plus a module reading V: both
+/// reports are empty. Change only root V to empty and require exactly one severity-2 is empty
+/// warning on module line 1, still at module version 1.
+///
+/// # Flow
+/// ```text
+/// [Temporary sources + settings]      [Expected: one contextual module warning]
+///              |                              |
+///              v                              |
+/// [LSP scenario messages]                 |
+///              |                              |
+///              +-------------+----------------+
+///                            v
+///                  [Compare assertions]
+///                            |
+///                            v
+///             [Finish session + remove tree]
+/// ```
+///
+/// # Examples
+/// ```text
+/// external_definitions_suppress_local_unknowns_and_context_changes_republish_warnings(); // #[tokio::test] supplies the runtime
+/// ```
 async fn external_definitions_suppress_local_unknowns_and_context_changes_republish_warnings() {
     let project = Project::new().await;
     let root = project

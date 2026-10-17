@@ -1,9 +1,52 @@
 // AI-generated tests.
+//! CLI filesystem formatting and LSP client-applied formatting edits.
+//! Scenarios distinguish reachable source files from generated/unrelated files and verify
+//! transactional reloads. Temporary source and build-marker trees are removed explicitly.
 use super::session::{HEADER, Project, Session, uri};
 use serde_json::{Value, json};
 use std::path::Path;
 
 #[tokio::test]
+/// Check CLI formatting edits reachable source files but not unused, outside or generated
+/// files.
+/// Creates a temporary tree and launches the format CLI; successful completion removes the
+/// tree.
+///
+/// # Arguments
+/// None.
+///
+/// # Returns
+/// `()` if every assertion passes; no output parameter.
+///
+/// # Panics
+/// Panics on any failed assertion or unwrapped fixture/transport/process failure.
+/// Cleanup is explicit on the success path; a panic may leave a fixture tree.
+///
+/// # Algorithm
+/// Create includes/subdirectory inputs plus cache markers, disable module indexing and run
+/// format --check: require status 1 with unchanged root. Format normally and inspect
+/// root/child/subdirectory whitespace; require excluded files unchanged and no executed marker.
+/// A final --check succeeds.
+///
+/// # Flow
+/// ```text
+/// [Temporary sources + settings]      [Expected: reachable writes / excluded files]
+///              |                              |
+///              v                              |
+/// [Run format CLI / --check]                 |
+///              |                              |
+///              +-------------+----------------+
+///                            v
+///                  [Compare assertions]
+///                            |
+///                            v
+///             [Remove temporary tree]
+/// ```
+///
+/// # Examples
+/// ```text
+/// format_cli_writes_only_resolved_project_files_and_check_never_writes(); // #[tokio::test] supplies the runtime
+/// ```
 async fn format_cli_writes_only_resolved_project_files_and_check_never_writes() {
     let p = Project::new().await;
     let body = "if( TRUE )\nset( X   yes )\nendif( )\ninclude( cmake/a.cmake )\nadd_subdirectory( src )\ninclude( ../outside.cmake )\ninclude( build/generated.cmake )\nexecute_process(COMMAND touch should-not-exist)\n";
@@ -105,6 +148,44 @@ async fn format_cli_writes_only_resolved_project_files_and_check_never_writes() 
     p.remove().await;
 }
 #[tokio::test]
+/// Check invalid imported syntax makes CLI formatting fail before rewriting the root.
+/// Creates a temporary tree and launches the format CLI; successful completion removes the
+/// tree.
+///
+/// # Arguments
+/// None.
+///
+/// # Returns
+/// `()` if every assertion passes; no output parameter.
+///
+/// # Panics
+/// Panics on any failed assertion or unwrapped fixture/transport/process failure.
+/// Cleanup is explicit on the success path; a panic may leave a fixture tree.
+///
+/// # Algorithm
+/// Write a root needing formatting and an unterminated quoted dependency. Run format in the
+/// isolated HOME/current directory; require failure and byte-for-byte unchanged root text. The
+/// assertion does not compare dependency bytes.
+///
+/// # Flow
+/// ```text
+/// [Temporary sources + settings]      [Expected: failure + unchanged root]
+///              |                              |
+///              v                              |
+/// [Run format CLI]                            |
+///              |                              |
+///              +-------------+----------------+
+///                            v
+///                  [Compare assertions]
+///                            |
+///                            v
+///             [Remove temporary tree]
+/// ```
+///
+/// # Examples
+/// ```text
+/// invalid_dependency_syntax_leaves_every_project_file_unchanged(); // #[tokio::test] supplies the runtime
+/// ```
 async fn invalid_dependency_syntax_leaves_every_project_file_unchanged() {
     let p = Project::new().await;
     let body = "include(bad.cmake)\nset( VALUE   yes )\n";
@@ -125,6 +206,43 @@ async fn invalid_dependency_syntax_leaves_every_project_file_unchanged() {
     p.remove().await;
 }
 #[tokio::test]
+/// Check save formatting rejects conflicting shared-owner styles without disk writes.
+/// Creates temporary files and an analyzer session; successful completion stops the session and
+/// removes fixtures.
+///
+/// # Arguments
+/// None.
+///
+/// # Returns
+/// `()` if every assertion passes; no output parameter.
+///
+/// # Panics
+/// Panics on any failed assertion or unwrapped fixture/transport/process failure.
+/// Cleanup is explicit on the success path; a panic may leave a fixture tree.
+///
+/// # Algorithm
+/// Have two roots include one document but configure line widths 80 and 100. Open it and send
+/// willSaveWaitUntil; require -32602 and unchanged disk contents rather than choosing an owner.
+///
+/// # Flow
+/// ```text
+/// [Temporary sources + settings]      [Expected: -32602 + unchanged disk]
+///              |                              |
+///              v                              |
+/// [LSP scenario messages]                 |
+///              |                              |
+///              +-------------+----------------+
+///                            v
+///                  [Compare assertions]
+///                            |
+///                            v
+///             [Finish session + remove tree]
+/// ```
+///
+/// # Examples
+/// ```text
+/// shared_documents_do_not_choose_an_arbitrary_owner_style(); // #[tokio::test] supplies the runtime
+/// ```
 async fn shared_documents_do_not_choose_an_arbitrary_owner_style() {
     let p = Project::new().await;
     let body = "if( TRUE )\nmessage( STATUS x )\nendif()\n";
@@ -158,6 +276,26 @@ async fn shared_documents_do_not_choose_an_arbitrary_owner_style() {
     client.finish().await;
     p.remove().await;
 }
+/// Request manual formatting or pre-save edits without applying them to text or disk.
+///
+/// # Arguments
+/// - `client` `[in,out]`: writes the request and consumes its reply; unrelated messages append
+///   to pending.
+/// - `path` `[in]`: document path converted to a fixture URI.
+/// - `id` `[in]`: request/response correlation ID.
+/// - `save` `[in]`: true uses willSaveWaitUntil with manual-save reason 1; false uses
+///   formatting with tabSize=4/insertSpaces=true.
+///
+/// # Returns
+/// The full response envelope, with edits (possibly []) or an error.
+///
+/// # Panics
+/// Panics on session transport/deadline failures.
+///
+/// # Examples
+/// ```text
+/// let reply = format(&mut client, &root, 10, false).await;
+/// ```
 async fn format(client: &mut Session, path: &Path, id: i32, save: bool) -> Value {
     let (method, params) = if save {
         (
@@ -176,6 +314,46 @@ async fn format(client: &mut Session, path: &Path, id: i32, save: bool) -> Value
     client.response(id).await
 }
 #[tokio::test]
+/// Check manual/save edits use distinct indentation and invalid reload preserves disabled save
+/// policy.
+/// Creates temporary files and an analyzer session; successful completion stops the session and
+/// removes fixtures.
+///
+/// # Arguments
+/// None.
+///
+/// # Returns
+/// `()` if every assertion passes; no output parameter.
+///
+/// # Panics
+/// Panics on any failed assertion or unwrapped fixture/transport/process failure.
+/// Cleanup is explicit on the success path; a panic may leave a fixture tree.
+///
+/// # Algorithm
+/// Manual formatting uses four spaces; default pre-save formatting uses two, and neither writes
+/// disk. Reload on_save=false/indent_width=3: save returns [], manual stays identical. Invalid
+/// line_width=0 reload fails, save stays disabled, and malformed pending source yields no
+/// manual edits.
+///
+/// # Flow
+/// ```text
+/// [Temporary sources + settings]      [Expected: text edits / retained policy]
+///              |                              |
+///              v                              |
+/// [LSP scenario messages]                 |
+///              |                              |
+///              +-------------+----------------+
+///                            v
+///                  [Compare assertions]
+///                            |
+///                            v
+///             [Finish session + remove tree]
+/// ```
+///
+/// # Examples
+/// ```text
+/// manual_and_default_save_formatting_are_client_edits_with_transactional_reload(); // #[tokio::test] supplies the runtime
+/// ```
 async fn manual_and_default_save_formatting_are_client_edits_with_transactional_reload() {
     let p = Project::new().await;
     let body = "if( TRUE )\nmessage( STATUS \"😀\" )\nendif( )\n";

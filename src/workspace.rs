@@ -1,3 +1,7 @@
+//! Own one project's immutable file results, ordered dependency visits and contextual indexes.
+//! [`Workspace`] queues edits until [`Workspace::flush`]; static analysis does not configure
+//! or execute the project. Explicit runtime traces are installed separately through [`runtime`].
+// Contains AI-generated documentation additions.
 // AI-generated implementation.
 // See src/workspace/README.md for the flow.
 pub(crate) mod completion;

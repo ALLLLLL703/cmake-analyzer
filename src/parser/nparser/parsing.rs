@@ -1,3 +1,8 @@
+//! Group flat tokens into complete or partial commands; no source evaluation or I/O.
+//! Outer closing parentheses are consumed but not retained as arguments. Lexer
+//! errors precede parser output; partial commands can coexist with diagnostics.
+//! Contains AI-generated documentation additions.
+
 use crate::{
     model::{Spanned, TextSpan},
     parser::{
@@ -9,12 +14,55 @@ use crate::{
     },
 };
 
+/// Internal argument-reader result; errors are unlocated until attached to nodes.
+/// Example: `let result: NParseResult<()> = Ok(())`.
 type NParseResult<T> = Result<T, NParsedError>;
+/// Located lexical name-token alias, currently unused by active parsing.
+/// Example: `let name: FunctionName = Spanned::new(LexContent::Identifier, TextSpan::default())`.
 type FunctionName = Spanned<LexContent>;
+/// Located raw argument-form alias used by the argument reader.
+/// Example: `let arg: FunctionArg = Spanned::new(NParsedArgument::Unquoted, TextSpan::default())`.
 type FunctionArg = Spanned<NParsedArgument>;
+/// Ordered owned argument list, including nested parentheses but not the outer pair.
+/// Example: `let args: FunctionArgs = Vec::new()`.
 type FunctionArgs = Vec<FunctionArg>;
 
 impl NParser {
+    /// Parse remaining tokens, advancing the token cursor; no I/O or source mutation.
+    /// Every call copies comments and inherits all lexical errors again, even if the cursor
+    /// is already at EOF. The source argument is currently unused: nodes refer to token spans.
+    ///
+    /// # Arguments
+    /// - `self` `[in,out]`: parser whose cursor advances through remaining tokens; input vectors unchanged.
+    /// - `source` `[in]`: source snapshot associated with token spans; currently not read or retained.
+    ///
+    /// # Returns
+    /// New buffer containing comments, then inherited lexer-error nodes, then parser-produced command/error nodes. Empty input may still return lexical errors.
+    ///
+    /// # Algorithm
+    /// Copy comments and lexical diagnostics, then repeatedly use the same one-unit
+    /// parser as incremental updates. Continue until no token remains.
+    ///
+    /// # Flow
+    /// ```text
+    ///    [copy comments]    [inherit lexer errors]
+    ///           +--------------------+
+    ///                       |
+    ///                 <token remains?> <--------+
+    ///                  /          \            |
+    ///                no           yes           |
+    ///                 |            |            |
+    ///           [return buffer] [parse_next] -----+
+    /// ```
+    ///
+    /// # Examples
+    /// ```
+    /// use cmake_analyzer::parser::{lexer::model::{Lexer, RawBuffer}, nparser::model::NParser};
+    /// let source = "f(x) g()";
+    /// let mut parser = NParser::new(Lexer::new(RawBuffer::new(source)).parse());
+    /// let result = parser.parse(source);
+    /// assert_eq!(result.nodes.len(), 2);
+    /// ```
     pub fn parse<'src>(&mut self, source: &'src str) -> NParsedBuffer {
         let mut result = NParsedBuffer {
             comments: self.buffer.comments.clone(),
@@ -33,6 +81,48 @@ impl NParser {
     }
 
     // AI-authored extraction: a closed command has no parser dependencies outside its tokens.
+    /// Consume one command/recovery unit and append parser output; no I/O.
+    /// A unit may append zero, one or several nodes. A final bare name is consumed
+    /// without a node; missing `(` is only diagnosed when a following token exists.
+    ///
+    /// # Arguments
+    /// - `self` `[in,out]`: parser cursor advanced past the consumed name, argument group or unexpected token.
+    /// - `result` `[in,out]`: output nodes appended to, never cleared; comments unchanged.
+    ///
+    /// # Returns
+    /// `()`; output and cursor carry the result. With no token, neither changes.
+    ///
+    /// # Algorithm
+    /// An identifier begins a command: consume its outer argument group, retain partial
+    /// arguments at EOF, and compute the envelope through the consumed outer close (not
+    /// the following token). A partial command also appends an unclosed-opener error.
+    /// A bare `(` group becomes a command-name error; top-level literals/closes become
+    /// errors and advance. Lexer errors are inherited separately, not by this routine.
+    ///
+    /// # Flow
+    /// ```text
+    ///                  [peek token]
+    ///                        |
+    ///                    <kind?>
+    ///           /            |              \
+    ///       [name]      [bare opener]    [literal/close]
+    ///          |             |                |
+    ///    [read arguments] [read group]    [append error]
+    ///        /      \         |                |
+    ///     [Ok]     [Err] [append name error] [advance one]
+    ///      |         |
+    ///  [command +  [following token?]
+    ///  optional         | yes
+    ///  error]      [missing-open error]
+    /// ```
+    ///
+    /// # Examples
+    /// ```text
+    /// let mut parser = NParser::new(Lexer::new(RawBuffer::new("f(x)")).parse());
+    /// let mut result = NParsedBuffer::default();
+    /// parser.parse_next(&mut result);
+    /// assert_eq!(result.nodes.len(), 1);
+    /// ```
     pub(super) fn parse_next(&mut self, result: &mut NParsedBuffer) {
         if let Some(lex) = self.peek() {
             if let LexContent::Identifier = lex.content {
@@ -151,6 +241,21 @@ impl NParser {
         }
     }
 
+    /// Clone the next token without advancing or other side effects.
+    ///
+    /// # Arguments
+    /// - `self` `[in]`: parser whose token cursor is inspected; unchanged.
+    ///
+    /// # Returns
+    /// `Some` cloned token at cursor.offset; `None` when the vector has no such index. max_length is not consulted.
+    ///
+    /// # Examples
+    /// ```
+    /// use cmake_analyzer::parser::{lexer::model::{Lexer, RawBuffer}, nparser::model::NParser};
+    /// let parser = NParser::new(Lexer::new(RawBuffer::new("f()")).parse());
+    /// assert_eq!(parser.peek().unwrap().text("f()"), Some("f"));
+    /// assert_eq!(parser.cursor.offset, 0);
+    /// ```
     pub fn peek(&self) -> Option<Spanned<LexContent>> {
         self.buffer
             .lex
@@ -163,9 +268,55 @@ impl NParser {
         todo!()
     } */
 
-    /// should be called when cursor is at '(' or error
-    /// when error ,the offset will not advance
-    /// end with the offset at ')'
+    /// Consume an outer parenthesis group into flat arguments, advancing past its close; no I/O.
+    /// At EOF inside a group, retain parsed arguments and return an unclosed state.
+    ///
+    /// # Arguments
+    /// - `self` `[in,out]`: parser expected at `(`; cursor advances through the group, or remains unchanged on error.
+    ///
+    /// # Returns
+    /// `Ok((args, state))`: args excludes the outer pair, includes inner parentheses, and state is Closed after consuming the outer close or Unclosed at EOF with the outer opening span. `Err` indicates invalid entry state.
+    ///
+    /// # Errors
+    /// `ReachTheEof` if no token exists; `CalledInnerError` if the next token is not `(`.
+    /// Neither error advances the cursor. Missing closes are an `Ok` partial result,
+    /// not an `Err`; the caller decides which diagnostic nodes to append.
+    ///
+    /// # Algorithm
+    /// Keep a stack of opening spans. Convert each token into a raw argument form.
+    /// Nested opens/closes update the stack and stay in the argument list; the close
+    /// that empties the outer level is consumed and omitted. EOF returns the outer
+    /// opening span regardless of which inner open was last encountered.
+    ///
+    /// # Flow
+    /// ```text
+    ///           <starts at (?> ---- no ---> [Err; no advance]
+    ///                  | yes
+    ///         [push outer; advance]
+    ///                  |
+    ///              <next token?> <----------------+
+    ///              /          \                  |
+    ///           [EOF]       [token]               |
+    ///             |             |                 |
+    ///    [Ok args, Unclosed] <outer close?>        |
+    ///                         /       \          |
+    ///                       yes       no          |
+    ///                        |         |          |
+    ///                [consume close] [update stack, append arg]
+    ///                        |         |          |
+    ///                [Ok args, Closed] +----------+
+    /// ```
+    ///
+    /// # Examples
+    /// ```
+    /// use cmake_analyzer::parser::{lexer::model::{Lexer, RawBuffer}, nparser::model::NParser};
+    /// use cmake_analyzer::parser::nparser::model::CommandState;
+    /// let mut parser = NParser::new(Lexer::new(RawBuffer::new("(x (y))")).parse());
+    /// let (args, state) = parser.consume_function_args().unwrap();
+    /// assert_eq!(args.len(), 4);
+    /// assert_eq!(state, CommandState::Closed);
+    /// assert!(parser.peek().is_none());
+    /// ```
     pub fn consume_function_args(&mut self) -> NParseResult<(FunctionArgs, CommandState)> {
         if let Some(lex) = self.peek() {
             let first_lex = lex.clone();
@@ -223,6 +374,24 @@ impl NParser {
         }
     }
 
+    /// Append all lexical diagnostics as parser error nodes, preserving locations; no I/O.
+    ///
+    /// # Arguments
+    /// - `self` `[in]`: parser containing lexical errors; unchanged.
+    /// - `result` `[in,out]`: destination nodes appended to, not overwritten; repeated calls duplicate errors.
+    ///
+    /// # Returns
+    /// `()`; comments and existing nodes remain untouched.
+    ///
+    /// # Examples
+    /// ```
+    /// use cmake_analyzer::parser::{lexer::model::{Lexer, RawBuffer}, nparser::model::NParser};
+    /// use cmake_analyzer::parser::nparser::model::NParsedBuffer;
+    /// let parser = NParser::new(Lexer::new(RawBuffer::new("\"unfinished")).parse());
+    /// let mut result = NParsedBuffer::default();
+    /// parser.inherit_error(&mut result);
+    /// assert_eq!(result.nodes.len(), 1);
+    /// ```
     pub fn inherit_error(&self, result: &mut NParsedBuffer) {
         for lex_error in &self.buffer.errors {
             result.add_node(

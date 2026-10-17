@@ -1,3 +1,6 @@
+//! Select bound symbol occurrences and convert deduplicated byte spans to client ranges.
+//! Owner-local file maps prevent unrelated numeric IDs from crossing owners. No I/O occurs.
+
 use super::model::{Input, Query};
 use crate::{
     parser::semanticer::model::{ReferenceKind, ReferenceLocation},
@@ -7,7 +10,23 @@ use crate::{
 use lspally::server::model::*;
 use std::{collections::BTreeMap, sync::Arc};
 
+/// URI and half-open byte spans retain the immutable text needed for coordinate conversion.
+/// Example: `let results = Results::new();` starts a deduplicated navigation result set.
 pub(super) type Results = BTreeMap<(String, usize, usize), Arc<DocumentSnapshot>>;
+/// Append a reference range only through this owner's file map; no I/O.
+///
+/// # Arguments
+/// - `input` `[in]`: Owner-local file IDs, URIs and immutable target snapshots.
+/// - `reference` `[in]`: Bound reference whose file and byte span select the location.
+/// - `output` `[in,out]`: Deduplicates by URI/start/end; inserts a retained snapshot without overwriting existing entries.
+///
+/// # Returns
+/// `()`: missing file IDs are ignored; otherwise a unique range is retained.
+///
+/// # Examples
+/// ```text
+/// add(input, reference, &mut results);
+/// ```
 fn add(input: &Input, reference: &ReferenceLocation, output: &mut Results) {
     if let Some((uri, snapshot)) = input.files.get(&reference.file) {
         output
@@ -19,6 +38,48 @@ fn add(input: &Input, reference: &ReferenceLocation, output: &mut Results) {
             .or_insert_with(|| snapshot.clone());
     }
 }
+/// Append locations only if the cursor selects this symbol's bound occurrences.
+/// Does not guess by spelling or perform I/O.
+///
+/// # Arguments
+/// - `input` `[in]`: Owner-qualified queried snapshot and target-file map.
+/// - `offset` `[in]`: UTF-8 byte cursor; occurrence matching uses half-open payload spans.
+/// - `definition` `[in]`: Optional bound source declaration, absent for source-less native commands.
+/// - `references` `[in]`: Occurrences already associated with one variable/function/parameter/target.
+/// - `query` `[in]`: Definition or references and declaration policy.
+/// - `output` `[in,out]`: Appends/deduplicates selected ranges; existing results are preserved.
+/// - `cancel` `[in]`: Stop signal checked before matching and while adding occurrences.
+///
+/// # Returns
+/// `Ok(())` whether no occurrence is selected or matching locations were added.
+///
+/// # Errors
+/// `Err` reports observed cancellation; previously appended results are not rolled back. A cancellation during matching can yield no additions before the outer query detects it.
+///
+/// # Algorithm
+/// Match file ID and half-open name span, not equal spelling. Definitions add at most one location. References omit both explicit Definition records and any occurrence with the declaration's exact file/span when include_declaration is false, handling repeated includes recorded as writes.
+///
+/// # Flow
+/// ```text
+///  [Bound occurrence list]
+///            |
+///  <cursor hits this file/name?> --no--> [No additions]
+///            | yes
+///            v
+///       <query policy?>
+///        /           \
+///  [Definition]   [References]
+///        |           |
+///  [add if any] [filter declarations]
+///        +-----------+
+///                    v
+///           [Deduplicated output]
+/// ```
+///
+/// # Examples
+/// ```text
+/// symbol(input, offset, definition, references, Query::Definition, &mut results, &cancel)?;
+/// ```
 pub(super) fn symbol(
     input: &Input,
     offset: usize,
@@ -70,6 +131,53 @@ pub(super) fn symbol(
     }
     Ok(())
 }
+/// Resolve bound symbol/target locations and convert byte spans to negotiated coordinates.
+/// Only local result maps and indexes are built; no I/O or snapshot mutation.
+///
+/// # Arguments
+/// - `inputs` `[in]`: Retained owner-qualified indexes and file maps, moved into the worker.
+/// - `position` `[in]`: Client cursor validated separately against each queried snapshot.
+/// - `query` `[in]`: Definition or references and declaration-inclusion policy.
+/// - `encoding` `[in]`: Negotiated UTF-8/UTF-16/UTF-32 units for both input and output.
+/// - `cancel` `[in]`: Cooperative stop signal checked across owners, symbols and output locations.
+///
+/// # Returns
+/// `Ok(locations)` sorted/deduplicated by URI and byte range, including all selected owner bindings; may be empty.
+///
+/// # Errors
+/// `Err` reports cancellation, invalid client positions or invalid/unrepresentable analysis ranges; partial result maps are discarded.
+///
+/// # Algorithm
+/// Convert the cursor to bytes in each owner. Adapt target bindings, then use its graph reference index or replay local_index without persisting a duplicate index. Visit variable/function bindings, deduplicate by URI/byte span, and build one TextIndex per grouped target URI to render ranges from retained target text.
+///
+/// # Flow
+/// ```text
+///  [Owner Input]          [Client position + encoding]
+///         |                           |
+///         +-------------+-------------+
+///                       v
+///                  [Byte cursor]
+///                       |
+///            +----------+-----------+
+///            v                      v
+///     [Target bindings]    <graph index present?>
+///            |               /             \
+///            |           [yes]       [local replay]
+///            |               +------+------+
+///            |                      v
+///            |             [Variable/function bindings]
+///            +---------------+------+
+///                            v
+///                 [URI/byte-range deduplication]
+///                            |
+///                            v
+///                  [Target-text range conversion]
+/// ```
+///
+/// # Examples
+/// ```text
+/// let locations = locations::query(inputs, position, Query::Definition, encoding, &cancel)?;
+/// ```
 pub(super) fn query(
     inputs: Vec<Input>,
     position: Position,

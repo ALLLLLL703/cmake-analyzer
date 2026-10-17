@@ -1,13 +1,49 @@
+//! Bind nearby standalone comments and render bounded documentation text.
+//!
+//! Ranges always refer to the same immutable source as their declarations. No I/O.
+// Contains AI-generated documentation additions.
 use super::model::*;
 use crate::model::TextSpan;
 use std::sync::Arc;
 
+/// Check whether a source gap contains only whitespace and at most one newline. No side effects.
+///
+/// # Arguments
+/// - `source` `[in]`: source snapshot.
+/// - `start` `[in]`: inclusive gap byte offset.
+/// - `end` `[in]`: exclusive gap byte offset.
+///
+/// # Returns
+/// True for an in-bounds UTF-8 gap satisfying the adjacency rule; false for invalid bounds or other text.
+///
+/// # Examples
+/// ```text
+/// assert!(adjacent("# doc
+/// set(x y)", 5, 6));
+/// ```
 fn adjacent(source: &str, start: usize, end: usize) -> bool {
     source.get(start..end).is_some_and(|gap| {
         gap.chars().all(char::is_whitespace)
             && gap.bytes().filter(|byte| *byte == b'\n').count() <= 1
     })
 }
+/// Check whether only whitespace precedes a comment on its line. No side effects.
+///
+/// # Arguments
+/// - `source` `[in]`: owning source snapshot.
+/// - `span` `[in]`: full comment range whose start is checked.
+///
+/// # Returns
+/// True when the line prefix before the comment is whitespace-only.
+///
+/// # Panics
+/// Panics if span.start_byte is outside source or not a UTF-8 boundary. Parser-produced spans must match source.
+///
+/// # Examples
+/// ```text
+/// let span = TextSpan { start_byte: 2, end_byte: 7, row: 0, column: 2 };
+/// assert!(standalone("  # doc", span));
+/// ```
 fn standalone(source: &str, span: TextSpan) -> bool {
     let start = source[..span.start_byte]
         .rfind('\n')
@@ -17,7 +53,44 @@ fn standalone(source: &str, span: TextSpan) -> bool {
         .all(char::is_whitespace)
 }
 impl Semanticer {
-    /// Rebind leading comment groups even when the command payload was reused.
+    /// Overwrite command documentation with adjacent standalone leading comments. Only function, macro and set declarations receive groups; no I/O.
+    ///
+    /// # Arguments
+    /// - `self` `[in]`: analyzer, unchanged.
+    /// - `source` `[in]`: immutable source matching all spans.
+    /// - `comments` `[in]`: full comment ranges sorted in source order.
+    /// - `buffer` `[in,out]`: overwrites every command documentation field; other fields unchanged.
+    ///
+    /// # Returns
+    /// () after rebinding groups, including commands whose payloads were reused.
+    ///
+    /// # Panics
+    /// May panic when comment starts do not belong to source; standalone checks use direct slices.
+    ///
+    /// # Algorithm
+    /// For each supported declaration, locate preceding comments by end offset, then walk backward while standalone comments remain adjacent. Share the retained span group with the command.
+    ///
+    /// # Flow
+    /// ```text
+    ///  [command]        [sorted comments]
+    ///      |                   |
+    ///      +--------+----------+
+    ///               v
+    ///        <supported name?>
+    ///          /         \
+    ///        no          yes
+    ///        |            |
+    ///  [clear group] [walk backward]
+    ///        |            |
+    ///        +-----+------+
+    ///              v
+    ///       [store group or None]
+    /// ```
+    ///
+    /// # Examples
+    /// ```text
+    /// analyzer.bind_documentation(source, &parsed.comments, &mut buffer);
+    /// ```
     pub(crate) fn bind_documentation(
         &self,
         source: &str,
@@ -52,7 +125,45 @@ impl Semanticer {
     }
 }
 impl Documentation {
-    /// Render only the bound ranges from their owning source snapshot, with a UTF-8 byte budget.
+    /// Render bound comments with a UTF-8 byte budget. Removes line/bracket comment delimiters and .rst: marker lines; no I/O or source mutation.
+    ///
+    /// # Arguments
+    /// - `self` `[in]`: ordered bound comment ranges.
+    /// - `source` `[in]`: owning immutable source; invalid ranges are skipped.
+    /// - `limit` `[in]`: maximum output bytes, including inserted newlines.
+    ///
+    /// # Returns
+    /// Owned text no longer than limit bytes; invalid spans and non-comment slices contribute nothing.
+    ///
+    /// # Algorithm
+    /// Read only bound ranges, strip recognized comment wrappers, trim line endings and copy whole UTF-8 characters until the byte budget is exhausted.
+    ///
+    /// # Flow
+    /// ```text
+    ///  [bound spans]      [byte budget]
+    ///        |                  |
+    ///        v                  |
+    ///  <valid comment?> --no--> [skip]
+    ///        | yes              |
+    ///        v                  |
+    ///  [strip wrappers]         |
+    ///        |                  |
+    ///        +--------+---------+
+    ///                 v
+    ///       [append within budget]
+    ///                 |
+    ///           <budget left?>
+    ///             /       \
+    ///           next     return
+    /// ```
+    ///
+    /// # Examples
+    /// ```
+    /// use cmake_analyzer::parser::semanticer::model::*;
+    /// use cmake_analyzer::model::TextSpan;
+    /// let docs = Documentation { spans: vec![TextSpan { start_byte: 0, end_byte: 7, row: 0, column: 0 }] };
+    /// assert_eq!(docs.render("# hello", 4), "hell");
+    /// ```
     pub fn render(&self, source: &str, limit: usize) -> String {
         let mut result = String::new();
         for span in &self.spans {

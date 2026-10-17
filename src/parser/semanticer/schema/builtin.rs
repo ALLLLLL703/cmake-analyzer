@@ -1,3 +1,27 @@
+//! Build native command catalogues for CMake 3.0–3.31 and 4.0–4.4.
+//! Construction allocates strings/vectors and initializes lazy caches only; no
+//! project command, compiler, filesystem probe or network request is executed.
+//! [`schemas_for_version`] materializes owned trees for analysis. Completion
+//! borrows the same ordered layers through `schema_layers`, resolving duplicate
+//! names by keeping the last entry. Early base trees may be incomplete; the final
+//! cached keyword layer replaces them with structured grammars without adding
+//! names before their registration version. Scalars remain roles, not validators.
+//!
+//! ```text
+//! [3.0 base]       [Version request]
+//!      |                  |
+//!      v                  v
+//! [Eligible 3.x/4.x replacements]
+//!      |                  |
+//!      +--------+---------+
+//!               v
+//! [Registered-name-filtered keyword trees]
+//!               |
+//!       +-------+--------+
+//!       v                v
+//! [Borrow layers]   [Clone into map]
+//!  completion         analysis
+//! ```
 // AI-generated implementation.
 mod all_build;
 mod all_lookup;
@@ -16,8 +40,14 @@ use ArgSchemaKind::{
 };
 use std::{collections::HashMap, sync::LazyLock};
 
+/// Oldest supported major/minor pair; completion uses it as its fallback.
+/// Example: `assert_eq!(MIN_VERSION, (3, 0));`.
 pub const MIN_VERSION: (u32, u32) = (3, 0);
+/// Newest supported major/minor pair; does not include unknown future minors.
+/// Example: `assert_eq!(MAX_VERSION, (4, 4));`.
 pub const MAX_VERSION: (u32, u32) = (4, 4);
+/// Native control-flow/declaration names classified as keywords by `make_schema`.
+/// Example: `KEYWORD_NAMES.contains(&"if")` is true.
 static KEYWORD_NAMES: &[&str] = &[
     "block",
     "break",
@@ -38,6 +68,9 @@ static KEYWORD_NAMES: &[&str] = &[
     "while",
 ];
 
+/// Lazy 3.0 registration and initial signatures; some tails need the final keyword layer.
+/// Consumers should prefer [`schemas_for_version`] for effective trees.
+/// Example: `BASE_SCHEMAS.iter().any(|schema| schema.command_name == "file")`.
 pub static BASE_SCHEMAS: LazyLock<Vec<CommandSchema>> = LazyLock::new(|| {
     vec![
         ("add_compile_options", vec![many(Text)]),
@@ -443,6 +476,10 @@ pub static BASE_SCHEMAS: LazyLock<Vec<CommandSchema>> = LazyLock::new(|| {
     .collect()
 });
 
+/// Lazy 3.x additions/replacements paired with their introduction minor.
+/// Order matters for repeated names; final keyword overrides are applied afterward.
+/// Example: `CMAKE_3_ADDITIONS.iter().any(|(minor, schema)| *minor == 25 && schema.command_name
+/// == "block")`.
 pub static CMAKE_3_ADDITIONS: LazyLock<Vec<(u32, CommandSchema)>> = LazyLock::new(|| {
     vec![
         (1, "target_compile_features", target_sections(vec![], Text)),
@@ -541,6 +578,10 @@ pub static CMAKE_3_ADDITIONS: LazyLock<Vec<(u32, CommandSchema)>> = LazyLock::ne
     .collect()
 });
 
+/// Lazy 4.x additions/replacements paired with their introduction minor.
+/// A 4.x request also inherits all eligible 3.x entries.
+/// Example: `CMAKE_4_ADDITIONS.iter().any(|(minor, schema)| *minor == 4 && schema.command_name ==
+/// "discover_tests")`.
 pub static CMAKE_4_ADDITIONS: LazyLock<Vec<(u32, CommandSchema)>> = LazyLock::new(|| {
     vec![
         (1, "add_dependencies", vec![Target, many(Target)]),
@@ -569,7 +610,42 @@ pub static CMAKE_4_ADDITIONS: LazyLock<Vec<(u32, CommandSchema)>> = LazyLock::ne
     .collect()
 });
 
-/// Ordered schema layers; later entries can replace earlier command signatures.
+/// Borrow ordered native and final keyword trees for one supported version.
+/// Initializes lazy data on demand; no project commands or I/O.
+///
+/// # Arguments
+/// - `major` `[in]`: requested CMake major version.
+/// - `minor` `[in]`: requested minor version; patch versions do not affect selection.
+///
+/// # Returns
+/// `Some(iterator)` for 3.0–3.31 or 4.0–4.4; `None` otherwise. Duplicate
+/// command names are intentional: consumers must keep the last occurrence.
+///
+/// # Algorithm
+/// Reject unsupported versions, then chain native layers and cached structured
+/// keyword overrides. Unlike the owned map, this does not clone grammar trees.
+///
+/// # Flow
+/// ```text
+///           [major, minor]
+///                  |
+///            < supported? >
+///              /       \
+///             v         v
+///          [No]       [Yes]
+///             |         |
+///          [None]  [Native layers]
+///                       |
+///                  [Keyword overrides]
+///                       |
+///                  [Borrowed iterator]
+/// ```
+/// # Examples
+/// ```text
+/// let layers = schema_layers(4, 4).unwrap();
+/// let file = layers.filter(|schema| schema.command_name == "file").last().unwrap();
+/// assert!(!file.args.is_empty());
+/// ```
 pub(crate) fn schema_layers(
     major: u32,
     minor: u32,
@@ -579,6 +655,36 @@ pub(crate) fn schema_layers(
     }
     Some(native_layers(major, minor).chain(keyword_schemas::get(major, minor).iter()))
 }
+/// Borrow base registrations followed by eligible 3.x and 4.x replacements.
+/// Only lazy catalogue initialization occurs; no project commands or I/O.
+///
+/// # Arguments
+/// - `major` `[in]`: comparison major; this internal helper does not validate support.
+/// - `minor` `[in]`: comparison minor.
+///
+/// # Returns
+/// Iterator over static schemas, retaining duplicate names and source order.
+/// It omits final keyword overrides; use `schema_layers` for effective trees.
+///
+/// # Algorithm
+/// Chain the base with entries whose introduction pair is no newer than the
+/// request. Tuple comparison makes a 4.x request inherit all 3.x additions.
+///
+/// # Flow
+/// ```text
+///  [Base]        [3.x entries]       [4.x entries]
+///     |               |                  |
+///     |        [Filter by pair]   [Filter by pair]
+///     |               |                  |
+///     +---------------+------------------+
+///                     v
+///           [Ordered borrowed layers]
+/// ```
+/// # Examples
+/// ```text
+/// let registered = native_layers(3, 25).any(|schema| schema.command_name == "block");
+/// assert!(registered);
+/// ```
 fn native_layers(major: u32, minor: u32) -> impl Iterator<Item = &'static CommandSchema> {
     BASE_SCHEMAS
         .iter()
@@ -597,6 +703,51 @@ fn native_layers(major: u32, minor: u32) -> impl Iterator<Item = &'static Comman
                 }),
         )
 }
+/// Materialize an owned effective command catalogue for semantic analysis.
+/// Allocates/clones trees and initializes lazy caches; no project commands or I/O.
+///
+/// # Arguments
+/// - `major` `[in]`: CMake major, either 3 or 4 for supported requests.
+/// - `minor` `[in]`: CMake minor within 0–31 for major 3 or 0–4 for major 4.
+///
+/// # Returns
+/// `Some(map)` keyed by lowercase native names for a supported version;
+/// `None` for every unsupported pair. Later layers overwrite earlier signatures
+/// in the new map, not in the shared source catalogues.
+///
+/// # Algorithm
+/// Read the same ordered layers used by completion. Clone each schema into a
+/// fresh map under its name; repeated names replace earlier values. Patch
+/// versions, policy settings and experimental feature activation are not inputs.
+///
+/// # Flow
+/// ```text
+///               [schema_layers]
+///                      |
+///               < supported? >
+///                 /        \
+///                v          v
+///             [None]   [Fresh map]
+///                           |
+///                   +-------v-------+
+///                   | Next schema?  |<----+
+///                   +-------+-------+     |
+///                       yes |             |
+///                           v             |
+///                  [Clone and overwrite]-+
+///                       no  |
+///                           v
+///                      [Some(map)]
+/// ```
+/// # Examples
+/// ```
+/// use cmake_analyzer::parser::semanticer::schema::builtin::schemas_for_version;
+/// let baseline = schemas_for_version(3, 0).unwrap();
+/// assert!(!baseline.contains_key("block"));
+/// let modern = schemas_for_version(3, 25).unwrap();
+/// assert!(modern.contains_key("block"));
+/// assert!(schemas_for_version(5, 0).is_none());
+/// ```
 pub fn schemas_for_version(major: u32, minor: u32) -> Option<HashMap<String, CommandSchema>> {
     let layers = schema_layers(major, minor)?;
     let mut schemas = HashMap::with_capacity(
@@ -607,6 +758,23 @@ pub fn schemas_for_version(major: u32, minor: u32) -> Option<HashMap<String, Com
     }
     Some(schemas)
 }
+/// Wrap root kinds and classify a native command by its registered name.
+/// Allocates the name and root wrappers only; no commands or I/O.
+///
+/// # Arguments
+/// - `name` `[in]`: lowercase native name; membership in `KEYWORD_NAMES` chooses keyword
+///   classification.
+/// - `args` `[in]`: owned ordered roots moved into `ArgSchema` wrappers.
+///
+/// # Returns
+/// Owned schema with matching origin and builtin command kind. Input trees are
+/// not validated and the name is not lowercased here.
+///
+/// # Examples
+/// ```text
+/// let schema = make_schema("if", vec![Condition]);
+/// assert!(matches!(schema.from, CommandSchemaFrom::KeyWord));
+/// ```
 fn make_schema(name: &str, args: Vec<ArgSchemaKind>) -> CommandSchema {
     let keyword = KEYWORD_NAMES.contains(&name);
     CommandSchema {
@@ -624,42 +792,190 @@ fn make_schema(name: &str, args: Vec<ArgSchemaKind>) -> CommandSchema {
         }),
     }
 }
+/// Own an exact literal token for structural matching; allocates one string only.
+/// No project commands or I/O.
+///
+/// # Arguments
+/// - `word` `[in]`: required case-sensitive spelling, such as `READ`.
+///
+/// # Returns
+/// A `Keyword` node containing a copy of `word`.
+///
+/// # Examples
+/// ```text
+/// let read = k("READ");
+/// assert!(matches!(read, ArgSchemaKind::Keyword(word) if word == "READ"));
+/// ```
 fn k(word: &str) -> ArgSchemaKind {
     ArgSchemaKind::Keyword(word.to_owned())
 }
+/// Wrap a whole ordered sequence that may be skipped; no external side effects.
+///
+/// # Arguments
+/// - `args` `[in]`: owned children consumed together when present.
+///
+/// # Returns
+/// An `Optional` node; does not make each child independently optional.
+///
+/// # Examples
+/// ```text
+/// let result = optional(vec![k("RESULT_VARIABLE"), Out]);
+/// ```
 fn optional(args: Vec<ArgSchemaKind>) -> ArgSchemaKind {
     ArgSchemaKind::Optional(args)
 }
+/// Allow zero or more occurrences of one node; allocates a child vector only.
+/// No project commands or I/O.
+///
+/// # Arguments
+/// - `kind` `[in]`: owned operand or group to repeat.
+///
+/// # Returns
+/// A `Repeat` node with minimum zero.
+///
+/// # Examples
+/// ```text
+/// let files = many(InputFile); // An empty source list is structurally accepted.
+/// ```
 fn many(kind: ArgSchemaKind) -> ArgSchemaKind {
     ArgSchemaKind::Repeat {
         args: vec![kind],
         min: 0,
     }
 }
+/// Require one or more occurrences of one node; allocates a child vector only.
+/// No project commands or I/O.
+///
+/// # Arguments
+/// - `kind` `[in]`: owned operand or group to repeat.
+///
+/// # Returns
+/// A `Repeat` node with minimum one.
+///
+/// # Examples
+/// ```text
+/// let files = some(InputFile); // At least one source token is required.
+/// ```
 fn some(kind: ArgSchemaKind) -> ArgSchemaKind {
     ArgSchemaKind::Repeat {
         args: vec![kind],
         min: 1,
     }
 }
+/// Keep alternative ordered sequences without choosing an overload now.
+/// Only owns the supplied vectors; no external side effects.
+///
+/// # Arguments
+/// - `args` `[in]`: owned alternatives; each inner vector is one sequence.
+///
+/// # Returns
+/// A `Choice` node for the structural matcher to explore.
+///
+/// # Examples
+/// ```text
+/// let input = choice(vec![vec![k("INPUT"), InputFile], vec![k("CONTENT"), Text]]);
+/// ```
 fn choice(args: Vec<Vec<ArgSchemaKind>>) -> ArgSchemaKind {
     ArgSchemaKind::Choice(args)
 }
+/// Build alternatives for exact single-token spellings; allocates grammar data only.
+/// No commands or I/O.
+///
+/// # Arguments
+/// - `words` `[in]`: permitted case-sensitive words, borrowed only during construction.
+///
+/// # Returns
+/// A choice with one keyword node per branch; an empty slice yields no alternatives.
+///
+/// # Examples
+/// ```text
+/// let visibility = one_of(&["PUBLIC", "PRIVATE", "INTERFACE"]);
+/// ```
 fn one_of(words: &[&str]) -> ArgSchemaKind {
     choice(words.iter().map(|word| vec![k(word)]).collect())
 }
+/// Allow any number of flags from a literal vocabulary; allocates grammar data only.
+/// No commands or I/O. Duplicate flags are not rejected by this tree.
+///
+/// # Arguments
+/// - `words` `[in]`: case-sensitive flag spellings.
+///
+/// # Returns
+/// Zero-or-more repetition of a one-keyword choice.
+///
+/// # Examples
+/// ```text
+/// let flags = flags(&["WIN32", "EXCLUDE_FROM_ALL"]);
+/// ```
 fn flags(words: &[&str]) -> ArgSchemaKind {
     many(one_of(words))
 }
+/// Allow repeated option groups in arbitrary order; allocates grammar data only.
+/// No commands or I/O. This does not enforce uniqueness or option dependencies.
+///
+/// # Arguments
+/// - `args` `[in]`: owned alternative sequences, usually a keyword followed by its operands.
+///
+/// # Returns
+/// Zero-or-more repetition of a choice of complete groups.
+///
+/// # Examples
+/// ```text
+/// let opts = options(vec![vec![k("TIMEOUT"), Number], vec![k("OUTPUT_VARIABLE"), Out]]);
+/// ```
 fn options(args: Vec<Vec<ArgSchemaKind>>) -> ArgSchemaKind {
     many(choice(args))
 }
+/// Describe one or more property/value pairs; allocates grammar data only.
+/// No commands or I/O.
+///
+/// # Arguments
+/// None.
+///
+/// # Returns
+/// A repetition of `Property, Value` with minimum one pair.
+///
+/// # Examples
+/// ```text
+/// let properties = pairs(); // For PROPERTIES POSITION_INDEPENDENT_CODE ON.
+/// ```
 fn pairs() -> ArgSchemaKind {
     ArgSchemaKind::Repeat {
         args: vec![Property, Value],
         min: 1,
     }
 }
+/// Build a target followed by modifiers and required visibility sections.
+/// Allocates grammar data only; no project commands or I/O.
+///
+/// # Arguments
+/// - `prefix` `[in]`: owned modifier nodes inserted after the target name.
+/// - `operand` `[in]`: owned scalar/group moved into the repeated section-content node.
+///
+/// # Returns
+/// An ordered target sequence ending in one-or-more visibility groups; each group allows zero
+/// operands.
+///
+/// # Algorithm
+/// Start with a Target, append the supplied prefix, then repeat PUBLIC/PRIVATE/INTERFACE plus a
+/// possibly empty operand list.
+///
+/// # Flow
+/// ```text
+///             [Target + prefix]
+///                     |
+///            +--------+--------+
+///            v                 v
+///  [Visibility group]   [Repeated operands]
+///            |                 |
+///            +--------+--------+
+///                     v
+///              [Owned grammar]
+/// ```
+/// # Examples
+/// ```text
+/// let args = target_sections(vec![optional(vec![k("BEFORE")])], Text);
+/// ```
 fn target_sections(prefix: Vec<ArgSchemaKind>, operand: ArgSchemaKind) -> Vec<ArgSchemaKind> {
     let mut args = vec![Target];
     args.extend(prefix);
@@ -669,6 +985,37 @@ fn target_sections(prefix: Vec<ArgSchemaKind>, operand: ArgSchemaKind) -> Vec<Ar
     });
     args
 }
+/// Build the initial add_executable overloads used by base/version registration.
+/// Allocates grammar data only; no project commands or I/O.
+///
+/// # Arguments
+/// - `modern` `[in]`: whether to allow empty source lists and add the alias overload (3.11
+///   registration).
+///
+/// # Returns
+/// A target name and choice of source, imported or eligible alias forms; final keyword layers may
+/// replace this seed.
+///
+/// # Algorithm
+/// Choose source cardinality from modern, retain imported flags, and append the alias alternative
+/// only in modern mode.
+///
+/// # Flow
+/// ```text
+///             [modern?]
+///                     |
+///            +--------+--------+
+///            v                 v
+///  [Sources/imported]   [Alias when modern]
+///            |                 |
+///            +--------+--------+
+///                     v
+///              [Owned grammar]
+/// ```
+/// # Examples
+/// ```text
+/// let args = executable_args(true); // Includes ALIAS <executable>.
+/// ```
 fn executable_args(modern: bool) -> Vec<ArgSchemaKind> {
     let sources = if modern {
         many(InputFile)
@@ -687,6 +1034,37 @@ fn executable_args(modern: bool) -> Vec<ArgSchemaKind> {
     }
     vec![TargetExe, choice(signatures)]
 }
+/// Build initial add_library forms for base and selected replacement versions.
+/// Allocates grammar data only; no project commands or I/O.
+///
+/// # Arguments
+/// - `empty_sources` `[in]`: allow zero sources and imported OBJECT in this seed.
+/// - `interface_sources` `[in]`: allow INTERFACE libraries with sources and EXCLUDE_FROM_ALL.
+///
+/// # Returns
+/// Library target followed by source, interface, imported or alias alternatives; no library is
+/// created.
+///
+/// # Algorithm
+/// Select source count, imported kinds and interface shape independently, then collect the
+/// overloads under one choice.
+///
+/// # Flow
+/// ```text
+///             [Feature booleans]
+///                     |
+///            +--------+--------+
+///            v                 v
+///  [Sources/interface]   [Imported/alias]
+///            |                 |
+///            +--------+--------+
+///                     v
+///              [Owned grammar]
+/// ```
+/// # Examples
+/// ```text
+/// let args = library_args(true, true); // Seed for 3.19.
+/// ```
 fn library_args(empty_sources: bool, interface_sources: bool) -> Vec<ArgSchemaKind> {
     let sources = if empty_sources {
         many(InputFile)
@@ -728,6 +1106,37 @@ fn library_args(empty_sources: bool, interface_sources: bool) -> Vec<ArgSchemaKi
         ]),
     ]
 }
+/// Describe cmake_parse_arguments modes without parsing a project call.
+/// Allocates grammar data only; no project commands or I/O.
+///
+/// # Arguments
+/// - `argv` `[in]`: include PARSE_ARGV and its starting index.
+/// - `argn` `[in]`: include PARSE_ARGN without a starting index.
+///
+/// # Returns
+/// One choice of classic prefix/list/value form and enabled special modes; prefix-derived output
+/// names are not expanded here.
+///
+/// # Algorithm
+/// Keep the classic mode, then append each requested special signature with its own literal
+/// dispatch word.
+///
+/// # Flow
+/// ```text
+///             [Classic form]
+///                     |
+///            +--------+--------+
+///            v                 v
+///  [argv enabled?]   [argn enabled?]
+///            |                 |
+///            +--------+--------+
+///                     v
+///              [Owned grammar]
+/// ```
+/// # Examples
+/// ```text
+/// let args = parse_arguments(true, false); // Classic and PARSE_ARGV forms.
+/// ```
 fn parse_arguments(argv: bool, argn: bool) -> Vec<ArgSchemaKind> {
     let mut signatures = vec![vec![Text, List, List, List, many(Value)]];
     if argv {
@@ -738,6 +1147,36 @@ fn parse_arguments(argv: bool, argn: bool) -> Vec<ArgSchemaKind> {
     }
     vec![choice(signatures)]
 }
+/// Build the original partial file grammar retained as a registration seed.
+/// Allocates grammar data only; no project commands or I/O.
+///
+/// # Arguments
+/// None.
+///
+/// # Returns
+/// A choice with explicit basic path/output roles and opaque tails; not the final effective file
+/// grammar.
+///
+/// # Algorithm
+/// List basic operations including READ/WRITE/hash/copy/transfer; keep Action/Unmodeled fallback
+/// for this seed. The final transform layer replaces it.
+///
+/// # Flow
+/// ```text
+///             [Operation choice]
+///                     |
+///            +--------+--------+
+///            v                 v
+///  [READ/hash outputs]   [WRITE/copy paths]
+///            |                 |
+///            +--------+--------+
+///                     v
+///              [Owned grammar]
+/// ```
+/// # Examples
+/// ```text
+/// let seed = file_args(); // READ has InputFile then Out.
+/// ```
 fn file_args() -> Vec<ArgSchemaKind> {
     vec![choice(vec![
         vec![
@@ -785,6 +1224,36 @@ fn file_args() -> Vec<ArgSchemaKind> {
         vec![Action, Unmodeled],
     ])]
 }
+/// Build historical list replacement seeds keyed by 3.x minor.
+/// Allocates grammar data only; no project commands or I/O.
+///
+/// # Arguments
+/// - `minor` `[in]`: 3.x minor controlling FILTER, TRANSFORM, sorting and pop/prepend additions.
+///
+/// # Returns
+/// One choice of eligible list operations; this is later replaced by the structured transform
+/// layer.
+///
+/// # Algorithm
+/// Start with list reads/mutations, extend sort options and add operations at their known minor
+/// thresholds.
+///
+/// # Flow
+/// ```text
+///             [3.x minor]
+///                     |
+///            +--------+--------+
+///            v                 v
+///  [Base operations]   [Eligible additions]
+///            |                 |
+///            +--------+--------+
+///                     v
+///              [Owned grammar]
+/// ```
+/// # Examples
+/// ```text
+/// let seed = list_args(15); // Includes POP_BACK output variables.
+/// ```
 fn list_args(minor: u32) -> Vec<ArgSchemaKind> {
     let mut forms = vec![
         vec![k("LENGTH"), Variable, Out],
@@ -848,6 +1317,35 @@ fn list_args(minor: u32) -> Vec<ArgSchemaKind> {
     }
     vec![choice(forms)]
 }
+/// Build historical string replacement seeds for version registrations.
+/// Allocates grammar data only; no project commands or I/O.
+///
+/// # Arguments
+/// - `version` `[in]`: major/minor used for comparisons, JSON and regex operation additions.
+///
+/// # Returns
+/// One choice of eligible string operations with variable outputs; final transform trees refine it.
+///
+/// # Algorithm
+/// Gate regex/comparison variants and append UUID, mutation, encoding and JSON operations at
+/// their introduction versions.
+///
+/// # Flow
+/// ```text
+///             [Version]
+///                     |
+///            +--------+--------+
+///            v                 v
+///  [Base text/regex]   [Versioned JSON/etc.]
+///            |                 |
+///            +--------+--------+
+///                     v
+///              [Owned grammar]
+/// ```
+/// # Examples
+/// ```text
+/// let seed = string_args((4, 2)); // Includes REGEX QUOTE.
+/// ```
 fn string_args(version: (u32, u32)) -> Vec<ArgSchemaKind> {
     let mut regex = vec![
         vec![one_of(&["MATCH", "MATCHALL"]), Expression, Out, some(Text)],

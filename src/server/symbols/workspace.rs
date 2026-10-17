@@ -1,3 +1,9 @@
+//! Collect workspace-wide symbols from already cached analysis buffers.
+//! Paths deduplicate repeated visits and owners; open buffers keep their client URI.
+//! External functions-only visits expose only top-level function/macro definitions
+//! unless that file is also fully indexed or opened. Client-side filtering/ranking is
+//! intentional: this service returns all collected names, without a directory scan.
+// Contains AI-generated documentation edits.
 use crate::server::{
     model::{CmakeAnalyzer, Service, ServiceCommand, SymbolInput},
     service::internal,
@@ -8,6 +14,23 @@ use std::collections::BTreeMap;
 use tokio::sync::oneshot;
 
 impl CmakeAnalyzer {
+    /// Queue an ordered workspace-symbol barrier and await its reply or request cancellation.
+    /// No direct snapshot reads or project mutation occurs in this adapter.
+    ///
+    /// # Arguments
+    /// - `self` `[in]`: Adapter addressing the shared service; no direct project mutation.
+    /// - `context` `[in]`: Consumed request context supplying cancellation.
+    ///
+    /// # Returns
+    /// `Ok(Some(Flat(...)))` from the actor, possibly empty; actor result type also permits None. `Err` on cancellation, stopped service or conversion failure.
+    ///
+    /// # Errors
+    /// Cancellation, missing/stopped service, reply-channel failure or actor snapshot/worker/range errors.
+    ///
+    /// # Examples
+    /// ```text
+    /// let symbols = server.query_workspace_symbols(context).await?;
+    /// ```
     pub(in crate::server) async fn query_workspace_symbols(
         &self,
         context: Context,
@@ -20,6 +43,42 @@ impl CmakeAnalyzer {
     }
 }
 impl Service {
+    /// Collect unique cached paths from enabled projects and convert all names to flat workspace symbols.
+    /// No filesystem scan or project execution; reads cached snapshots and joins a cancellable blocking conversion.
+    ///
+    /// # Arguments
+    /// - `self` `[in]`: Cached snapshots and feature settings read without mutation; no buffers are loaded from disk.
+    /// - `cancel` `[in]`: Consumed cooperative cancellation signal.
+    ///
+    /// # Returns
+    /// `Ok(Some(WorkspaceSymbolResponse::Flat(symbols)))`, possibly empty; never Ok(None). `Err` on cancellation, snapshot lookup, join or conversion failure.
+    ///
+    /// # Errors
+    /// Cooperative cancellation between projects/buffers and after conversion, Workspace snapshot lookup errors, failed blocking task or invalid symbol ranges.
+    ///
+    /// # Algorithm
+    /// Deduplicate graph visits by path, preserving first visit snapshots. Full visits and runtime documents mark full visibility; root/open-overlay cached snapshots replace earlier choices and force full visibility. Preserve open URIs or encode closed paths, convert restricted files with functions_only, concatenate every flat response without query filtering.
+    ///
+    /// # Flow
+    /// ```text
+    ///  [Enabled projects]
+    ///          |
+    ///  [Graph visits] ---+
+    ///          |         |
+    ///  [Runtime docs]    +----> [Path snapshots + full flags]
+    ///          |         |                    |
+    ///  [Root/overlays] --+                    v
+    ///                               [URI + restriction inputs]
+    ///                                         |
+    ///                               [Cancellable flat conversion]
+    ///                                         |
+    ///                               [All names, client filters]
+    /// ```
+    ///
+    /// # Examples
+    /// ```text
+    /// let symbols = service.workspace_symbols(cancel).await?;
+    /// ```
     pub(in crate::server) async fn workspace_symbols(
         &self,
         cancel: Cancellation,

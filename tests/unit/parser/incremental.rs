@@ -1,3 +1,7 @@
+//! Incremental pipeline oracle: compare tokens, errors, comments, nodes, semantics and build facts
+//! with fresh analysis after edits. All mutation stays in memory.
+
+// Contains AI-generated documentation edits.
 // AI-generated incremental equivalence and reuse tests.
 use super::semanticer::analyze;
 use cmake_analyzer::parser::{
@@ -8,6 +12,46 @@ use cmake_analyzer::parser::{
 };
 use std::sync::Arc;
 
+/// Assert that all incremental buffers equal a fresh pipeline for the lexer's current source. Reads
+/// the four layers without changing them; allocates fresh in-memory analysis and performs no
+/// file/process I/O.
+///
+/// # Arguments
+/// - `lexer` `[in]`: Current source and incremental tokens, errors and comment spans to compare.
+/// - `parser` `[in]`: Incremental command-node buffer for that same source.
+/// - `semantic` `[in]`: Incremental semantic buffer, expected to use fixture file ID 7.
+/// - `build` `[in]`: Incremental build facts; its analysis key is also used for the fresh build.
+///
+/// # Returns
+/// `()` after tokens/errors/comments, parser nodes, semantics and build facts match. Does not
+/// report reuse counts; callers assert reuse separately.
+///
+/// # Panics
+/// If any buffer differs from fresh analysis; token/error/node/semantic/fact comparisons use Debug
+/// text except comment spans.
+///
+/// # Algorithm
+/// Relex the current text, parse its commands, analyze semantics with the shared file-7 helper and
+/// derive build facts using the current analysis key. Compare each stage before proceeding.
+///
+/// # Flow
+/// ```text
+/// [current source]                 [incremental buffers]
+///         |                                 |
+///  [fresh lexer/parser] ------------------> [compare]
+///         |                                 ^
+///  [fresh semantics] -----------------------+
+///         |                                 |
+///  [fresh build facts] ---------------------+
+///                                           v
+///                                     [pass or panic]
+/// ```
+///
+/// # Examples
+/// Local test-module context (await inside an async test):
+/// ```text
+/// compare(&lexer, &parser, &semantic, &build).await; // after updating every layer
+/// ```
 async fn compare(
     lexer: &IncrementalLexer,
     parser: &IncrementalNParser,
@@ -51,6 +95,42 @@ async fn compare(
     );
 }
 
+/// Change only `set(A one)` to `set(A two)` beside an unchanged library and Unicode message.
+///
+/// Only local values and analysis buffers are created or changed; no file, network or process side
+/// effects.
+///
+/// # Arguments
+/// None. The test builds its own fixture and expected results.
+///
+/// # Returns
+/// `()` after all checks pass; no data or output parameter is returned.
+///
+/// # Panics
+/// If a stated invariant fails.
+///
+/// # Algorithm
+/// Update all four pipeline layers with one change record, require one recomputed command in
+/// parser/semantics/build and lexer reuse, then compare with fresh analysis.
+///
+/// # Flow
+/// ```text
+///   [set one -> two]
+///    |
+///   [update lexer/parser/semantic/build]----------> [fresh pipeline]
+///                                                  |
+///                                                 [compare buffers + reuse counts]
+///                                                  |
+///                                                 < checks hold? >
+///                                                  /         \
+///                                                [pass]     [panic]
+/// ```
+///
+/// # Examples
+/// Direct local call outside any Tokio runtime (the test attribute creates its runtime):
+/// ```text
+/// local_argument_edit_reuses_every_layer();
+/// ```
 #[tokio::test]
 async fn local_argument_edit_reuses_every_layer() {
     let original:Arc<str>="cmake_minimum_required(VERSION 3.31)\nset(A one)\nadd_library(core STATIC a.cpp)\nmessage(你好)\n".into();
@@ -88,6 +168,43 @@ async fn local_argument_edit_reuses_every_layer() {
     compare(&lexer, &parser, &semantic, &build).await;
 }
 
+/// Apply successive source replacements covering broken/repaired quotes, bracket
+/// comments/arguments, function signatures, documentation, projects and trailing newlines.
+///
+/// Only local values and analysis buffers are created or changed; no file, network or process side
+/// effects.
+///
+/// # Arguments
+/// None. The test builds its own fixture and expected results.
+///
+/// # Returns
+/// `()` after all checks pass; no data or output parameter is returned.
+///
+/// # Panics
+/// If a stated invariant fails.
+///
+/// # Algorithm
+/// Compare every revision with fresh analysis; changing the required CMake version to 4.4 must
+/// eliminate semantic reuse.
+///
+/// # Flow
+/// ```text
+///   [successive malformed/repaired texts]
+///    |
+///   [update four buffers]--------------------------> [fresh pipeline per revision]
+///                                                   |
+///                                                  [compare; version change reuses none]
+///                                                   |
+///                                                  < checks hold? >
+///                                                   /         \
+///                                                 [pass]     [panic]
+/// ```
+///
+/// # Examples
+/// Direct local call outside any Tokio runtime (the test attribute creates its runtime):
+/// ```text
+/// syntax_errors_unicode_and_global_triggers_match_full_analysis();
+/// ```
 #[tokio::test]
 async fn syntax_errors_unicode_and_global_triggers_match_full_analysis() {
     let prefix = "cmake_minimum_required(VERSION 3.31)\n";
@@ -157,6 +274,43 @@ async fn syntax_errors_unicode_and_global_triggers_match_full_analysis() {
     compare(&lexer, &parser, &semantic, &build).await;
 }
 
+/// For each character after the version header in a Unicode bracket/comment/escaped-quote fixture,
+/// replace it with deletion, `x`, newline or quote.
+///
+/// Only local values and analysis buffers are created or changed; no file, network or process side
+/// effects.
+///
+/// # Arguments
+/// None. The test builds its own fixture and expected results.
+///
+/// # Returns
+/// `()` after all checks pass; no data or output parameter is returned.
+///
+/// # Panics
+/// If a stated invariant fails.
+///
+/// # Algorithm
+/// Carry the incremental pipeline across replacements and compare every result with fresh analysis,
+/// including malformed intermediate syntax.
+///
+/// # Flow
+/// ```text
+///   [each post-header character]
+///    |
+///   [delete / x / newline / quote]----------> [fresh pipeline per edit]
+///                                            |
+///                                           [compare every layer]
+///                                            |
+///                                           < checks hold? >
+///                                            /         \
+///                                          [pass]     [panic]
+/// ```
+///
+/// # Examples
+/// Direct local call outside any Tokio runtime (the test attribute creates its runtime):
+/// ```text
+/// character_edits_converge_even_inside_comments_and_delimiters();
+/// ```
 #[tokio::test]
 async fn character_edits_converge_even_inside_comments_and_delimiters() {
     let original =

@@ -1,3 +1,11 @@
+//! Process, CTest and host-query syntax as immutable argument metadata.
+//! [`ArgSchemaKind`] trees describe programs, files, outputs and literal modes;
+//! they never spawn processes, inspect the host, submit test results or configure
+//! projects. For example, `execute_process(COMMAND tool OUTPUT_VARIABLE result)`
+//! gives `result` an output-variable role; calling the builder does not run tool.
+//! `schemas` supplies the final cache with version-filtered overrides, including
+//! language dispatch, package configuration and newer diagnostic/test commands.
+
 // AI-generated implementation.
 use super::{
     ArgSchemaKind, Boolean, Command, Expression, InputDirectory, InputFile, Integer, Number, Out,
@@ -5,6 +13,42 @@ use super::{
     one_of, optional, options, pairs, some,
 };
 
+/// Collect process, CTest, host and newer command overrides.
+/// Allocates grammar data only; no external side effects.
+///
+/// # Arguments
+/// - `version` `[in]`: requested CMake major/minor selecting syntax additions.
+///
+/// # Returns
+/// Owned (command name, ordered roots) pairs, with newer commands included only at their known
+/// introduction versions.
+///
+/// # Algorithm
+/// Collect execution/CTest/host trees, then append cmake_language, file API, pkg-config,
+/// instrumentation and 4.4 discovery/diagnostic forms at their thresholds. Native registration
+/// filtering remains the cache caller's job.
+///
+/// # Flow
+/// ```text
+///                             [schemas inputs]
+///                                     |
+///                  +------------------+------------------+
+///                  v                                     v
+/// +--------------------------------+    +--------------------------------+
+/// |     Process / CTest / host     |    |   Versioned language / API /   |
+/// |                                |    |          diagnostics           |
+/// +----------------+---------------+    +----------------+---------------+
+///                  |                                     |
+///                  +------------------+------------------+
+///                                     v
+///                              [Owned grammar]
+/// ```
+///
+/// # Examples
+/// ```text
+/// let overrides = schemas((4, 4));
+/// assert!(overrides.iter().any(|(name, _)| *name == "discover_tests"));
+/// ```
 pub(super) fn schemas(version: (u32, u32)) -> Vec<(&'static str, Vec<ArgSchemaKind>)> {
     let mut schemas = vec![
         ("execute_process", execute_process(version)),
@@ -129,6 +173,40 @@ pub(super) fn schemas(version: (u32, u32)) -> Vec<(&'static str, Vec<ArgSchemaKi
     schemas
 }
 
+/// Describe required first COMMAND and repeated process/control options.
+/// Allocates grammar data only; no external side effects.
+///
+/// # Arguments
+/// - `version` `[in]`: requested CMake major/minor selecting syntax additions.
+///
+/// # Returns
+/// COMMAND/program/values followed by repeated option groups, including additional COMMAND stages
+/// and explicit output variables/files.
+///
+/// # Algorithm
+/// Keep one required command before options. Add encoding, result lists, echo/fatal controls and
+/// environment groups by version. Program arguments stay arbitrary values, not inferred
+/// filesystem inputs.
+///
+/// # Flow
+/// ```text
+///                         [execute_process inputs]
+///                                     |
+///                  +------------------+------------------+
+///                  v                                     v
+/// +--------------------------------+    +--------------------------------+
+/// |   Required COMMAND + values    |    |Versioned process/control groups|
+/// +----------------+---------------+    +----------------+---------------+
+///                  |                                     |
+///                  +------------------+------------------+
+///                                     v
+///                              [Owned grammar]
+/// ```
+///
+/// # Examples
+/// ```text
+/// let args = execute_process((4, 4)); // Includes ENVIRONMENT_MODIFICATION values.
+/// ```
 fn execute_process(version: (u32, u32)) -> Vec<ArgSchemaKind> {
     let mut opts = vec![
         vec![k("COMMAND"), Command, many(Value)],
@@ -188,6 +266,21 @@ fn execute_process(version: (u32, u32)) -> Vec<ArgSchemaKind> {
     vec![k("COMMAND"), Command, many(Value), options(opts)]
 }
 
+/// Collect quiet and captured-CMake-error options at caller-selected thresholds.
+/// Allocates grammar data only; no external side effects.
+///
+/// # Arguments
+/// - `version` `[in]`: requested CMake major/minor selecting syntax additions.
+/// - `capture_since` `[in]`: first major/minor where this CTest command accepts CAPTURE_CMAKE_ERROR.
+///
+/// # Returns
+/// Zero, one or two option alternatives: QUIET from 3.3 and CAPTURE_CMAKE_ERROR Out from
+/// capture_since.
+///
+/// # Examples
+/// ```text
+/// let opts = ctest_status((3, 7), (3, 7)); // Contains QUIET and captured error output.
+/// ```
 fn ctest_status(version: (u32, u32), capture_since: (u32, u32)) -> Vec<Vec<ArgSchemaKind>> {
     let mut opts = Vec::new();
     if version >= (3, 3) {
@@ -199,12 +292,61 @@ fn ctest_status(version: (u32, u32), capture_since: (u32, u32)) -> Vec<Vec<ArgSc
     opts
 }
 
+/// Append CTest preset option groups for 4.4 and newer.
+/// Mutates only the supplied option vector; no project commands or I/O.
+///
+/// # Arguments
+/// - `version` `[in]`: requested CMake major/minor selecting syntax additions.
+/// - `opts` `[in,out]`: existing option alternatives; new PRESET and PRESETS_FILE groups are
+///   appended, never overwritten.
+///
+/// # Returns
+/// Unit; opts is unchanged before 4.4 and extended by two groups from 4.4.
+///
+/// # Examples
+/// ```text
+/// let mut opts = Vec::new();
+/// ctest_presets((4, 4), &mut opts);
+/// assert_eq!(opts.len(), 2);
+/// ```
 fn ctest_presets(version: (u32, u32), opts: &mut Vec<Vec<ArgSchemaKind>>) {
     if version >= (4, 4) {
         opts.extend([vec![k("PRESET"), Text], vec![k("PRESETS_FILE"), InputFile]]);
     }
 }
 
+/// Describe CTest build options and build-status outputs without building.
+/// Allocates grammar data only; no external side effects.
+///
+/// # Arguments
+/// - `version` `[in]`: requested CMake major/minor selecting syntax additions.
+///
+/// # Returns
+/// One repeated-options root with input build directory, target and counter/result output roles.
+///
+/// # Algorithm
+/// Collect base build/control/result groups, extend status controls, add parallelism from 3.21
+/// and append presets through the shared helper.
+///
+/// # Flow
+/// ```text
+///                           [ctest_build inputs]
+///                                     |
+///                  +------------------+------------------+
+///                  v                                     v
+/// +--------------------------------+    +--------------------------------+
+/// |Build settings + result counters|    | Status / parallelism / presets |
+/// +----------------+---------------+    +----------------+---------------+
+///                  |                                     |
+///                  +------------------+------------------+
+///                                     v
+///                              [Owned grammar]
+/// ```
+///
+/// # Examples
+/// ```text
+/// let args = ctest_build((4, 4)); // Includes preset options and PARALLEL_LEVEL.
+/// ```
 fn ctest_build(version: (u32, u32)) -> Vec<ArgSchemaKind> {
     let mut opts = vec![
         vec![k("BUILD"), InputDirectory],
@@ -225,6 +367,19 @@ fn ctest_build(version: (u32, u32)) -> Vec<ArgSchemaKind> {
     vec![options(opts)]
 }
 
+/// Describe CTest configure options without configuring a project.
+/// Allocates grammar data only; no external side effects.
+///
+/// # Arguments
+/// - `version` `[in]`: requested CMake major/minor selecting syntax additions.
+///
+/// # Returns
+/// One repeated-options root with build/source input directories and return/error output roles.
+///
+/// # Examples
+/// ```text
+/// let args = ctest_configure((3, 7)); // RETURN_VALUE and CAPTURE_CMAKE_ERROR are outputs.
+/// ```
 fn ctest_configure(version: (u32, u32)) -> Vec<ArgSchemaKind> {
     let mut opts = vec![
         vec![k("BUILD"), InputDirectory],
@@ -238,6 +393,19 @@ fn ctest_configure(version: (u32, u32)) -> Vec<ArgSchemaKind> {
     vec![options(opts)]
 }
 
+/// Describe CTest coverage options without collecting coverage.
+/// Allocates grammar data only; no external side effects.
+///
+/// # Arguments
+/// - `version` `[in]`: requested CMake major/minor selecting syntax additions.
+///
+/// # Returns
+/// One repeated-options root for build directory, labels, append and status/result controls.
+///
+/// # Examples
+/// ```text
+/// let args = ctest_coverage((3, 7)); // LABELS consumes one or more text values.
+/// ```
 fn ctest_coverage(version: (u32, u32)) -> Vec<ArgSchemaKind> {
     let mut opts = vec![
         vec![k("BUILD"), InputDirectory],
@@ -249,6 +417,41 @@ fn ctest_coverage(version: (u32, u32)) -> Vec<ArgSchemaKind> {
     vec![options(opts)]
 }
 
+/// Describe shared CTest test/memory-check options without running tests.
+/// Allocates grammar data only; no external side effects.
+///
+/// # Arguments
+/// - `version` `[in]`: requested CMake major/minor selecting syntax additions.
+/// - `memcheck` `[in]`: include DEFECT_COUNT output for memory checking from 3.8.
+///
+/// # Returns
+/// One repeated-options root covering selection, scheduling, resources, outputs and
+/// version-supported presets.
+///
+/// # Algorithm
+/// Collect base test filters and results, then add versioned fixtures/resources/repeat/JUnit/file
+/// filters. DEFECT_COUNT is memory-check-only; REPEAT remains one mode:count text argument.
+/// Append presets last.
+///
+/// # Flow
+/// ```text
+///                            [ctest_test inputs]
+///                                     |
+///                  +------------------+------------------+
+///                  v                                     v
+/// +--------------------------------+    +--------------------------------+
+/// |  Test selection / scheduling   |    | Versioned resources / results  |
+/// +----------------+---------------+    +----------------+---------------+
+///                  |                                     |
+///                  +------------------+------------------+
+///                                     v
+///                              [Owned grammar]
+/// ```
+///
+/// # Examples
+/// ```text
+/// let args = ctest_test((3, 29), true); // PARALLEL_LEVEL may omit its integer.
+/// ```
 fn ctest_test(version: (u32, u32), memcheck: bool) -> Vec<ArgSchemaKind> {
     let mut opts = vec![
         vec![k("BUILD"), InputDirectory],
@@ -313,6 +516,39 @@ fn ctest_test(version: (u32, u32), memcheck: bool) -> Vec<ArgSchemaKind> {
     vec![options(opts)]
 }
 
+/// Describe CTest dashboard starts and the later append-only signature.
+/// Allocates grammar data only; no external side effects.
+///
+/// # Arguments
+/// - `version` `[in]`: requested CMake major/minor selecting syntax additions.
+///
+/// # Returns
+/// Legacy model/directories/options before 3.12; afterward a choice of model mode or a required
+/// APPEND-only mode.
+///
+/// # Algorithm
+/// Build TRACK/GROUP/QUIET options. Before 3.12 keep model first. Later allow options between
+/// ordered model/source/build operands and separately require APPEND for the model-free branch.
+///
+/// # Flow
+/// ```text
+///                           [ctest_start inputs]
+///                                     |
+///                  +------------------+------------------+
+///                  v                                     v
+/// +--------------------------------+    +--------------------------------+
+/// |    Before 3.12: model first    |    |  Later: model or APPEND-only   |
+/// +----------------+---------------+    +----------------+---------------+
+///                  |                                     |
+///                  +------------------+------------------+
+///                                     v
+///                              [Owned grammar]
+/// ```
+///
+/// # Examples
+/// ```text
+/// let args = ctest_start((3, 12)); // Allows APPEND without a model.
+/// ```
 fn ctest_start(version: (u32, u32)) -> Vec<ArgSchemaKind> {
     let mut opts = vec![vec![k("TRACK"), Text]];
     if version >= (3, 16) {
@@ -348,6 +584,38 @@ fn ctest_start(version: (u32, u32)) -> Vec<ArgSchemaKind> {
     ])]
 }
 
+/// Describe CTest result submission and optional CDash upload syntax without networking.
+/// Allocates grammar data only; no external side effects.
+///
+/// # Arguments
+/// - `version` `[in]`: requested CMake major/minor selecting syntax additions.
+///
+/// # Returns
+/// Choice of ordinary repeated submission options and CDASH_UPLOAD InputFile form from 3.2.
+///
+/// # Algorithm
+/// Build versioned PARTS and retry/status/connection groups. Keep CDASH_UPLOAD as a distinct
+/// sequence with its own retry/result thresholds; shared connection additions append to both.
+///
+/// # Flow
+/// ```text
+///                           [ctest_submit inputs]
+///                                     |
+///                  +------------------+------------------+
+///                  v                                     v
+/// +--------------------------------+    +--------------------------------+
+/// |    PARTS / FILES submission    |    |       CDASH_UPLOAD file        |
+/// +----------------+---------------+    +----------------+---------------+
+///                  |                                     |
+///                  +------------------+------------------+
+///                                     v
+///                              [Owned grammar]
+/// ```
+///
+/// # Examples
+/// ```text
+/// let args = ctest_submit((3, 15)); // BUILD_ID is an output variable.
+/// ```
 fn ctest_submit(version: (u32, u32)) -> Vec<ArgSchemaKind> {
     let mut parts = vec![
         "Start",
@@ -393,6 +661,23 @@ fn ctest_submit(version: (u32, u32)) -> Vec<ArgSchemaKind> {
     vec![choice(forms)]
 }
 
+/// Append HTTP header, submission URL and build-ID output groups by version.
+/// Mutates only the supplied option vector; no project commands or I/O.
+///
+/// # Arguments
+/// - `version` `[in]`: requested CMake major/minor selecting syntax additions.
+/// - `opts` `[in,out]`: existing alternatives receiving appended connection groups; never cleared
+///   or overwritten.
+///
+/// # Returns
+/// Unit; opts retains its previous groups and gains the supported connection groups.
+///
+/// # Examples
+/// ```text
+/// let mut opts = Vec::new();
+/// submit_connection((3, 15), &mut opts);
+/// assert_eq!(opts.len(), 3);
+/// ```
 fn submit_connection(version: (u32, u32), opts: &mut Vec<Vec<ArgSchemaKind>>) {
     if version >= (3, 9) {
         opts.push(vec![k("HTTPHEADER"), Text]);
@@ -405,6 +690,20 @@ fn submit_connection(version: (u32, u32), opts: &mut Vec<Vec<ArgSchemaKind>>) {
     }
 }
 
+/// Describe CTest source-update options without contacting version control.
+/// Allocates grammar data only; no external side effects.
+///
+/// # Arguments
+/// - `version` `[in]`: requested CMake major/minor selecting syntax additions.
+///
+/// # Returns
+/// One repeated-options root with source directory/result/status controls and 4.4
+/// version-only/override groups.
+///
+/// # Examples
+/// ```text
+/// let args = ctest_update((4, 4)); // Includes VERSION_ONLY.
+/// ```
 fn ctest_update(version: (u32, u32)) -> Vec<ArgSchemaKind> {
     let mut opts = vec![
         vec![k("SOURCE"), InputDirectory],
@@ -417,6 +716,39 @@ fn ctest_update(version: (u32, u32)) -> Vec<ArgSchemaKind> {
     vec![options(opts)]
 }
 
+/// Describe host queries without inspecting processors, operating systems or registries.
+/// Allocates grammar data only; no external side effects.
+///
+/// # Arguments
+/// - `version` `[in]`: requested CMake major/minor selecting syntax additions.
+///
+/// # Returns
+/// RESULT Out QUERY followed by query-key lists or the Windows-registry form from 3.24.
+///
+/// # Algorithm
+/// Build documented literal query keys by version; from 3.22 add an open value branch for
+/// `DISTRIB_<name>`. Keep registry selectors/options separate. Only explicit literal keys become
+/// keyword suggestions.
+///
+/// # Flow
+/// ```text
+///                     [host_system_information inputs]
+///                                     |
+///                  +------------------+------------------+
+///                  v                                     v
+/// +--------------------------------+    +--------------------------------+
+/// |    Versioned query-key list    |    |   Windows registry selectors   |
+/// +----------------+---------------+    +----------------+---------------+
+///                  |                                     |
+///                  +------------------+------------------+
+///                                     v
+///                              [Owned grammar]
+/// ```
+///
+/// # Examples
+/// ```text
+/// let args = host_system_information((3, 24)); // Registry ERROR_VARIABLE is an output.
+/// ```
 fn host_system_information(version: (u32, u32)) -> Vec<ArgSchemaKind> {
     let mut keys = vec![
         "NUMBER_OF_LOGICAL_CORES",
@@ -499,6 +831,40 @@ fn host_system_information(version: (u32, u32)) -> Vec<ArgSchemaKind> {
     vec![k("RESULT"), Out, k("QUERY"), choice(forms)]
 }
 
+/// Describe dynamic language dispatch, deferred calls and later control modes as data.
+/// Allocates grammar data only; no external side effects.
+///
+/// # Arguments
+/// - `version` `[in]`: requested CMake major/minor selecting syntax additions.
+///
+/// # Returns
+/// One choice of eligible CALL/EVAL/DEFER/provider/log-level/exit/trace sequences; none is
+/// executed.
+///
+/// # Algorithm
+/// Keep CALL/EVAL base forms, then append DEFER with distinct call/query/cancel modes. Add
+/// dependency provider, log-level, exit and tracing syntax by version; explicit query outputs
+/// retain Out roles.
+///
+/// # Flow
+/// ```text
+///                          [cmake_language inputs]
+///                                     |
+///                  +------------------+------------------+
+///                  v                                     v
+/// +--------------------------------+    +--------------------------------+
+/// |      CALL / EVAL / DEFER       |    |Provider / query / exit / trace |
+/// +----------------+---------------+    +----------------+---------------+
+///                  |                                     |
+///                  +------------------+------------------+
+///                                     v
+///                              [Owned grammar]
+/// ```
+///
+/// # Examples
+/// ```text
+/// let args = cmake_language((4, 2)); // Describes TRACE ON EXPAND.
+/// ```
 fn cmake_language(version: (u32, u32)) -> Vec<ArgSchemaKind> {
     let mut forms = vec![
         vec![k("CALL"), Command, many(Value)],
@@ -558,6 +924,40 @@ fn cmake_language(version: (u32, u32)) -> Vec<ArgSchemaKind> {
     vec![choice(forms)]
 }
 
+/// Describe native pkg-config extraction and newer population/import modes.
+/// Allocates grammar data only; no external side effects.
+///
+/// # Arguments
+/// - `version` `[in]`: requested CMake major/minor selecting syntax additions.
+///
+/// # Returns
+/// One choice beginning with EXTRACT, plus POPULATE and IMPORT from 4.1; package names and
+/// optional versions lead each mode.
+///
+/// # Algorithm
+/// Share requirement/environment/search settings. Add extraction-specific system filters, then
+/// population bindings and import name options only for their eligible modes. Search paths remain
+/// hints.
+///
+/// # Flow
+/// ```text
+///                            [pkg_config inputs]
+///                                     |
+///                  +------------------+------------------+
+///                  v                                     v
+/// +--------------------------------+    +--------------------------------+
+/// |    EXTRACT + system filters    |    |   POPULATE / IMPORT bindings   |
+/// +----------------+---------------+    +----------------+---------------+
+///                  |                                     |
+///                  +------------------+------------------+
+///                                     v
+///                              [Owned grammar]
+/// ```
+///
+/// # Examples
+/// ```text
+/// let args = pkg_config((4, 1)); // BIND_PC_REQUIRES consumes combined values, not Target roles.
+/// ```
 fn pkg_config(version: (u32, u32)) -> Vec<ArgSchemaKind> {
     let common = vec![
         vec![one_of(&["REQUIRED", "EXACT", "QUIET"])],
@@ -611,6 +1011,40 @@ fn pkg_config(version: (u32, u32)) -> Vec<ArgSchemaKind> {
     vec![choice(forms)]
 }
 
+/// Describe instrumentation hooks and metadata callbacks without invoking them.
+/// Allocates grammar data only; no external side effects.
+///
+/// # Arguments
+/// - `version` `[in]`: requested CMake major/minor selecting syntax additions.
+///
+/// # Returns
+/// Required API_VERSION integer and DATA_VERSION version followed by repeated
+/// hook/options/callback/custom-content groups.
+///
+/// # Algorithm
+/// Keep hook and content-type vocabularies explicit; add new instrumentation option literals from
+/// 4.4. CALLBACK names a program and arbitrary values but is never run by this builder.
+///
+/// # Flow
+/// ```text
+///                         [instrumentation inputs]
+///                                     |
+///                  +------------------+------------------+
+///                  v                                     v
+/// +--------------------------------+    +--------------------------------+
+/// |    API/data version prefix     |    |  Hooks / options / callback /  |
+/// |                                |    |            content             |
+/// +----------------+---------------+    +----------------+---------------+
+///                  |                                     |
+///                  +------------------+------------------+
+///                                     v
+///                              [Owned grammar]
+/// ```
+///
+/// # Examples
+/// ```text
+/// let args = instrumentation((4, 4)); // Adds captureOutput and compileTrace options.
+/// ```
 fn instrumentation(version: (u32, u32)) -> Vec<ArgSchemaKind> {
     let mut instrumentation_options = vec![
         "staticSystemInformation",
@@ -653,10 +1087,25 @@ fn instrumentation(version: (u32, u32)) -> Vec<ArgSchemaKind> {
     ]
 }
 
+/// Describe the literal severity-action vocabulary for cmake_diagnostic.
+/// Allocates grammar data only; no external side effects.
+///
+/// # Arguments
+/// None.
+///
+/// # Returns
+/// One-keyword choice of IGNORE, WARN, SEND_ERROR and FATAL_ERROR; does not emit a diagnostic.
+///
+/// # Examples
+/// ```text
+/// let action = diagnostic_action(); // For cmake_diagnostic(SET group WARN).
+/// ```
 fn diagnostic_action() -> ArgSchemaKind {
     one_of(&["IGNORE", "WARN", "SEND_ERROR", "FATAL_ERROR"])
 }
 
+// Contains AI-generated test-module documentation edits.
+/// Process grammar regression tests loaded from the package test tree.
 #[cfg(test)]
 #[path = "../../../../../tests/unit/parser/semanticer/keyword_process.rs"]
 mod keyword_process;

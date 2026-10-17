@@ -1,3 +1,7 @@
+//! Format a static semantic snapshot for inspection, optionally with ANSI colors.
+//!
+//! Formatting writes only to the supplied formatter; it does not execute CMake or read files.
+// Contains AI-generated documentation additions.
 // AI-generated implementation.
 use super::model::{
     ArgKind, CommandId, ScopeId, SemanticDisplay, SemanticError, SemanticSymbolKind,
@@ -25,6 +29,22 @@ const ERROR: Style = Style::new().bright_red().bold();
 const SUCCESS: Style = Style::new().green();
 
 impl SemanticedBuffer {
+    /// Create a borrowed inspection view without writing output or executing CMake. Unchanged variable records are hidden by default.
+    ///
+    /// # Arguments
+    /// - `self` `[in]`: snapshot borrowed for the view lifetime.
+    /// - `colored` `[in]`: whether later formatting emits ANSI color styles.
+    ///
+    /// # Returns
+    /// Formatting view borrowing this snapshot.
+    ///
+    /// # Examples
+    /// ```
+    /// use cmake_analyzer::parser::semanticer::model::*;
+    /// let buffer = SemanticedBuffer::default();
+    /// let view = buffer.display(false);
+    /// assert!(view.to_string().contains("CMAKE SEMANTICS"));
+    /// ```
     pub fn display(&self, colored: bool) -> SemanticDisplay<'_> {
         SemanticDisplay {
             buffer: self,
@@ -34,10 +54,44 @@ impl SemanticedBuffer {
     }
 }
 impl SemanticDisplay<'_> {
+    /// Change the consumed view policy to include or hide unchanged variable records. Does not mutate the snapshot or write output.
+    ///
+    /// # Arguments
+    /// - `self` `[in,out]`: consumed formatting policy with its all_variables flag overwritten.
+    /// - `enabled` `[in]`: true includes unchanged catalog variables, false hides them.
+    ///
+    /// # Returns
+    /// Updated view borrowing the same snapshot.
+    ///
+    /// # Examples
+    /// ```
+    /// use cmake_analyzer::parser::semanticer::model::*;
+    /// let buffer = SemanticedBuffer::default();
+    /// let text = buffer.display(false).with_all_variables(true).to_string();
+    /// assert!(text.contains("VARIABLES"));
+    /// ```
     pub fn with_all_variables(mut self, enabled: bool) -> Self {
         self.all_variables = enabled;
         self
     }
+    /// Append one value with optional ANSI styling. Writes only to the supplied formatter.
+    ///
+    /// # Arguments
+    /// - `self` `[in]`: formatting view and color policy.
+    /// - `f` `[out]`: formatter receiving appended text; prior writes are not rolled back on failure.
+    /// - `style` `[in]`: color/style used only when colored is enabled.
+    /// - `text` `[in]`: Display value consumed by formatting.
+    ///
+    /// # Returns
+    /// Ok(()) after writing; Err(fmt::Error) if the formatter rejects a write.
+    ///
+    /// # Errors
+    /// Propagates formatter write failures; output may already contain a prefix.
+    ///
+    /// # Examples
+    /// ```text
+    /// view.paint(f, HEADING, "COMMANDS")?;
+    /// ```
     fn paint(&self, f: &mut Formatter<'_>, style: Style, text: impl Display) -> fmt::Result {
         if self.colored {
             write!(f, "{}", text.style(style))
@@ -45,6 +99,24 @@ impl SemanticDisplay<'_> {
             write!(f, "{text}")
         }
     }
+    /// Append a blank line and a section heading with its record count. Writes only to the formatter.
+    ///
+    /// # Arguments
+    /// - `self` `[in]`: formatting view and color policy.
+    /// - `f` `[out]`: formatter receiving appended text; prior writes are not rolled back on failure.
+    /// - `name` `[in]`: section label.
+    /// - `count` `[in]`: number displayed in parentheses.
+    ///
+    /// # Returns
+    /// Ok(()) after writing; Err(fmt::Error) if the formatter rejects a write.
+    ///
+    /// # Errors
+    /// Propagates formatter write failures; output may already contain a prefix.
+    ///
+    /// # Examples
+    /// ```text
+    /// view.heading(f, "COMMANDS", 2)?;
+    /// ```
     fn heading(&self, f: &mut Formatter<'_>, name: &str, count: usize) -> fmt::Result {
         writeln!(f)?;
         self.paint(f, HEADING, name)?;
@@ -52,6 +124,26 @@ impl SemanticDisplay<'_> {
         self.paint(f, NUMBER, format_args!("({count})"))?;
         writeln!(f)
     }
+    /// Append a human-readable source location with one-based row/column and raw byte range. Writes only to the formatter.
+    ///
+    /// # Arguments
+    /// - `self` `[in]`: formatting view and color policy.
+    /// - `f` `[out]`: formatter receiving appended text; prior writes are not rolled back on failure.
+    /// - `span` `[in]`: snapshot location whose stored coordinates are zero-based.
+    ///
+    /// # Returns
+    /// Ok(()) after writing; Err(fmt::Error) if the formatter rejects a write.
+    ///
+    /// # Errors
+    /// Propagates formatter write failures; output may already contain a prefix.
+    ///
+    /// # Panics
+    /// Adding one to maximal row/column values can panic with overflow checks.
+    ///
+    /// # Examples
+    /// ```text
+    /// view.span(f, command.full_span)?;
+    /// ```
     fn span(&self, f: &mut Formatter<'_>, span: TextSpan) -> fmt::Result {
         self.paint(
             f,
@@ -65,12 +157,46 @@ impl SemanticDisplay<'_> {
             ),
         )
     }
+    /// Append a local scope label or the global label. Writes only to the formatter.
+    ///
+    /// # Arguments
+    /// - `self` `[in]`: formatting view and color policy.
+    /// - `f` `[out]`: formatter receiving appended text; prior writes are not rolled back on failure.
+    /// - `scope` `[in]`: optional local ID; None renders global.
+    ///
+    /// # Returns
+    /// Ok(()) after writing; Err(fmt::Error) if the formatter rejects a write.
+    ///
+    /// # Errors
+    /// Propagates formatter write failures; output may already contain a prefix.
+    ///
+    /// # Examples
+    /// ```text
+    /// view.scope(f, Some(ScopeId { id: 0 }))?;
+    /// ```
     fn scope(&self, f: &mut Formatter<'_>, scope: Option<ScopeId>) -> fmt::Result {
         match scope {
             Some(id) => self.paint(f, SCOPE, format_args!("S{}", id.id)),
             None => self.paint(f, POSITION, "global"),
         }
     }
+    /// Append bracketed comma-separated command ID labels. Consumes the iterator; writes only to the formatter.
+    ///
+    /// # Arguments
+    /// - `self` `[in]`: formatting view and color policy.
+    /// - `f` `[out]`: formatter receiving appended text; prior writes are not rolled back on failure.
+    /// - `ids` `[in]`: command IDs rendered in iterator order, without arena lookup.
+    ///
+    /// # Returns
+    /// Ok(()) after writing; Err(fmt::Error) if the formatter rejects a write.
+    ///
+    /// # Errors
+    /// Propagates formatter write failures; output may already contain a prefix.
+    ///
+    /// # Examples
+    /// ```text
+    /// view.commands(f, block.contains.iter().copied())?;
+    /// ```
     fn commands(&self, f: &mut Formatter<'_>, ids: impl Iterator<Item = CommandId>) -> fmt::Result {
         write!(f, "[")?;
         for (index, id) in ids.enumerate() {
@@ -83,6 +209,51 @@ impl SemanticDisplay<'_> {
     }
 }
 impl Display for SemanticDisplay<'_> {
+    /// Append the complete static-analysis inspection report. Includes commands, blocks, scopes, selected variables, function candidates, warnings and diagnostics; no filesystem/process access.
+    ///
+    /// # Arguments
+    /// - `self` `[in]`: formatting view and color policy.
+    /// - `f` `[out]`: formatter receiving appended text; prior writes are not rolled back on failure.
+    ///
+    /// # Returns
+    /// Ok(()) after writing; Err(fmt::Error) if the formatter rejects a write.
+    ///
+    /// # Errors
+    /// Propagates formatter write failures; output may already contain a prefix.
+    ///
+    /// # Algorithm
+    /// Write the header and each arena in presentation order. Use policy-aware styling and hide untouched variables unless requested. Look up root symbol names defensively and format diagnostic payloads without changing semantic data.
+    ///
+    /// # Flow
+    /// ```text
+    ///  [snapshot arenas]       [color/filter policy]
+    ///          |                        |
+    ///          +------------+-----------+
+    ///                       v
+    ///               [header + root symbols]
+    ///                       |
+    ///                       v
+    ///              [commands/blocks/scopes]
+    ///                       |
+    ///              <show unchanged variables?>
+    ///                  /              \
+    ///            [all records]    [used records]
+    ///                  |              |
+    ///                  +------+-------+
+    ///                         v
+    ///              [functions/warnings/diagnostics]
+    ///                         |
+    ///                         v
+    ///                   [formatter output]
+    /// ```
+    ///
+    /// # Examples
+    /// ```
+    /// use cmake_analyzer::parser::semanticer::model::*;
+    /// let buffer = SemanticedBuffer::default();
+    /// let text = format!("{}", buffer.display(false));
+    /// assert!(text.contains("no CMake execution"));
+    /// ```
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         let buffer = self.buffer;
         self.paint(f, TITLE, "CMAKE SEMANTICS")?;

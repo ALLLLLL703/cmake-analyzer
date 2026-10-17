@@ -1,8 +1,44 @@
 // AI-generated performance tests.
+
+//! Measure private completion and semantic-token adapters through wrapper test wiring.
+//! Ignored measurements allocate payloads and print timings; no files or child processes.
+
 use super::convert::{decode_completion_item, encode_completion_item, encode_semantic_tokens};
 use crate::server::model as domain;
 use std::{hint::black_box, time::Instant};
 
+/// Compare moving 1,000 wire completions over 20 rounds against decoding and reencoding equivalent owned payloads.
+/// Allocates memory and prints stdout only; ignored measurement, preferably release mode.
+///
+/// # Arguments
+/// None; the test constructs its own fixtures.
+///
+/// # Returns
+/// `()` after all checks pass.
+///
+/// # Panics
+/// If fixture setup or any documented assertion fails.
+///
+/// # Algorithm
+/// Prepare clones outside timers, include output destruction, assert the first item's JSON is preserved, and print per-item timing without a threshold.
+///
+/// # Flow
+/// ```text
+/// [1000-item prototype] --> [clone 20 batches per path]
+///                                     |             |
+///                                     v             v
+///                               [wire move]  [decode / encode]
+///                                     |             |
+///                                     +------+------+
+///                                            v
+/// [print timings / item] <-- [JSON equality of first item]
+/// ```
+///
+/// # Examples
+/// Local test-module context; run through the test harness (ignored measurements require explicit selection).
+/// ```text
+/// completion_adapters_against_wire_only_move();
+/// ```
 #[test]
 #[ignore = "measurement only; run in release mode with --ignored --nocapture"]
 fn completion_adapters_against_wire_only_move() {
@@ -52,6 +88,43 @@ fn completion_adapters_against_wire_only_move() {
     );
 }
 
+/// Encode fifty preconstructed vectors of 10,000 semantic tokens.
+/// Allocates memory and prints stdout only; ignored measurement, preferably release mode.
+///
+/// # Arguments
+/// None; the test constructs its own fixtures.
+///
+/// # Returns
+/// `()` after all checks pass.
+///
+/// # Panics
+/// If fixture setup or any documented assertion fails.
+///
+/// # Algorithm
+/// Require every encoded vector to retain 10,000 records and print per-token timing; construction and JSON serialization are excluded.
+///
+/// # Flow
+/// ```text
+/// [prepare 50 x 10000 tokens]
+///              |
+///              v
+///       [start timer]
+///              |
+///              v
+///       [encode one vector] <------+
+///              |                   | next vector
+///              v                   |
+///    [require 10000 records] ------+
+///              |
+///              v
+///       [print ns / token]
+/// ```
+///
+/// # Examples
+/// Local test-module context; run through the test harness (ignored measurements require explicit selection).
+/// ```text
+/// semantic_token_encoding_large_vectors();
+/// ```
 #[test]
 #[ignore = "measurement only; run in release mode with --ignored --nocapture"]
 fn semantic_token_encoding_large_vectors() {

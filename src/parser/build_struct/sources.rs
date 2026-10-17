@@ -1,6 +1,42 @@
+//! Group target source operands by visibility and file set without accessing files.
+// Contains AI-generated documentation additions.
 // AI-generated implementation.
 use super::model::{Argument, FileSet, SourceDeclaration, SourceSection, Visibility};
 ///  handle the target_sources() command
+/// Group target_sources operands without loading files, evaluating expressions or changing targets.
+///
+/// # Arguments
+/// - `target` `[in]`: Owned target operand.
+/// - `arguments` `[in]`: Owned remaining operands retained in full.
+///
+/// # Returns
+/// Declaration with ordered visibility sections and file sets; incomplete trailing FILE_SET has no
+/// set.
+///
+/// # Algorithm
+/// Visibility keywords start sections. FILE_SET consumes its name and TYPE/BASE_DIRS/FILES groups
+/// until another set or visibility; HEADERS implies its type. Plain operands outside sets become
+/// section files.
+///
+/// # Flow
+/// ```text
+/// [operand loop]
+///        |
+///  <literal keyword?>
+///    /      |       \
+/// visibility set    other
+///    |      |         |
+/// [new section] [route set] [plain file]
+///    |      |         |
+///    +------[append groups]
+///                   |
+///            [retain raw args]
+/// ```
+///
+/// # Examples
+/// ```text
+/// let declaration = sources(target, arguments);
+/// ```
 pub(super) fn sources(target: Argument, arguments: Vec<Argument>) -> SourceDeclaration {
     let mut sections = Vec::new();
     let mut section = SourceSection {

@@ -1,3 +1,8 @@
+//! Assign files to independent Workspaces and synchronize editor overlays.
+//! Explicit interpreter bindings win over discovered dependency membership, which
+//! wins over the nearest containing project directory and then file-only fallback.
+//! One file can belong to several projects. Flushing repeats after new dependencies
+//! change ownership; no recursive directory scan or project execution is performed.
 // AI-authored dependency-first Workspace ownership.
 use super::{
     super::{model::*, roots},
@@ -15,6 +20,43 @@ use std::{
 };
 
 impl Service {
+    /// Select an inferred configure or explicit script profile, then reuse/admit a Workspace.
+    /// May load layered settings and native module defaults; does not execute project code.
+    ///
+    /// # Arguments
+    /// - `self` `[in,out]`: Project/configuration state: may append a profile and override its runtime settings from a script mapping.
+    /// - `entry` `[in]`: Consumed normalized entry file.
+    /// - `standalone` `[in]`: True for file-only fallback, suppressing inference and mapping selection.
+    /// - `binary` `[in]`: Optional explicit binary directory for Workspace identity.
+    ///
+    /// # Returns
+    /// `Ok(index)` into the current projects vector, reused or newly appended; `Err` on settings/admission/path failure.
+    ///
+    /// # Errors
+    /// Configuration loading, Workspace setup, or workspace-count limit errors; earlier configuration-cache updates may remain.
+    ///
+    /// # Algorithm
+    /// Infer configure only for nonstandalone CMakeLists.txt. A matching script mapping overrides filename inference. Admit using full profile identity, then copy selecting script runtime settings if present.
+    ///
+    /// # Flow
+    /// ```text
+    ///  [Entry + standalone]
+    ///            |
+    ///     <Mapped script?>
+    ///       /          \
+    ///     yes          no
+    ///      |            |
+    ///  [Script mode] [Infer configure / none]
+    ///      \            /
+    ///       [Reuse or admit profile]
+    ///                 |
+    ///        [Apply script runtime settings]
+    /// ```
+    ///
+    /// # Examples
+    /// ```text
+    /// let owner = service.add_project(entry, false, None).await?;
+    /// ```
     pub(super) async fn add_project(
         &mut self,
         entry: PathBuf,
@@ -49,6 +91,41 @@ impl Service {
         }
         Ok(index)
     }
+    /// Load entry-directory settings and fall back to startup-directory interpreter mappings.
+    /// Updates only the configuration cache; does not create projects or execute commands.
+    ///
+    /// # Arguments
+    /// - `self` `[in,out]`: Configuration store whose directory settings cache may be populated; projects and open text are unchanged.
+    /// - `directory` `[in]`: Directory whose layered configuration is consulted first.
+    /// - `path` `[in]`: Normalized file key to look up in interpreter_commands.
+    ///
+    /// # Returns
+    /// `Ok(settings)` from the entry directory if it maps path, otherwise startup settings if they map it, otherwise the original directory settings.
+    ///
+    /// # Errors
+    /// Configuration/default discovery failures from either directory lookup.
+    ///
+    /// # Algorithm
+    /// Prefer a mapping in the entry directory. Only if absent, load startup settings
+    /// and use them when they map the same file; otherwise retain entry settings.
+    ///
+    /// # Flow
+    /// ```text
+    ///  [Entry-directory settings]
+    ///              |
+    ///       <Maps file?> -- yes --> [Return entry settings]
+    ///              | no
+    ///      [Startup settings]
+    ///              |
+    ///       <Maps file?> -- yes --> [Return startup settings]
+    ///              | no
+    ///      [Return entry settings]
+    /// ```
+    ///
+    /// # Examples
+    /// ```text
+    /// let settings = service.mapping_settings(&directory, &path).await?;
+    /// ```
     async fn mapping_settings(
         &mut self,
         directory: &Path,
@@ -70,6 +147,45 @@ impl Service {
             settings
         })
     }
+    /// Reuse an exact analysis profile or append a configured independent Workspace.
+    /// Reads settings and may inspect module defaults; does not parse source or launch project CMake.
+    ///
+    /// # Arguments
+    /// - `self` `[in,out]`: Project list appended only after successful setup; configuration caches may also be populated.
+    /// - `entry` `[in]`: Consumed normalized analysis entry.
+    /// - `standalone` `[in]`: Whether only local documents will be flushed.
+    /// - `binary` `[in]`: Optional binary-directory identity.
+    /// - `execution` `[in]`: Configure/script identity or None; part of profile reuse matching.
+    ///
+    /// # Returns
+    /// `Ok(index)` of an existing matching profile or newly appended project; `Err` without appending if setup fails.
+    ///
+    /// # Errors
+    /// Workspace-count admission limit, configuration loading or Workspace path/module setup failures.
+    ///
+    /// # Algorithm
+    /// Compare entry, standalone, binary and execution identity before checking capacity. Load settings, configure script context/module indexing, then append an initially dirty project (except standalone) with its entry as the initial member.
+    ///
+    /// # Flow
+    /// ```text
+    ///  [Requested profile]
+    ///           |
+    ///      <Exact match?>
+    ///       /          \
+    ///     yes          no
+    ///      |            |
+    ///  [Old index] [Limit + settings]
+    ///                   |
+    ///             [Setup Workspace]
+    ///                   |
+    ///            [Append + new index]
+    /// ```
+    ///
+    /// # Examples
+    /// ```text
+    /// let owner = service.add_execution_project(entry, false, None,
+    ///     Some(ExecutionMode::Configure)).await?;
+    /// ```
     async fn add_execution_project(
         &mut self,
         entry: PathBuf,
@@ -146,6 +262,36 @@ impl Service {
         });
         Ok(index)
     }
+    /// Select current owners by explicit bindings, dependency membership, directory proximity, then file-only fallback.
+    /// No I/O or state mutation occurs; indices are valid only while the projects vector is unchanged.
+    ///
+    /// # Arguments
+    /// - `self` `[in]`: Current project bindings, membership and root directories read without mutation.
+    /// - `path` `[in]`: Normalized absolute file identity.
+    ///
+    /// # Returns
+    /// All explicitly bound owners if any; otherwise all nonstandalone dependency members; otherwise one nearest containing CMakeLists project; otherwise matching standalone owners, possibly empty.
+    ///
+    /// # Algorithm
+    /// Stop at the first nonempty ownership class. Directory fallback chooses the longest root entry path and only applies to ordinary CMakeLists entries.
+    ///
+    /// # Flow
+    /// ```text
+    ///  [File path]
+    ///       |
+    ///  <Bound owners?> -- yes --> [All bindings]
+    ///       | no
+    ///  <Dependency owners?> -- yes --> [All importers]
+    ///       | no
+    ///  <Containing project?> -- yes --> [Nearest one]
+    ///       | no
+    ///  [Matching standalone / empty]
+    /// ```
+    ///
+    /// # Examples
+    /// ```text
+    /// let owners = service.owners(&module_path);
+    /// ```
     pub(in crate::server) fn owners(&self, path: &Path) -> Vec<usize> {
         let bound: Vec<_> = self
             .projects
@@ -196,6 +342,41 @@ impl Service {
             .map(|(i, _)| i)
             .collect()
     }
+    /// Resolve mappings/discovery and admit a project when no current owner suffices.
+    /// May read filesystem metadata/settings and append profiles; never executes interpreter mappings.
+    ///
+    /// # Arguments
+    /// - `self` `[in,out]`: Project/config caches and root/binding sets may grow; editor text is not changed.
+    /// - `path` `[in]`: Normalized file whose owner must exist.
+    ///
+    /// # Returns
+    /// `Ok(indices)` for the selected owners; mapped files receive their binding. `Err` on discovery, configuration or project admission failure.
+    ///
+    /// # Errors
+    /// Metadata discovery, configuration/default loading, workspace-count limit or Workspace setup errors. Cache/admission changes before a later failure are not rolled back.
+    ///
+    /// # Algorithm
+    /// Honor existing explicit bindings. Use an existing owner root or ancestor discovery as configuration context, check directory/startup interpreter mappings, then reuse existing owners or create a discovered/file-only project. Script mappings inherit the selecting runtime settings; newly discovered ordinary roots enter the root set.
+    ///
+    /// # Flow
+    /// ```text
+    ///  [Current owners]
+    ///         |
+    ///  <Explicit binding?> -- yes --> [Return owners]
+    ///         | no
+    ///  [Discover + mapping settings]
+    ///         |
+    ///     <Mapping?> -- yes --> [Admit profile + bind file]
+    ///         | no
+    ///  <Owners exist?> -- yes --> [Return owners]
+    ///         | no
+    ///  [Admit discovered / standalone]
+    /// ```
+    ///
+    /// # Examples
+    /// ```text
+    /// let owners = service.ensure_owners(&path).await?;
+    /// ```
     pub(super) async fn ensure_owners(&mut self, path: &Path) -> ServerResult<Vec<usize>> {
         let owners = self.owners(path);
         if owners
@@ -252,6 +433,40 @@ impl Service {
         }
         Ok(vec![index])
     }
+    /// Remove overlays from former owners and install newer editor versions in current owners.
+    /// Changes Workspace caches and marks affected projects dirty; no disk writes or parsing occurs.
+    ///
+    /// # Arguments
+    /// - `self` `[in,out]`: Projects whose overlay maps/Workspace caches are updated and dirty flags set; documents are read only.
+    ///
+    /// # Returns
+    /// `Ok(())` after synchronizing all open documents, or `Err` after a Workspace path/cache failure.
+    ///
+    /// # Errors
+    /// Workspace close_overlay/set_overlay errors; earlier removals/installs remain applied.
+    ///
+    /// # Algorithm
+    /// Capture ownership before mutating projects. Remove each obsolete overlay, then install text where the recorded version differs from the authoritative open version.
+    ///
+    /// # Flow
+    /// ```text
+    ///  [Documents + ownership map]
+    ///               |
+    ///     [Each project: old overlays]
+    ///               |
+    ///        <Still owned/open?>
+    ///         /             \
+    ///        no             yes
+    ///        |               |
+    ///  [Close + dirty] [Compare versions]
+    ///                        |
+    ///                [Install changed + dirty]
+    /// ```
+    ///
+    /// # Examples
+    /// ```text
+    /// service.sync_overlays()?;
+    /// ```
     pub(super) fn sync_overlays(&mut self) -> ServerResult<()> {
         let ownership: BTreeMap<_, _> = self
             .documents
@@ -290,6 +505,40 @@ impl Service {
         }
         Ok(())
     }
+    /// Synchronize overlays and repeatedly refresh dirty projects until ownership settles, then refresh path warnings.
+    /// May read/parse source and inspect input paths; no project execution or disk writes.
+    ///
+    /// # Arguments
+    /// - `self` `[in,out]`: Projects, ownership, overlays, analysis/path caches and fallback project list refreshed in place.
+    ///
+    /// # Returns
+    /// `Ok(())` after synchronization and path refresh; `Err` for overlay/owner admission failures. Per-Workspace analysis failures are logged and not returned.
+    ///
+    /// # Errors
+    /// Overlay synchronization and ensure_owners errors; state can already contain successful updates from earlier passes.
+    ///
+    /// # Algorithm
+    /// Apply overlays, clear each dirty flag before its joined flush, and rebuild membership from visits, dependency candidates and runtime documents when a graph exists. Discover owners for unbound opens and resynchronize overlays, repeating while dirty. Prune redundant/closed standalone caches, then refresh dirty path state. Logged flush errors do not restore dirty flags.
+    ///
+    /// # Flow
+    /// ```text
+    ///  [Sync overlays] <-------------------------+
+    ///         |                                  |
+    ///  <Any dirty projects?>                      |
+    ///      /           \                         |
+    ///    yes           no                         |
+    ///     |             |                         |
+    ///  [Flush dirty] [Prune standalone]            |
+    ///     |             |                         |
+    ///  [Update members] [Refresh path warnings]    |
+    ///     |                                       |
+    ///  [Ensure unbound owners] -------------------+
+    /// ```
+    ///
+    /// # Examples
+    /// ```text
+    /// service.flush().await?;
+    /// ```
     pub(super) async fn flush(&mut self) -> ServerResult<()> {
         self.sync_overlays()?;
         // A new project may discover an already-open external module. Apply its overlay and revisit once needed.

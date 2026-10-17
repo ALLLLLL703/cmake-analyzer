@@ -1,5 +1,9 @@
+//! Extract project metadata and language defaults from retained arguments; no I/O.
+// Contains AI-generated documentation additions.
 // AI-generated implementation.
 use super::model::{Argument, ProjectDeclaration};
+/// Literal metadata section boundaries recognized by project extraction; unsupported values remain
+/// in raw arguments.
 const KEYS: &[&str] = &[
     "VERSION",
     "DESCRIPTION",
@@ -8,11 +12,39 @@ const KEYS: &[&str] = &[
     "COMPAT_VERSION",
     "SPDX_LICENSE",
 ];
-/// return the ProjectDeclaration
-/// parse the project() command
+/// Extract project metadata and languages; does not execute project() or mutate input files.
 ///
-/// if **no** language set, default is C & CXX
-/// 676767676767
+/// # Arguments
+/// - `name` `[in]`: Owned project-name operand.
+/// - `arguments` `[in]`: Owned remaining operands retained as raw arguments.
+///
+/// # Returns
+/// Declaration; omitted language lists default to C/CXX, while explicit NONE stays empty.
+///
+/// # Algorithm
+/// Any literal metadata keyword selects named-option parsing; otherwise use legacy positional
+/// languages. Consume option values even if they resemble keywords. Explicit LANGUAGES/NONE
+/// suppresses defaults; unsupported metadata remains in raw arguments.
+///
+/// # Flow
+/// ```text
+/// [operands]
+///      |
+///  <metadata keyword?>
+///     /           \
+///  named         legacy languages
+///     |                |
+///     +------> <explicit list?>
+///                /          \
+///             retain       default C/CXX
+///                \          /
+///                  [declaration]
+/// ```
+///
+/// # Examples
+/// ```text
+/// let declaration = project(name, vec![]); // defaults to C and CXX
+/// ```
 pub(super) fn project(name: Argument, arguments: Vec<Argument>) -> ProjectDeclaration {
     let mut result = ProjectDeclaration {
         name,

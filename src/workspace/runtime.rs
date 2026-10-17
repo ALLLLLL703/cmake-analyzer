@@ -1,3 +1,8 @@
+//! Install an independent immutable layer from an already executed CMake trace.
+//! Loads optional source mappings and indexes observations on a bounded worker. Source analysis
+//! may inspect `cmake --version`; it never configures or executes project code or rewrites static
+//! snapshots. Cancellation preserves the previously installed layer.
+// Contains AI-generated documentation additions.
 // AI-authored execution-derived overlay. Static graphs/snapshots are not rewritten.
 mod model;
 use super::model::Workspace;
@@ -9,20 +14,131 @@ use std::{
     sync::Arc,
 };
 impl Workspace {
+    /// Borrow the independent installed runtime layer. No reads, execution or mutation occur.
+    ///
+    /// # Arguments
+    /// - `self` `[in]`: Workspace whose current overlay is queried.
+    ///
+    /// # Returns
+    /// Some shared layer after successful installation, or None after creation/invalidation/clear.
+    ///
+    /// # Examples
+    /// ```
+    /// use cmake_analyzer::workspace::Workspace;
+    /// fn observed(workspace: &Workspace) -> bool { workspace.runtime().is_some() }
+    /// ```
     pub fn runtime(&self) -> Option<&Arc<RuntimeLayer>> {
         self.runtime.as_ref()
     }
+    /// Retire the installed execution overlay from workspace and saved graph. Previously cloned
+    /// Arcs remain valid; no I/O or execution occurs.
+    ///
+    /// # Arguments
+    /// - `self` `[in,out]`: Overwrites workspace.runtime and graph.runtime with None when present.
+    ///
+    /// # Returns
+    /// () after retiring live references; static snapshots/indexes are unchanged.
+    ///
+    /// # Examples
+    /// ```
+    /// use cmake_analyzer::workspace::Workspace;
+    /// fn retire(workspace: &mut Workspace) { workspace.clear_runtime(); }
+    /// ```
     pub fn clear_runtime(&mut self) {
         self.runtime = None;
         if let Some(graph) = &mut self.graph {
             graph.runtime = None;
         }
     }
+    /// Install an already executed trace using a noncancelled token. May load source files, inspect
+    /// `cmake --version` and build observations on a bounded worker; never configures or executes
+    /// project code or mutates static snapshots.
+    ///
+    /// # Arguments
+    /// - `self` `[in,out]` : Workspace caches may load sources; runtime/dependency state changes on
+    ///   successful installation.
+    /// - `trace` `[in]`: Owned event/dependency trace, consumed by the new layer.
+    ///
+    /// # Returns
+    /// Ok(()) after layer publication; Err on file-count/read/worker failures.
+    ///
+    /// # Errors
+    /// Propagates source-count limits, nonmissing source read/analysis failures and bounded-worker
+    /// errors. The previous installed layer is preserved on failure, though source caches may
+    /// change.
+    ///
+    /// # Examples
+    /// Requires a Tokio runtime. Source files must be readable unless supplied as overlays;
+    /// runtime installation consumes an existing trace and does not execute a project.
+    /// ```no_run
+    /// use cmake_analyzer::workspace::Workspace;
+    /// use cmake_analyzer::runtime_cmake::model::{RunId, Trace};
+    /// # async fn example(workspace: &mut Workspace) -> std::io::Result<()> {
+    /// let trace = Trace { run: RunId::new(1), build_directory: None, events: vec![], dependencies: vec![] };
+    /// workspace.install_runtime(trace).await?;
+    /// # Ok(())
+    /// # }
+    /// ```
     pub async fn install_runtime(&mut self, trace: Trace) -> io::Result<()> {
         self.install_runtime_cancellable(trace, lspally::server::model::Cancellation::default())
             .await
     }
     /// Install atomically; cancellation leaves the previous runtime layer intact.
+    /// Load/index an existing trace and publish its layer only after successful completion.
+    /// Cancellation/errors preserve the previous installed runtime, but source caches may already
+    /// have been updated. Source analysis may inspect `cmake --version`; it never configures or
+    /// executes project code.
+    ///
+    /// # Arguments
+    /// - `self` `[in,out]` : Loads source caches, then extends dependency tracking and overwrites
+    ///   graph/workspace runtime only on success.
+    /// - `trace` `[in]`: Owned executed trace, including resolved dependency sources.
+    /// - `cancel` `[in]` : Cooperative cancellation token checked before/between loads and during
+    ///   worker indexing.
+    ///
+    /// # Returns
+    /// Ok(()) after publishing a shared RuntimeLayer; Err for cancellation, source limits, reads or
+    /// worker failures.
+    ///
+    /// # Errors
+    /// Interrupted cancellation; too many distinct trace sources; non-NotFound read/analysis
+    /// errors; closed worker semaphore or worker join failure.
+    ///
+    /// # Algorithm
+    /// Deduplicate event/resolved-dependency files and enforce the workspace distinct-file budget.
+    /// Load optional source snapshots serially, skipping missing files. Hold a worker permit while
+    /// building event/source/value/function indexes, then share the finished layer with workspace
+    /// and graph. Cancellation is cooperative at explicit checks, not a transaction over
+    /// source-cache loads.
+    ///
+    /// # Flow
+    /// ```text
+    /// [trace files] ---> <file budget?> -- exceeded --> [error]
+    ///       | allowed
+    ///  [load sources] ---- missing ---> [skip source]
+    ///       |
+    ///  [bounded build_layer worker]
+    ///       |
+    ///  <success?>
+    ///    /           \
+    ///  error       [extend dependencies]
+    ///    |                  |
+    /// [old layer kept] [publish graph/workspace Arc]
+    /// ```
+    ///
+    /// # Examples
+    /// Requires a Tokio runtime. Source files must be readable unless supplied as overlays;
+    /// runtime installation consumes an existing trace and does not execute a project.
+    /// ```no_run
+    /// use cmake_analyzer::workspace::Workspace;
+    /// use cmake_analyzer::runtime_cmake::model::{RunId, Trace};
+    /// use lspally::server::model::Cancellation;
+    /// # async fn example(workspace: &mut Workspace) -> std::io::Result<()> {
+    /// let trace = Trace { run: RunId::new(1), build_directory: None, events: vec![], dependencies: vec![] };
+    /// workspace.install_runtime_cancellable(trace, Cancellation::default()).await?;
+    /// # Ok(())
+    /// # }
+    /// ```
     pub async fn install_runtime_cancellable(
         &mut self,
         trace: Trace,
@@ -88,6 +204,46 @@ impl Workspace {
         Ok(())
     }
 }
+/// Map executed events to optional source commands and build sparse observed value/function
+/// indexes. No I/O or static snapshot mutation; cancellation stops assembly.
+///
+/// # Arguments
+/// - `trace` `[in]`: Owned expanded trace; event IDs are used as indices by consumers.
+/// - `documents` `[in]`: Owned map of shared source snapshots loaded by the caller.
+/// - `cancel` `[in]`: Cooperative cancellation token checked during source/event loops.
+///
+/// # Returns
+/// Ok independent RuntimeLayer; Err(Interrupted) when cancellation is observed.
+///
+/// # Errors
+/// Returns Interrupted when cancellation is observed; no partial RuntimeLayer is returned.
+///
+/// # Algorithm
+/// Index source commands by file, one-based line and lowercase name; map only unique matches.
+/// Replay declaration/call names in event order. Recognize set/unset namespaces conservatively,
+/// confirming ordinary writes and forced cache values only. Retain every mapped variable read;
+/// attach observed values only for stable whole quoted `${NAME}` operands. Other reads keep unknown
+/// values. Preserve frame/event identity and per-event value ranges; unmapped locations stay absent.
+///
+/// # Flow
+/// ```text
+/// [source commands]       [expanded events]
+///          |                       |
+///  [file/line/name map] --> <unique source?>
+///                              /        \
+///                          mapped      absent
+///                              \        /
+///                       [ordered event replay]
+///                         /              \
+///               [functions/calls] [safe reads/writes]
+///                         \              /
+///                        [immutable layer]
+/// ```
+///
+/// # Examples
+/// ```text
+/// let layer = build_layer(trace, documents, cancel)?;
+/// ```
 fn build_layer(
     trace: Trace,
     documents: BTreeMap<std::path::PathBuf, Arc<super::model::DocumentSnapshot>>,

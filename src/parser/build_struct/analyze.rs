@@ -1,3 +1,6 @@
+//! Translate closed, schema-known semantic commands into ordered facts without I/O.
+//! Native schemas supply build effects; any schema may supply output-variable writes.
+// Contains AI-generated documentation additions.
 // AI-generated implementation.
 use super::model::*;
 use crate::parser::semanticer::{
@@ -5,6 +8,18 @@ use crate::parser::semanticer::{
     schema::CommandSchemaFrom,
 };
 
+/// Copy semantic content and its literal classification; no expansion, mutation or I/O.
+///
+/// # Arguments
+/// - `arg` `[in]`: Operand whose semantic content is retained.
+///
+/// # Returns
+/// Owned text and a literal flag.
+///
+/// # Examples
+/// ```text
+/// let operand = argument(&command.args[0]);
+/// ```
 fn argument(arg: &SemanticArg) -> Argument {
     Argument {
         text: arg.content.clone(),
@@ -13,6 +28,38 @@ fn argument(arg: &SemanticArg) -> Argument {
 }
 impl BuildStructAnalyzer<'_> {
     // AI-authored extraction shared by full and incremental analysis.
+    /// Qualify a command and walk its block ancestors to flag conditional/deferred context. No
+    /// mutation or I/O.
+    ///
+    /// # Arguments
+    /// - `self` `[in]`: Analyzer supplying block ancestry and origin.
+    /// - `command` `[in]`: Command whose full span, scope and immediate block are retained.
+    ///
+    /// # Returns
+    /// Source reference; invalid ancestor IDs terminate the walk.
+    ///
+    /// # Algorithm
+    /// Walk immediate block then parents, accumulating loop/if and function/macro flags
+    /// independently. Stop at file level or a missing ancestor; preserve the original immediate
+    /// block and scope in the returned origin.
+    ///
+    /// # Flow
+    /// ```text
+    /// [command block]
+    ///        |
+    ///  <ancestor exists?> -- no --> [qualified origin]
+    ///        | yes                        ^
+    ///  [merge context flags]              |
+    ///        |                            |
+    ///  [follow parent] -------------------+
+    ///        |
+    ///        +----> [next ancestor]
+    /// ```
+    ///
+    /// # Examples
+    /// ```text
+    /// let source = analyzer.source_for(command);
+    /// ```
     pub(crate) fn source_for(
         &self,
         command: &crate::parser::semanticer::model::SemanticCommandRepresent,
@@ -42,12 +89,77 @@ impl BuildStructAnalyzer<'_> {
         }
     }
     /// Extract ordered facts, not executed build state.
+    /// Extract ordered facts and bind file-local target references. Does not execute CMake, read
+    /// files or mutate input.
+    ///
+    /// # Arguments
+    /// - `self` `[in]`: Borrowed semantic snapshot and file revision.
+    ///
+    /// # Returns
+    /// Owned facts and extraction diagnostics, with target references local to this file.
+    ///
+    /// # Algorithm
+    /// Extract all eligible commands, then bind literal target declarations and schema-identified
+    /// reads in one local directory.
+    ///
+    /// # Flow
+    /// ```text
+    /// [semantic input]
+    ///        |
+    /// [analyze_selected(all)]
+    ///        |
+    /// [owned facts] ------> [bind local targets]
+    ///                              |
+    ///                        [return output]
+    /// ```
+    ///
+    /// # Examples
+    /// ```
+    /// use cmake_analyzer::parser::build_struct::model::{AnalysisKey, BuildStructAnalyzer};
+    /// use cmake_analyzer::parser::semanticer::model::SemanticedBuffer;
+    /// let semantic = SemanticedBuffer::default();
+    /// let analyzer = BuildStructAnalyzer::new(&semantic, AnalysisKey { file: 0, revision: 1 });
+    /// let build = analyzer.analyze();
+    /// ```
     pub fn analyze(&self) -> BuildStruct {
         let mut output = self.analyze_selected(|_| true);
         super::target_references::bind_local(&mut output, self.buffer);
         output
     }
     // AI-authored incremental extraction: unchanged effects need only fresh source references.
+    /// Extract selected command effects without binding target reads. Input is unchanged; the
+    /// selection callback may have its own side effects.
+    ///
+    /// # Arguments
+    /// - `self` `[in]`: Semantic snapshot and origin.
+    /// - `selected` `[in,out]` : Callback invoked per command; its captured state may change. False
+    ///   skips extraction.
+    ///
+    /// # Returns
+    /// Owned selected facts and missing-first-argument diagnostics, in command order.
+    ///
+    /// # Algorithm
+    /// Skip unselected, unclosed or schema-less commands. Native schemas supply typed build
+    /// effects; schema Out arguments supply literal writes. Cache/parent writes are retained as
+    /// nonlocal. Missing required first operands emit a diagnostic and skip that command.
+    ///
+    /// # Flow
+    /// ```text
+    /// [command loop]
+    ///       |
+    ///  <selected/closed/schema?> -- no --> [next]
+    ///       | yes
+    ///  [native effect]        [Out names]
+    ///       |                    |
+    ///       +----> [append facts]+
+    ///                    |
+    ///                 [next]
+    /// ```
+    ///
+    /// # Examples
+    /// ```text
+    /// let changed = analyzer.analyze_selected(|command| command.id.id == 2);
+    /// ```
     pub(crate) fn analyze_selected(
         &self,
         mut selected: impl FnMut(&crate::parser::semanticer::model::SemanticCommandRepresent) -> bool,

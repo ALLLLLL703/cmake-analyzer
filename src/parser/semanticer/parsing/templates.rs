@@ -1,3 +1,7 @@
+//! Specialize builtin variable-name templates from literal source hints.
+//!
+//! No values, conditions, functions or generator expressions are evaluated.
+// Contains AI-generated documentation additions.
 // AI-generated implementation.
 use crate::parser::semanticer::{
     model::{SemanticVariable, SemanticedBuffer, Semanticer},
@@ -6,8 +10,46 @@ use crate::parser::semanticer::{
 use std::collections::{BTreeMap, BTreeSet};
 
 impl Semanticer {
-    /// Return fully specialized builtin names; values/scopes remain unbound.
-    /// Unknown substitutions are omitted; no CMake code is executed.(static analyze)
+    /// Infer concrete builtin template names from literal source hints, leaving values and scopes unbound. Unknown substitutions are omitted; no CMake code or I/O runs.
+    ///
+    /// # Arguments
+    /// - `self` `[in]`: analyzer, unchanged.
+    /// - `buffer` `[in]`: version and commands used as literal name-domain hints.
+    ///
+    /// # Returns
+    /// Sorted, deduplicated builtin records with no placeholder characters, writes or references.
+    ///
+    /// # Algorithm
+    /// Select versioned templates, collect literal project/language/package/configuration/policy/feature domains and explicit names, then expand one placeholder per round. Missing domains drop a branch; explicit template matches allow instances without a declared domain.
+    ///
+    /// # Flow
+    /// ```text
+    ///  [versioned templates]     [literal commands]
+    ///           |                       |
+    ///           |               [domains + explicit names]
+    ///           +------------+----------+
+    ///                        v
+    ///                <placeholder domain?>
+    ///                  /             \
+    ///              [missing]       [known values]
+    ///                  |                |
+    ///             [drop branch]    [expand next slot] --+
+    ///                                   ^              |
+    ///                                   +-- more ------+
+    ///                                   | complete
+    ///                                   v
+    ///                       [sorted unbound builtin names]
+    /// ```
+    ///
+    /// # Examples
+    /// ```
+    /// use cmake_analyzer::parser::semanticer::model::*;
+    /// use cmake_analyzer::parser::nparser::model::NParsedBuffer;
+    /// let analyzer = Semanticer::new(NParsedBuffer::default(), Default::default());
+    /// let mut buffer = SemanticedBuffer::default();
+    /// let names = analyzer.detect_specialized_variables(&buffer);
+    /// assert!(names.iter().all(|v| !v.name.contains(['<', '>'])));
+    /// ```
     pub fn detect_specialized_variables(&self, buffer: &SemanticedBuffer) -> Vec<SemanticVariable> {
         let version = buffer
             .version
@@ -228,6 +270,37 @@ impl Semanticer {
 }
 
 // Skip option/value pairs: DESCRIPTION LANGUAGES is not a language-list trigger.
+/// Extract literal project languages while skipping option/value pairs. No side effects.
+///
+/// # Arguments
+/// - `args` `[in]`: project arguments as optional literal payloads; first slot is the project name.
+///
+/// # Returns
+/// Borrowed language names. LANGUAGES replaces earlier lists; NONE is omitted. Modern/no-language syntax defaults to C/CXX; legacy trailing arguments are returned as names.
+///
+/// # Algorithm
+/// Scan options while treating description/version values as values rather than language markers. Retain the latest explicit LANGUAGES list; if absent, use default or legacy syntax.
+///
+/// # Flow
+/// ```text
+///  [project args]
+///        |
+///  <LANGUAGES option?>
+///     /          \
+///   yes          no
+///    |            |
+///  [read list] <modern syntax?>
+///    |          /         \
+///    |      [C/CXX]    [legacy tail]
+///    +----------+----------+
+///               v
+///        [borrowed languages]
+/// ```
+///
+/// # Examples
+/// ```text
+/// assert_eq!(project_languages(&[Some("demo")]), vec!["C", "CXX"]);
+/// ```
 fn project_languages<'a>(args: &[Option<&'a str>]) -> Vec<&'a str> {
     let keys = [
         "VERSION",
@@ -281,6 +354,41 @@ fn project_languages<'a>(args: &[Option<&'a str>]) -> Vec<&'a str> {
 }
 
 // Try UTF-8 boundaries; numeric placeholders must not match arbitrary name fragments.
+/// Match nonempty placeholder substitutions at UTF-8 boundaries. Numeric placeholders require digits; no side effects.
+///
+/// # Arguments
+/// - `template` `[in]`: catalog name with optional angle-bracket placeholders.
+/// - `candidate` `[in]`: explicit name to check.
+///
+/// # Returns
+/// True for a full match; false for malformed templates, missing/empty substitutions or invalid numeric/angle-bracket values.
+///
+/// # Algorithm
+/// Match the literal prefix, try each nonempty UTF-8 split for the next placeholder, enforce numeric constraints where specified and recurse on the remaining suffix.
+///
+/// # Flow
+/// ```text
+///  [template]          [candidate]
+///       |                    |
+///       +---------+----------+
+///                 v
+///           <placeholder?>
+///            /         \
+///      [compare]    [match prefix]
+///                        |
+///                 [try UTF-8 splits] <---+
+///                        |               |
+///                  <valid suffix?> --no-+
+///                        | yes
+///                        v
+///                     [true]
+/// ```
+///
+/// # Examples
+/// ```text
+/// assert!(matches_template("ARGV<n>", "ARGV2"));
+/// assert!(!matches_template("ARGV<n>", "ARGVx"));
+/// ```
 fn matches_template(template: &str, candidate: &str) -> bool {
     let Some(start) = template.find('<') else {
         return template == candidate;

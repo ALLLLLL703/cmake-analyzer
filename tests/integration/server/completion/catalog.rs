@@ -1,9 +1,51 @@
 // AI-generated tests.
+//! Versioned builtin keyword regression table through textDocument/completion.
+//! Each edit changes the declared CMake version; no project command is executed.
 use super::{complete, item, start};
 use crate::server::session::{Project, uri};
 use serde_json::json;
 
 #[tokio::test]
+/// Check versioned builtin keyword cases through live completion after each source-version
+/// edit.
+/// Creates temporary files and an analyzer session; successful completion stops the session and
+/// removes fixtures.
+///
+/// # Arguments
+/// None.
+///
+/// # Returns
+/// `()` if every assertion passes; no output parameter.
+///
+/// # Panics
+/// Panics on any failed assertion or unwrapped fixture/transport/process failure.
+/// Cleanup is explicit on the success path; a panic may leave a fixture tree.
+///
+/// # Algorithm
+/// Iterate a table from CMake 3.0 through 4.4 covering
+/// find_package/project/file/execute_process/install/get_property/set/block/if/include. Replace
+/// the declared minimum version and marked source, then require the requested label as plain
+/// Keyword kind 14 with an exact keyword replacement.
+///
+/// # Flow
+/// ```text
+/// [Temporary sources + settings]      [Expected: versioned plain Keyword items]
+///              |                              |
+///              v                              |
+/// [LSP scenario messages]                 |
+///              |                              |
+///              +-------------+----------------+
+///                            v
+///                  [Compare assertions]
+///                            |
+///                            v
+///             [Finish session + remove tree]
+/// ```
+///
+/// # Examples
+/// ```text
+/// previously_missing_builtin_keywords_work_through_the_lsp_and_version_changes(); // #[tokio::test] supplies the runtime
+/// ```
 async fn previously_missing_builtin_keywords_work_through_the_lsp_and_version_changes() {
     let p = Project::new().await;
     let root = p.write("CMakeLists.txt", "").await;

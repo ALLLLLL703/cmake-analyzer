@@ -1,3 +1,8 @@
+//! Configuration and literal interpreter-command regressions. Temporary TOML layers exercise
+//! precedence, path bases, validation and cache reuse; interpreter commands are parsed, not
+//! executed.
+
+// Contains AI-generated documentation edits.
 // AI-generated configuration and interpreter tests.
 mod completion;
 mod format;
@@ -13,8 +18,31 @@ use std::{
     path::PathBuf,
     sync::atomic::{AtomicU64, Ordering},
 };
+/// Process-local suffix counter for collision-free temporary fixture names.
+/// Example: `NEXT.fetch_add(1, Ordering::Relaxed)` reserves the next local suffix.
 static NEXT: AtomicU64 = AtomicU64::new(0);
 
+/// Parse quoted project source/build paths and a script path relative to `/workspace`, then reject
+/// missing operands, mixed modes, unsupported programs and shell separators. This proves service
+/// selection is literal parsing, not execution.
+///
+/// Only local values and analysis buffers are created or changed; no file, network or process side
+/// effects.
+///
+/// # Arguments
+/// None. The test builds its own fixture and expected results.
+///
+/// # Returns
+/// `()` after all checks pass; no data or output parameter is returned.
+///
+/// # Panics
+/// If a stated invariant fails or an unwrapped fixture/setup operation fails.
+///
+/// # Examples
+/// Local test-module call:
+/// ```text
+/// interpreter_commands_select_services_without_execution();
+/// ```
 #[test]
 fn interpreter_commands_select_services_without_execution() {
     let cwd = PathBuf::from("/workspace");
@@ -45,6 +73,43 @@ fn interpreter_commands_select_services_without_execution() {
         assert!(parse(command, &cwd).is_err(), "{command}");
     }
 }
+/// Write user, project and explicit TOML layers; check field-wise precedence, each layer's
+/// module-path base and startup-relative interpreter replacement.
+///
+/// Creates, rewrites and removes temporary TOML files/directories; enabled module discovery may
+/// inspect CMake --version, never execute a project.
+///
+/// # Arguments
+/// None. The test builds its own fixture and expected results.
+///
+/// # Returns
+/// `()` after all checks pass; no data or output parameter is returned.
+///
+/// # Panics
+/// If a stated invariant fails or an unwrapped fixture/setup operation fails.
+///
+/// # Algorithm
+/// Repeated lookup must share its settings allocation. Rewrite the project layer with a wrong type
+/// and a misspelled table and reload to require errors.
+///
+/// # Flow
+/// ```text
+///   [three TOML layers]
+///    |
+///   [merge + cached lookup]----------> [wrong type / table name]
+///                                     |
+///                                    [reject on reload]
+///                                     |
+///                                    < checks hold? >
+///                                     /         \
+///                                   [pass]     [panic]
+/// ```
+///
+/// # Examples
+/// Direct local call outside any Tokio runtime (the test attribute creates its runtime):
+/// ```text
+/// configuration_layers_inherit_fields_and_normalize_paths();
+/// ```
 #[tokio::test]
 async fn configuration_layers_inherit_fields_and_normalize_paths() {
     let directory = std::env::temp_dir().join(format!(

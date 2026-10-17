@@ -1,8 +1,53 @@
+//! Run completion after the service edit barrier using retained owner-qualified inputs.
+//! Optional discovery may read/cache source files; it does not create graph bindings or execute CMake.
+
 use super::{candidates, inputs, model::Prepared, names, prepare, render};
 use crate::server::{model::Service, service::internal, text::TextIndex, uri};
 use lspally::server::model::*;
 
 impl Service {
+    /// Return completion edits from ordered snapshots and optional discovery.
+    /// May read/cache module, package and supplemental target sources; never binds them into the graph or edits files.
+    ///
+    /// # Arguments
+    /// - `self` `[in,out]`: Service; owner workspaces may update discovery caches and retain immutable supplemental snapshots.
+    /// - `document` `[in]`: Local document URI to resolve to owners.
+    /// - `position` `[in]`: Cursor in the service's negotiated encoding.
+    /// - `snippets` `[in]`: Whether the client supports snippet insertion.
+    /// - `cancel` `[in]`: Cooperative cancellation shared with discovery and joined workers.
+    ///
+    /// # Returns
+    /// `Ok(Some(Array(items)))` always contains the completed list, empty for unsupported sites or missing inputs; this implementation does not return `Ok(None)`.
+    ///
+    /// # Errors
+    /// `Err` reports invalid URI/position/ranges, cancellation, discovery I/O failures or joined-worker failure. Cache reads completed before failure are not rolled back.
+    ///
+    /// # Algorithm
+    /// Require snippet support and reserve_arg agreement across owners. Capture immutable views, join preparation, load only requested catalogues asynchronously, then join candidate collection and coordinate rendering. Existing parentheses disable snippets. Cancellation is checked between bounded work units; started blocking work is joined, not detached.
+    ///
+    /// # Flow
+    /// ```text
+    ///  [Ordered service state]
+    ///           |
+    ///           v
+    ///  [Capture owner inputs] ---> [joined preparation]
+    ///                                   |
+    ///                              <argument plan?>
+    ///                              /             \
+    ///                            yes             no
+    ///                             |               |
+    ///                  [async catalogue reads]    |
+    ///                             +-------+-------+
+    ///                                     v
+    ///                          [joined collect/render]
+    ///                                     |
+    ///                              [client edits only]
+    /// ```
+    ///
+    /// # Examples
+    /// ```text
+    /// let response = service.complete(uri, position, true, cancel).await?;
+    /// ```
     pub(in crate::server) async fn complete(
         &mut self,
         document: Uri,

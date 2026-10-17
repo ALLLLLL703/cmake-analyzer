@@ -1,9 +1,51 @@
+//! Convert semantic root symbols and direct block membership to protocol symbols.
+//! Blocks are assembled from descendants to ancestors without recursion. Flat output
+//! retains each immediate parent name. Conversion has no I/O or snapshot mutation.
 // AI-authored symbols from semantic root symbols and direct block membership.
 mod workspace;
 use super::{model::SymbolInput, text::TextIndex};
 use crate::{model::TextSpan, parser::semanticer::model::*};
 use lspally::server::model::*;
 
+/// Render semantic commands/blocks as nested or flat protocol symbols. No I/O or analysis mutation.
+///
+/// # Arguments
+/// - `input` `[in]`: Consumed snapshot, coordinate encoding, URI and full/functions-only presentation flags.
+///
+/// # Returns
+/// `Ok(Some(response))`, even for no symbols; restricted function output is always Flat, otherwise hierarchical chooses Nested versus Flat. `Err` on range conversion.
+///
+/// # Errors
+/// Invalid semantic byte spans or protocol coordinate overflow.
+///
+/// # Panics
+/// Malformed semantic arenas with invalid command/block IDs can panic; input must be a consistent analyzed snapshot.
+///
+/// # Algorithm
+/// For restricted inputs collect only defined functions/macros whose body block has no parent. Otherwise build block symbols in reverse arena order, gather direct commands and assembled child blocks, sort children by source position, then select semantic root symbols. Flatten iteratively for clients without hierarchy.
+///
+/// # Flow
+/// ```text
+///  [SymbolInput]
+///        |
+///  <Functions only?>
+///     /           \
+///   yes           no
+///    |             |
+///  [Top-level] [Reverse block assembly]
+///    |             |
+///  [Flat]      [Select root symbols]
+///                  |
+///           <Hierarchical client?>
+///              /            \
+///          [Nested]       [Flatten]
+/// ```
+///
+/// # Examples
+/// ```text
+/// let response = document_symbols(SymbolInput { functions_only: false, uri,
+///     snapshot, encoding: CoordinateEncoding::Utf16, hierarchical: true })?;
+/// ```
 pub(super) fn document_symbols(input: SymbolInput) -> ServerResult<Option<DocumentSymbolResponse>> {
     let buffer = &input.snapshot.semantics;
     let index = TextIndex::new(&input.snapshot.text, input.encoding);
@@ -95,6 +137,40 @@ pub(super) fn document_symbols(input: SymbolInput) -> ServerResult<Option<Docume
         ))))
     }
 }
+/// Classify a command by native spelling and choose an argument name for variables/projects/targets.
+/// No side effects; classification is display-only and does not evaluate the command.
+///
+/// # Arguments
+/// - `command` `[in]`: Semantic command with name, argument and full ranges.
+/// - `index` `[in]`: Coordinate index for the owning snapshot.
+///
+/// # Returns
+/// `Ok(DocumentSymbol)` without children, with command-full range and selected name/argument range; `Err` on coordinate conversion.
+///
+/// # Errors
+/// Invalid byte endpoints or coordinate overflow.
+///
+/// # Algorithm
+/// set/option become Variable, project becomes Module, target constructors become Class; all others become Function. Non-Function kinds use the first argument if present, otherwise the command name.
+///
+/// # Flow
+/// ```text
+///  [Command name]
+///         |
+///  <set/option/project/target?>
+///        /               \
+///      yes               no
+///       |                 |
+///  [Typed + first arg] [Function + command]
+///       +-----------------+
+///                v
+///           [make_symbol]
+/// ```
+///
+/// # Examples
+/// ```text
+/// let symbol = command_symbol(&buffer.commands[0], &index)?;
+/// ```
 fn command_symbol(
     command: &SemanticCommandRepresent,
     index: &TextIndex<'_>,
@@ -115,6 +191,25 @@ fn command_symbol(
     let selection = named.map_or(command.span, |arg| arg.span);
     make_symbol(name, kind, command.full_span, selection, index)
 }
+/// Create a childless symbol by converting full and selection byte spans. No I/O or input mutation.
+///
+/// # Arguments
+/// - `name` `[in]`: Consumed display label.
+/// - `kind` `[in]`: LSP symbol kind number selected by the caller.
+/// - `span` `[in]`: Full command/block range.
+/// - `selection` `[in]`: Name range selected when navigating to the symbol.
+/// - `index` `[in]`: Index for the exact containing source text.
+///
+/// # Returns
+/// `Ok(DocumentSymbol)` with absent detail/tags/children; `Err` if either range cannot be converted.
+///
+/// # Errors
+/// Invalid byte endpoints or coordinate overflow; containment between the two ranges is not separately validated.
+///
+/// # Examples
+/// ```text
+/// let symbol = make_symbol("demo".into(), 12, block_span, name_span, &index)?;
+/// ```
 fn make_symbol(
     name: String,
     kind: i32,
@@ -133,6 +228,37 @@ fn make_symbol(
         children: None,
     })
 }
+/// Consume a symbol tree in source/preorder and attach immediate parent names to flat entries.
+/// No I/O; nested input is consumed, not mutated through borrowed output parameters.
+///
+/// # Arguments
+/// - `symbols` `[in]`: Owned root symbols whose child trees are consumed.
+/// - `uri` `[in]`: Consumed URI cloned into every flat location.
+///
+/// # Returns
+/// Flat symbols in root/preorder; empty input yields an empty vector. Root container_name is None and children carry only their immediate parent name.
+///
+/// # Algorithm
+/// Use a reversed explicit stack rather than recursion. Pop a symbol, push its children in reverse with its name as container, then append a flat entry using the full range.
+///
+/// # Flow
+/// ```text
+///  [Roots reversed on stack]
+///              |
+///          <Pop node?> -- none --> [Return output]
+///              | some
+///  [Push reversed children + parent name]
+///              |
+///      [Append flat location]
+///              |
+///        [Continue stack loop]
+/// ```
+///
+/// # Examples
+/// ```text
+/// let flat = flatten(nested_symbols, uri);
+/// assert!(flat.first().is_none_or(|symbol| symbol.container_name.is_none()));
+/// ```
 fn flatten(symbols: Vec<DocumentSymbol>, uri: Uri) -> Vec<SymbolInformation> {
     let mut pending: Vec<_> = symbols
         .into_iter()

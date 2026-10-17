@@ -1,9 +1,51 @@
+//! Initialize roots, configuration and advertised client-dependent features.
+//! The generated child implementation forwards protocol calls to these adapters.
+//! Initialization prepares lifecycle state only; `initialized` starts the service.
+//! Root discovery and configuration can read disk and inspect native CMake defaults,
+//! but do not configure projects or execute project scripts.
 // AI-authored lifecycle and server capabilities.
 mod implementation;
 use super::{model::*, roots, service::internal, uri};
 use lspally::server::model::*;
 
 impl CmakeAnalyzer {
+    /// Discover initial roots, load settings and retain negotiated feature flags for startup.
+    /// Reads filesystem metadata/configuration and may inspect native defaults; does not start the actor or run project code.
+    ///
+    /// # Arguments
+    /// - `self` `[in,out]`: Shared lifecycle state is overwritten with prepared roots, configuration and capability flags.
+    /// - `_context` `[in]`: Unused initialization context; this function does not consult its cancellation.
+    /// - `params` `[in]`: Consumed client roots and capabilities; explicit option roots take precedence.
+    ///
+    /// # Returns
+    /// `Ok(InitializeResult)` advertising UTF-16, incremental sync and implemented features; `Err` on discovery/configuration/admission failure.
+    ///
+    /// # Errors
+    /// Invalid file URIs, explicit-root/discovery failures, configuration read/parse/validation errors, root count above max_workspaces, or poisoned lifecycle mutex. State is replaced only after preparation succeeds.
+    ///
+    /// # Algorithm
+    /// Prefer explicit roots, otherwise folders then root URI/path then startup cwd. Discover nearest entries, sort/deduplicate, derive client flags and load each entry/cwd configuration before locking state.
+    ///
+    /// # Flow
+    /// ```text
+    ///  [Options roots]          [Client folders/root/cwd]
+    ///        |                           |
+    ///        +--------- <Explicit?> -----+
+    ///                         |
+    ///                   [Discover entries]
+    ///                         |
+    ///                  [Load + check limits]
+    ///                    /           \
+    ///                 failure       success
+    ///                    |             |
+    ///                 [Error]    [Store state + capabilities]
+    /// ```
+    ///
+    /// # Examples
+    /// ```text
+    /// let initialized = server.initialize_server(context, params).await?;
+    /// // The later initialized notification calls server.start(context).
+    /// ```
     pub(super) async fn initialize_server(
         &self,
         _context: Context,

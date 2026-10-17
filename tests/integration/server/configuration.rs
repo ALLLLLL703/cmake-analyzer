@@ -1,7 +1,29 @@
 // AI-generated configuration RPC and module discovery tests.
+//! Configuration reload RPC, module search paths and interpreter-profile transitions.
+//! Temporary TOML rewrites test transactional success/failure while source versions stay fixed.
 use super::session::{Project, Session, uri};
 use serde_json::json;
 
+/// Send cmake-analyzer/reloadConfig with caller-selected parameters.
+/// The server may rebuild workspaces or reject configuration transactionally.
+///
+/// # Arguments
+/// - `client` `[in,out]`: writes the request and consumes its reply; unrelated messages append
+///   to pending.
+/// - `id` `[in]`: request/response correlation ID.
+/// - `params` `[in]`: consumed JSON object/null, including optional override path or deliberate
+///   invalid input.
+///
+/// # Returns
+/// The full reply; this helper leaves success/error assertions to each scenario.
+///
+/// # Panics
+/// Panics on session transport/deadline failures.
+///
+/// # Examples
+/// ```text
+/// let reply = reload(&mut client, 10, json!({"path":"global.toml"})).await;
+/// ```
 async fn reload(client: &mut Session, id: i32, params: serde_json::Value) -> serde_json::Value {
     client
         .send(
@@ -12,6 +34,43 @@ async fn reload(client: &mut Session, id: i32, params: serde_json::Value) -> ser
 }
 
 #[tokio::test]
+/// Check default cmake, cmake/Modules and cmake/modules search directories resolve.
+/// Creates temporary files and an analyzer session; successful completion stops the session and
+/// removes fixtures.
+///
+/// # Arguments
+/// None.
+///
+/// # Returns
+/// `()` if every assertion passes; no output parameter.
+///
+/// # Panics
+/// Panics on any failed assertion or unwrapped fixture/transport/process failure.
+/// Cleanup is explicit on the success path; a panic may leave a fixture tree.
+///
+/// # Algorithm
+/// Write one module in each default directory and include all three from the root without TOML.
+/// Open the root and require an empty version-1 diagnostic publication.
+///
+/// # Flow
+/// ```text
+/// [Temporary sources + settings]      [Expected: empty root diagnostics]
+///              |                              |
+///              v                              |
+/// [LSP scenario messages]                 |
+///              |                              |
+///              +-------------+----------------+
+///                            v
+///                  [Compare assertions]
+///                            |
+///                            v
+///             [Finish session + remove tree]
+/// ```
+///
+/// # Examples
+/// ```text
+/// default_project_module_directories_work_without_configuration(); // #[tokio::test] supplies the runtime
+/// ```
 async fn default_project_module_directories_work_without_configuration() {
     let project = Project::new().await;
     let text = "cmake_minimum_required(VERSION 3.31)\ninclude(DirectDefault)\ninclude(UpperDefault)\ninclude(LowerDefault)\n";
@@ -39,6 +98,45 @@ async fn default_project_module_directories_work_without_configuration() {
 }
 
 #[tokio::test]
+/// Check module-search reload discovers nested includes and disabling modules restores
+/// failures.
+/// Creates temporary files and an analyzer session; successful completion stops the session and
+/// removes fixtures.
+///
+/// # Arguments
+/// None.
+///
+/// # Returns
+/// `()` if every assertion passes; no output parameter.
+///
+/// # Panics
+/// Panics on any failed assertion or unwrapped fixture/transport/process failure.
+/// Cleanup is explicit on the success path; a panic may leave a fixture tree.
+///
+/// # Algorithm
+/// Start with unresolved Outer/BuiltOnly plus a valid child project. Write search_paths and
+/// builtin_directory, reload and require empty root diagnostics. Open Inner with an unknown
+/// command, then disable modules and require root diagnostics again.
+///
+/// # Flow
+/// ```text
+/// [Temporary sources + settings]      [Expected: discovery / disabled diagnostics]
+///              |                              |
+///              v                              |
+/// [LSP scenario messages]                 |
+///              |                              |
+///              +-------------+----------------+
+///                            v
+///                  [Compare assertions]
+///                            |
+///                            v
+///             [Finish session + remove tree]
+/// ```
+///
+/// # Examples
+/// ```text
+/// reload_search_paths_discovers_nested_modules_and_subdirectories(); // #[tokio::test] supplies the runtime
+/// ```
 async fn reload_search_paths_discovers_nested_modules_and_subdirectories() {
     let project = Project::new().await;
     let root = project
@@ -118,6 +216,45 @@ async fn reload_search_paths_discovers_nested_modules_and_subdirectories() {
 }
 
 #[tokio::test]
+/// Check explicit override switching is transactional for diagnostics and symbols.
+/// Creates temporary files and an analyzer session; successful completion stops the session and
+/// removes fixtures.
+///
+/// # Arguments
+/// None.
+///
+/// # Returns
+/// `()` if every assertion passes; no output parameter.
+///
+/// # Panics
+/// Panics on any failed assertion or unwrapped fixture/transport/process failure.
+/// Cleanup is explicit on the success path; a panic may leave a fixture tree.
+///
+/// # Algorithm
+/// Disable both features with a relative override path and require cleared diagnostics/null
+/// symbols. Invalid TOML and a missing new path fail without enabling symbols. Repair the
+/// retained override, reload and require diagnostics/symbols again; numeric path input is
+/// -32602.
+///
+/// # Flow
+/// ```text
+/// [Temporary sources + settings]      [Expected: feature state + reload errors]
+///              |                              |
+///              v                              |
+/// [LSP scenario messages]                 |
+///              |                              |
+///              +-------------+----------------+
+///                            v
+///                  [Compare assertions]
+///                            |
+///                            v
+///             [Finish session + remove tree]
+/// ```
+///
+/// # Examples
+/// ```text
+/// reload_switches_global_overrides_and_preserves_old_settings_on_error(); // #[tokio::test] supplies the runtime
+/// ```
 async fn reload_switches_global_overrides_and_preserves_old_settings_on_error() {
     let project = Project::new().await;
     let root = project.write("CMakeLists.txt", "unknown_command()\n").await;
@@ -187,6 +324,44 @@ async fn reload_switches_global_overrides_and_preserves_old_settings_on_error() 
 }
 
 #[tokio::test]
+/// Check one explicit module override rebuilds both independent workspaces.
+/// Creates temporary files and an analyzer session; successful completion stops the session and
+/// removes fixtures.
+///
+/// # Arguments
+/// None.
+///
+/// # Returns
+/// `()` if every assertion passes; no output parameter.
+///
+/// # Panics
+/// Panics on any failed assertion or unwrapped fixture/transport/process failure.
+/// Cleanup is explicit on the success path; a panic may leave a fixture tree.
+///
+/// # Algorithm
+/// Open two roots that cannot resolve Shared, then reload global.toml containing its relative
+/// search path. Require two rebuilt workspaces and empty diagnostics for both unchanged
+/// version-1 documents.
+///
+/// # Flow
+/// ```text
+/// [Temporary sources + settings]      [Expected: two rebuilt workspaces]
+///              |                              |
+///              v                              |
+/// [LSP scenario messages]                 |
+///              |                              |
+///              +-------------+----------------+
+///                            v
+///                  [Compare assertions]
+///                            |
+///                            v
+///             [Finish session + remove tree]
+/// ```
+///
+/// # Examples
+/// ```text
+/// explicit_module_override_applies_to_all_workspaces(); // #[tokio::test] supplies the runtime
+/// ```
 async fn explicit_module_override_applies_to_all_workspaces() {
     let project = Project::new().await;
     let left = project
@@ -233,6 +408,44 @@ async fn explicit_module_override_applies_to_all_workspaces() {
 }
 
 #[tokio::test]
+/// Check removing a script execution profile retains file-local missing-path warnings.
+/// Creates temporary files and an analyzer session; successful completion stops the session and
+/// removes fixtures.
+///
+/// # Arguments
+/// None.
+///
+/// # Returns
+/// `()` if every assertion passes; no output parameter.
+///
+/// # Panics
+/// Panics on any failed assertion or unwrapped fixture/transport/process failure.
+/// Cleanup is explicit on the success path; a panic may leave a fixture tree.
+///
+/// # Algorithm
+/// Map loose.cmake to cmake -P and require its missing include warning. Empty the configuration
+/// and reload; require another severity-2 missing.cmake warning even without an execution
+/// profile.
+///
+/// # Flow
+/// ```text
+/// [Temporary sources + settings]      [Expected: missing-path warning after reload]
+///              |                              |
+///              v                              |
+/// [LSP scenario messages]                 |
+///              |                              |
+///              +-------------+----------------+
+///                            v
+///                  [Compare assertions]
+///                            |
+///                            v
+///             [Finish session + remove tree]
+/// ```
+///
+/// # Examples
+/// ```text
+/// interpreter_script_mode_traverses_dependencies_and_reload_can_remove_it(); // #[tokio::test] supplies the runtime
+/// ```
 async fn interpreter_script_mode_traverses_dependencies_and_reload_can_remove_it() {
     let project = Project::new().await;
     let script = project

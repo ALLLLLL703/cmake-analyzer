@@ -1,9 +1,51 @@
 // AI-generated include/module and subdirectory definition navigation tests.
+//! Definition links for include/find_package/add_subdirectory paths.
+//! Literal, incomplete, expanded and owner-relative paths resolve without source execution;
+//! open unsaved targets can resolve even when no disk file exists.
 use super::{definition, references};
 use crate::server::session::{HEADER, Project, Session, uri};
 use serde_json::json;
 
 #[tokio::test]
+/// Check unfinished include/find_package calls resolve module/config entrypoints without
+/// execution.
+/// Creates temporary files and an analyzer session; successful completion stops the session and
+/// removes fixtures.
+///
+/// # Arguments
+/// None.
+///
+/// # Returns
+/// `()` if every assertion passes; no output parameter.
+///
+/// # Panics
+/// Panics on any failed assertion or unwrapped fixture/transport/process failure.
+/// Cleanup is explicit on the success path; a panic may leave a fixture tree.
+///
+/// # Algorithm
+/// Create Partial, FindDemo and DemoConfig fixtures, then replace root text with
+/// incomplete/complete calls and Demo_DIR variations. Require each expected module/config URI,
+/// including module preference without CONFIG, and no should-not-run marker.
+///
+/// # Flow
+/// ```text
+/// [Temporary sources + settings]      [Expected: entrypoint URI per syntax]
+///              |                              |
+///              v                              |
+/// [LSP scenario messages]                 |
+///              |                              |
+///              +-------------+----------------+
+///                            v
+///                  [Compare assertions]
+///                            |
+///                            v
+///             [Finish session + remove tree]
+/// ```
+///
+/// # Examples
+/// ```text
+/// unfinished_modules_and_package_entrypoints_navigate_without_execution(); // #[tokio::test] supplies the runtime
+/// ```
 async fn unfinished_modules_and_package_entrypoints_navigate_without_execution() {
     let p = Project::new().await;
     let module = p
@@ -48,6 +90,45 @@ async fn unfinished_modules_and_package_entrypoints_navigate_without_execution()
     p.remove().await;
 }
 #[tokio::test]
+/// Check project module precedence, file-start links and source-directory navigation
+/// exclusions.
+/// Creates temporary files and an analyzer session; successful completion stops the session and
+/// removes fixtures.
+///
+/// # Arguments
+/// None.
+///
+/// # Returns
+/// `()` if every assertion passes; no output parameter.
+///
+/// # Panics
+/// Panics on any failed assertion or unwrapped fixture/transport/process failure.
+/// Cleanup is explicit on the success path; a panic may leave a fixture tree.
+///
+/// # Algorithm
+/// Resolve Foo before builtin Foo, OnlyBuiltin and a relative optional file at zero-length
+/// file-start ranges. add_subdirectory links its source, not binary operand; missing paths,
+/// delimiters and references do not produce links. Unicode closed paths are encoded.
+///
+/// # Flow
+/// ```text
+/// [Temporary sources + settings]      [Expected: file-start links + exclusions]
+///              |                              |
+///              v                              |
+/// [LSP scenario messages]                 |
+///              |                              |
+///              +-------------+----------------+
+///                            v
+///                  [Compare assertions]
+///                            |
+///                            v
+///             [Finish session + remove tree]
+/// ```
+///
+/// # Examples
+/// ```text
+/// module_precedence_relative_files_and_subdirectory_source_targets_are_reused(); // #[tokio::test] supplies the runtime
+/// ```
 async fn module_precedence_relative_files_and_subdirectory_source_targets_are_reused() {
     let p = Project::new().await;
     let module = p.write("cmake/Foo.cmake", "set(FOO yes)\n").await;
@@ -112,6 +193,45 @@ async fn module_precedence_relative_files_and_subdirectory_source_targets_are_re
     p.remove().await;
 }
 #[tokio::test]
+/// Check literal dependency navigation works in false branches, function bodies and standalone
+/// files.
+/// Creates temporary files and an analyzer session; successful completion stops the session and
+/// removes fixtures.
+///
+/// # Arguments
+/// None.
+///
+/// # Returns
+/// `()` if every assertion passes; no output parameter.
+///
+/// # Panics
+/// Panics on any failed assertion or unwrapped fixture/transport/process failure.
+/// Cleanup is explicit on the success path; a panic may leave a fixture tree.
+///
+/// # Algorithm
+/// Navigate bracket/quoted module paths and a child directory without executing their marker
+/// commands. A user include shadow prevents path navigation but its command name links to the
+/// user declaration. Restart with CMakeLists.txt and repeat conditional/deferred links.
+///
+/// # Flow
+/// ```text
+/// [Temporary sources + settings]      [Expected: literal links / shadow exclusion]
+///              |                              |
+///              v                              |
+/// [LSP scenario messages]                 |
+///              |                              |
+///              +-------------+----------------+
+///                            v
+///                  [Compare assertions]
+///                            |
+///                            v
+///             [Finish session + remove tree]
+/// ```
+///
+/// # Examples
+/// ```text
+/// conditional_deferred_and_standalone_literals_resolve_without_executing_them(); // #[tokio::test] supplies the runtime
+/// ```
 async fn conditional_deferred_and_standalone_literals_resolve_without_executing_them() {
     let p = Project::new().await;
     let module = p
@@ -156,6 +276,45 @@ async fn conditional_deferred_and_standalone_literals_resolve_without_executing_
     p.remove().await;
 }
 #[tokio::test]
+/// Check expanded include suffixes navigate files while BASE navigates its variable
+/// declaration.
+/// Creates temporary files and an analyzer session; successful completion stops the session and
+/// removes fixtures.
+///
+/// # Arguments
+/// None.
+///
+/// # Returns
+/// `()` if every assertion passes; no output parameter.
+///
+/// # Panics
+/// Panics on any failed assertion or unwrapped fixture/transport/process failure.
+/// Cleanup is explicit on the success path; a panic may leave a fixture tree.
+///
+/// # Algorithm
+/// Define BASE, include its first.cmake suffix, and query both suffix and BASE spans. Require
+/// the file URI versus local set range respectively. Replace first with second through
+/// didChange and immediately require the second file URI.
+///
+/// # Flow
+/// ```text
+/// [Temporary sources + settings]      [Expected: file / variable locations]
+///              |                              |
+///              v                              |
+/// [LSP scenario messages]                 |
+///              |                              |
+///              +-------------+----------------+
+///                            v
+///                  [Compare assertions]
+///                            |
+///                            v
+///             [Finish session + remove tree]
+/// ```
+///
+/// # Examples
+/// ```text
+/// expanded_path_suffixes_jump_to_files_while_variable_names_keep_their_definitions(); // #[tokio::test] supplies the runtime
+/// ```
 async fn expanded_path_suffixes_jump_to_files_while_variable_names_keep_their_definitions() {
     let p = Project::new().await;
     let first = p.write("first.cmake", "set(A first)\n").await;
@@ -182,6 +341,45 @@ async fn expanded_path_suffixes_jump_to_files_while_variable_names_keep_their_de
     p.remove().await;
 }
 #[tokio::test]
+/// Check shared include paths preserve each caller directory and accept open-only dependency
+/// targets.
+/// Creates temporary files and an analyzer session; successful completion stops the session and
+/// removes fixtures.
+///
+/// # Arguments
+/// None.
+///
+/// # Returns
+/// `()` if every assertion passes; no output parameter.
+///
+/// # Panics
+/// Panics on any failed assertion or unwrapped fixture/transport/process failure.
+/// Cleanup is explicit on the success path; a panic may leave a fixture tree.
+///
+/// # Algorithm
+/// Two roots include the same ./local.cmake call; require both owner-relative files. Restart
+/// with a missing unsaved.cmake target, open it without writing disk and require its definition
+/// URI while the path still does not exist.
+///
+/// # Flow
+/// ```text
+/// [Temporary sources + settings]      [Expected: two owner paths / open-only link]
+///              |                              |
+///              v                              |
+/// [LSP scenario messages]                 |
+///              |                              |
+///              +-------------+----------------+
+///                            v
+///                  [Compare assertions]
+///                            |
+///                            v
+///             [Finish session + remove tree]
+/// ```
+///
+/// # Examples
+/// ```text
+/// shared_callers_keep_directory_context_and_open_unsaved_targets_are_valid(); // #[tokio::test] supplies the runtime
+/// ```
 async fn shared_callers_keep_directory_context_and_open_unsaved_targets_are_valid() {
     let p = Project::new().await;
     let shared = p.write("shared.cmake", "include(./local.cmake)\n").await;

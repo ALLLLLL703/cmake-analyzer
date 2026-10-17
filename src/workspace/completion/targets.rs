@@ -1,3 +1,7 @@
+//! Supplement target-name completion from full-indexed package trees and resolvable includes.
+//! Conditional nondeferred includes may contribute names, not graph/reference/value effects.
+//! Workspace file/depth/attempt budgets and external policies still apply; no code is executed.
+// Contains AI-generated documentation additions.
 use super::{
     check, context,
     model::{TargetSource, Visit},
@@ -15,6 +19,54 @@ use std::{
     path::Path,
 };
 
+/// Collect completion-only target sources from full-indexed package trees, including conditional
+/// nondeferred includes. Reads/parses sources but installs no graph bindings or execution effects.
+///
+/// # Arguments
+/// - `workspace` `[in,out]` : Loads immutable cached snapshots and replaces the supplemental
+///   retention set on success.
+/// - `path` `[in]`: Requesting file identity used to compute visible scope ancestry.
+/// - `stop` `[in]`: Cancellation predicate checked per visit and command.
+///
+/// # Returns
+/// Ok supplemental snapshots with visibility flags, possibly partial at traversal limits; empty if
+/// no current graph/packages. Err on cancellation or non-skippable analysis failure.
+///
+/// # Errors
+/// Interrupted cancellation or snapshot failures other than missing/permission-denied files.
+/// Traversal limits truncate results without an error; caches loaded before failure may remain
+/// until later release.
+///
+/// # Algorithm
+/// Seed full-indexed package visits and descendants. Traverse includes in a stack, deduplicating
+/// file/source/binary/visibility contexts while respecting attempts/depth/distinct-file budgets.
+/// Replay local hints, skip deferred/user-shadowed commands, and follow only native resolvable
+/// includes allowed by external policy. NotFound/PermissionDenied sources are skipped; retain the
+/// latest source set and release unused caches.
+///
+/// # Flow
+/// ```text
+/// [current full package visits]
+///                |
+///  [request scope ancestry] --> [visibility]
+///                |
+///          [bounded pending stack]
+///                |
+///        <seen/depth/file limit?> -- yes --> [skip]
+///                | no
+///        [load immutable snapshot]
+///                |
+///  [nondeferred native includes] ---> [push allowed children]
+///                |
+///         [snapshot + visibility]
+///                |
+///        [replace retention set]
+/// ```
+///
+/// # Examples
+/// ```text
+/// let sources = collect(workspace, path, &|| false).await?;
+/// ```
 pub(super) async fn collect(
     workspace: &mut Workspace,
     path: &Path,

@@ -1,7 +1,56 @@
+//! Present previously recorded runtime events; reads saved inputs and notifies the client, but never
+//! reruns CMake.
+
 // AI-authored on-demand presentation of recorded command expansions and value observations.
 use super::{Service, model::ActionRequest, uri};
 use lspally::server::model::*;
 use std::collections::BTreeMap;
+/// Show recorded expanded executions at a source line and return structured observations; never rerun
+/// CMake.
+/// Reads related saved inputs for freshness, then sends one informational client message. Repeated
+/// executions retain event/frame identity. max_view_bytes limits rendered text and admission of complete
+/// events, not an exact serialized-JSON size.
+///
+/// # Arguments
+/// - `service` `[in,out]`: service queried for owner, saved inputs and runtime layer; sends a client
+///   message but does not rewrite the layer or source.
+/// - `request` `[in]`: document, owner/profile and zero-based line; request cancellation is not polled
+///   here.
+///
+/// # Returns
+/// Ok(Some(object)) with unsigned run, events list and truncated boolean. Each event contains event,
+/// frame, command, arguments, observed_values (nullable values), and dependencies (nullable resolved
+/// paths). Never None.
+///
+/// # Errors
+/// Ownership/URI failure, unsaved or unreadable inputs, absent runtime/file, invalid line coordinates,
+/// no observed execution, first event over budget, serialization or client-message failure.
+///
+/// # Algorithm
+/// Require saved inputs, map the selected line into the recorded snapshot, include whole matching events
+/// while raw and rendered sizes fit, and append an omission notice only if it fits. Return exactly the
+/// included events.
+///
+/// # Flow
+/// ```text
+///  [Saved inputs + recorded file]
+///                |
+///       [Map line to command]
+///                |
+///        [Next matching event] <-------+
+///                |                    |
+///           [Fits budget?] --yes--> [Append event]
+///                | no / end
+///        [Any included?] --no--> [Error]
+///                | yes
+///        [Notify + return data]
+/// ```
+///
+/// # Examples
+/// Local server context (requires the initialized service and its client):
+/// ```text
+/// let view = expanded_arguments::run(service, request).await?;
+/// ```
 pub(super) async fn run(
     service: &mut Service,
     request: ActionRequest,

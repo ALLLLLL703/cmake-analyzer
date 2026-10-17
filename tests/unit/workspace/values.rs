@@ -1,5 +1,48 @@
 // AI-generated contextual builtin/path and incremental invalidation tests.
+
+//! Check static directory values, per-invocation values, and script working-directory context.
+//! Writes temporary source and analyzes overlays; no CMake project execution.
+
 use super::Project;
+/// Use Outer/Inner project directory builtins and literal DIR expansions to traverse five files, then overlay DIR to a missing path.
+/// Writes/reads/removes temporary files and changes an overlay; never executes CMake.
+///
+/// # Arguments
+/// None; the test constructs its own fixtures.
+///
+/// # Returns
+/// `()` after all checks pass.
+///
+/// # Panics
+/// If fixture setup or any documented assertion fails.
+///
+/// # Algorithm
+/// Require five diagnostic-free visits, the outer PROJECT_SOURCE_DIR, graph rebuild with diagnostics after edit, and preserved old DIR values.
+///
+/// # Flow
+/// ```text
+/// [Outer directory values] --> [modules/one -> two]
+///            |
+///            v
+/// [child Inner context] ------> [child/inner.cmake]
+///            |
+///            v
+/// [require 5 visits / no diagnostics]
+///            |
+///            v
+/// [overlay DIR to missing] ---> [graph rebuild / diagnostics]
+///            |
+///            v
+/// [old DIR observation still points to modules]
+/// ```
+///
+/// # Examples
+/// Local test-module context, outside any running Tokio runtime:
+/// the macro-generated test wrapper runs its own runtime and returns `()`.
+/// Prefer the test harness; ignored measurements require explicit selection.
+/// ```text
+/// builtin_and_literal_values_resolve_includes_without_executing_cmake();
+/// ```
 #[tokio::test]
 async fn builtin_and_literal_values_resolve_includes_without_executing_cmake() {
     let project = Project::new().await;
@@ -45,6 +88,43 @@ async fn builtin_and_literal_values_resolve_includes_without_executing_cmake() {
                 .is_some_and(|value| value.text().ends_with("/modules"))
     }));
 }
+/// Include one read.cmake twice with REPEAT set to one and two.
+/// Writes/reads/removes temporary files; no project execution.
+///
+/// # Arguments
+/// None; the test constructs its own fixtures.
+///
+/// # Returns
+/// `()` after all checks pass.
+///
+/// # Panics
+/// If fixture setup or any documented assertion fails.
+///
+/// # Algorithm
+/// Require two reads sharing a command ID but not invocation IDs, with distinct one/two values.
+///
+/// # Flow
+/// ```text
+/// [REPEAT=one]          [REPEAT=two]
+///       |                     |
+///       v                     v
+/// [read.cmake visit 1]  [read.cmake visit 2]
+///       |                     |
+///       +----------+----------+
+///                  v
+///     [same command; different invocations]
+///                  |
+///                  v
+///        [observed one / two respectively]
+/// ```
+///
+/// # Examples
+/// Local test-module context, outside any running Tokio runtime:
+/// the macro-generated test wrapper runs its own runtime and returns `()`.
+/// Prefer the test harness; ignored measurements require explicit selection.
+/// ```text
+/// repeated_static_visits_qualify_values_by_invocation_not_just_command();
+/// ```
 #[tokio::test]
 async fn repeated_static_visits_qualify_values_by_invocation_not_just_command() {
     use cmake_analyzer::parser::semanticer::model::ReferenceKind;
@@ -70,6 +150,44 @@ async fn repeated_static_visits_qualify_values_by_invocation_not_just_command() 
     assert_eq!(reads[0].possible_value.as_ref().unwrap().text(), "one");
     assert_eq!(reads[1].possible_value.as_ref().unwrap().text(), "two");
 }
+/// Treat CMakeLists.txt as a script with an explicit working directory containing dep.cmake.
+/// Writes/reads/removes temporary fixtures and sets static context; does not execute a script.
+///
+/// # Arguments
+/// None; the test constructs its own fixtures.
+///
+/// # Returns
+/// `()` after all checks pass.
+///
+/// # Panics
+/// If fixture setup or any documented assertion fails.
+///
+/// # Algorithm
+/// Require no project defaults, two visits, source/binary directories equal to the working directory, list directory equal to the file parent, and unknown PROJECT_SOURCE_DIR.
+///
+/// # Flow
+/// ```text
+/// [CMakeLists.txt]       [explicit working directory]
+///         |                         |
+///         v                         v
+/// [list dir = file parent] [source/binary dirs = cwd]
+///         |                         |
+///         +-------------+-----------+
+///                       v
+///              [static script graph]
+///                       |
+///              +--------+-----------+
+///              v                    v
+///       [dep.cmake visit]    [no project defaults/value]
+/// ```
+///
+/// # Examples
+/// Local test-module context, outside any running Tokio runtime:
+/// the macro-generated test wrapper runs its own runtime and returns `()`.
+/// Prefer the test harness; ignored measurements require explicit selection.
+/// ```text
+/// explicit_script_context_overrides_filename_and_seeds_cwd_not_project_defaults();
+/// ```
 #[tokio::test]
 async fn explicit_script_context_overrides_filename_and_seeds_cwd_not_project_defaults() {
     let p = Project::new().await;

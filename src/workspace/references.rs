@@ -1,3 +1,7 @@
+//! Replay resolved visits in command order to build immutable owner-qualified reference indexes.
+//! Includes/packages share environments; subdirectories fork them; functions-only visits export
+//! declarations without variable/value effects. Analysis itself performs no I/O.
+// Contains AI-generated documentation additions.
 // AI-authored source-order reference aggregation over resolved dependency visits.
 use super::model::*;
 use crate::parser::semanticer::{
@@ -6,6 +10,46 @@ use crate::parser::semanticer::{
 };
 use std::collections::HashMap;
 
+/// Replay graph visits into owner-qualified references and sparse possible values. No I/O or
+/// snapshot mutation.
+///
+/// # Arguments
+/// - `graph` `[in]`: Retained visits/edges with caller-before-child order and matching revisions.
+///
+/// # Returns
+/// (ReferenceIndex, contextual value observations). Conflicting values for the same source position
+/// across visits become unknown in reference summaries.
+///
+/// # Algorithm
+/// Build child schedules keyed by visit and dependency command. Replay commands with a stack so
+/// resolved children run before the caller continues. Include/package visits share environments;
+/// subdirectories fork reference/value state. Functions-only visits export declarations only.
+/// Finish the reference collector, annotate observations, and merge possible values conservatively
+/// across visits.
+///
+/// # Flow
+/// ```text
+/// [root environment]
+///          |
+///    [command replay] ----> <functions-only?>
+///          |                  |
+///          |            [declarations only]
+///          v
+///    [values + references]
+///          |
+///   <dependency child?>
+///     /              \
+///  include/share   subdir/fork
+///     \              /
+///       [child before caller]
+///               |
+///        [merge value agreement]
+/// ```
+///
+/// # Examples
+/// ```text
+/// let (references, values) = analyze(&graph);
+/// ```
 fn analyze(graph: &RootGraph) -> (ReferenceIndex, Vec<VariableValueAt>) {
     let mut collector = ReferenceCollector::default();
     let root = collector.root();
@@ -126,6 +170,49 @@ fn analyze(graph: &RootGraph) -> (ReferenceIndex, Vec<VariableValueAt>) {
     (index, values.observations)
 }
 impl Workspace {
+    /// Replace graph reference/value/target indexes on a bounded blocking worker. Static snapshots
+    /// remain unchanged; no file reads or execution occur.
+    ///
+    /// # Arguments
+    /// - `self` `[in,out]` : Temporarily takes the saved graph, then restores it with new shared
+    ///   indexes on success.
+    ///
+    /// # Returns
+    /// Ok(()) with refreshed indexes or no graph; Err on permit/join failure. A join failure queues
+    /// root refresh.
+    ///
+    /// # Errors
+    /// Closed worker semaphore or failed blocking join. The taken graph is not restored on these
+    /// failures; join failure marks the root dirty.
+    ///
+    /// # Algorithm
+    /// Take the current graph, acquire one worker permit and move the graph into a joined blocking
+    /// task. Replay variable/function/value indexes first and target bindings second. Restore the
+    /// completed graph on success; a join failure queues root refresh instead.
+    ///
+    /// # Flow
+    /// ```text
+    /// [take saved graph]
+    ///           |
+    ///     <graph present?> -- no --> [Ok]
+    ///           | yes
+    ///     [worker permit]
+    ///           |
+    ///  [references + values]
+    ///           |
+    ///       [targets]
+    ///           |
+    ///     <join success?>
+    ///        /          \
+    ///  [restore graph] [queue root refresh]
+    ///        |                  |
+    ///       Ok                 Err
+    /// ```
+    ///
+    /// # Examples
+    /// ```text
+    /// workspace.refresh_references().await?;
+    /// ```
     pub(super) async fn refresh_references(&mut self) -> std::io::Result<()> {
         let Some(mut graph) = self.graph.take() else {
             return Ok(());

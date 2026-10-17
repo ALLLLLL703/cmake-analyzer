@@ -1,4 +1,9 @@
 // AI-generated implementation.
+//! Feature-group adapters selected by the request/notification dispatcher.
+//!
+//! Children consume wire parameters, convert them into business records, invoke
+//! [`crate::server::ILanguageServer`], and encode results. The runtime owns ordering,
+//! cancellation, phase transitions and response transmission, not these adapters.
 pub(super) mod actions;
 pub(super) mod annotations;
 pub(super) mod completion;

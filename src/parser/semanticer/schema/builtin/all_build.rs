@@ -1,3 +1,14 @@
+//! Structured build, install, export and compile-probe grammars.
+//! These builders allocate [`ArgSchemaKind`] trees, not targets or files, and
+//! never run a program, compiler or CMake project. `schemas` feeds the final
+//! version cache; only names already registered by the native layers survive.
+//! Output paths deliberately differ from existing-source inputs: for example,
+//! `add_custom_command(OUTPUT generated.c COMMAND tool)` produces a path role,
+//! while `try_compile(ok SOURCES probe.c)` exposes an output-variable role and
+//! a source-file role. No compile probe is actually performed.
+//! Experimental export/install syntax is represented by introduction version;
+//! its runtime feature gates, duplicate options and policy constraints are not evaluated.
+
 // AI-generated implementation.
 use super::{
     ArgSchemaKind, Boolean, Command, Expression, InputDirectory, InputFile, InputPath, Integer,
@@ -5,8 +16,45 @@ use super::{
     Url, Value, Variable, Version, choice, flags, k, many, one_of, optional, options, some,
 };
 
+/// CMake major/minor comparison key; patch releases do not select grammar changes.
+/// Example: `let version: VersionPair = (3, 25);`.
 type VersionPair = (u32, u32);
 
+/// Collect structured construction, installation and probe overrides.
+/// Allocates grammar data only; no external side effects.
+///
+/// # Arguments
+/// - `version` `[in]`: requested CMake major/minor; filters syntax additions, not runtime feature
+///   activation.
+///
+/// # Returns
+/// Owned (command name, ordered root kinds) pairs, including version-eligible target_sources and
+/// precompiled-header forms.
+///
+/// # Algorithm
+/// Assemble core command trees and legacy forms; append target_sources from 3.1 and
+/// target_precompile_headers from 3.16. Native-name filtering happens in the cache caller.
+///
+/// # Flow
+/// ```text
+///                             [schemas inputs]
+///                                     |
+///                  +------------------+------------------+
+///                  v                                     v
+/// +--------------------------------+    +--------------------------------+
+/// |      Core/legacy commands      |    |     Version-gated targets      |
+/// +----------------+---------------+    +----------------+---------------+
+///                  |                                     |
+///                  +------------------+------------------+
+///                                     v
+///                              [Owned grammar]
+/// ```
+///
+/// # Examples
+/// ```text
+/// let overrides = schemas((4, 4));
+/// assert!(overrides.iter().any(|(name, _)| *name == "install"));
+/// ```
 pub(super) fn schemas(version: VersionPair) -> Vec<(&'static str, Vec<ArgSchemaKind>)> {
     let mut schemas = vec![
         ("add_custom_command", custom_command(version)),
@@ -94,14 +142,73 @@ pub(super) fn schemas(version: VersionPair) -> Vec<(&'static str, Vec<ArgSchemaK
     schemas
 }
 
+/// Describe a target visibility keyword.
+/// Allocates grammar data only; no external side effects.
+///
+/// # Arguments
+/// None.
+///
+/// # Returns
+/// A single-keyword choice of INTERFACE, PUBLIC and PRIVATE.
+///
+/// # Examples
+/// ```text
+/// let visibility = scope(); // For target_sources(app PRIVATE main.c).
+/// ```
 fn scope() -> ArgSchemaKind {
     one_of(&["INTERFACE", "PUBLIC", "PRIVATE"])
 }
 
+/// Describe a dependency operand that may be a target or existing input path.
+/// Allocates grammar data only; no external side effects.
+///
+/// # Arguments
+/// None.
+///
+/// # Returns
+/// A choice between Target and InputPath; equally plausible full-call bindings remain conservative.
+///
+/// # Examples
+/// ```text
+/// let operand = dependency(); // For DEPENDS core or DEPENDS input.idl.
+/// ```
 fn dependency() -> ArgSchemaKind {
     choice(vec![vec![Target], vec![InputPath]])
 }
 
+/// Describe a custom command program/target and its uninterpreted arguments.
+/// Allocates grammar data only; no external side effects.
+///
+/// # Arguments
+/// - `legacy_args` `[in]`: permit an optional literal ARGS between program and values.
+///
+/// # Returns
+/// Sequence choosing an executable target or command name, optional ARGS when requested, then
+/// arbitrary values.
+///
+/// # Algorithm
+/// Keep target/program alternatives in one slot; optionally add ARGS and finish with values whose
+/// meaning belongs to the program.
+///
+/// # Flow
+/// ```text
+///                           [command_body inputs]
+///                                     |
+///                  +------------------+------------------+
+///                  v                                     v
+/// +--------------------------------+    +--------------------------------+
+/// |  Executable target / command   |    |     Optional ARGS + values     |
+/// +----------------+---------------+    +----------------+---------------+
+///                  |                                     |
+///                  +------------------+------------------+
+///                                     v
+///                              [Owned grammar]
+/// ```
+///
+/// # Examples
+/// ```text
+/// let body = command_body(true); // Describes tool ARGS --verbose, without running tool.
+/// ```
 fn command_body(legacy_args: bool) -> Vec<ArgSchemaKind> {
     let mut args = vec![choice(vec![vec![TargetExe], vec![Command]])];
     if legacy_args {
@@ -112,6 +219,44 @@ fn command_body(legacy_args: bool) -> Vec<ArgSchemaKind> {
     args
 }
 
+/// Build option-group alternatives shared by custom command and target signatures.
+/// Allocates grammar data only; no external side effects.
+///
+/// # Arguments
+/// - `version` `[in]`: requested CMake major/minor; filters syntax additions, not runtime feature
+///   activation.
+/// - `output` `[in]`: enable output-form dependencies, MAIN_DEPENDENCY, IMPLICIT_DEPENDS and
+///   output-only additions.
+/// - `target` `[in]`: enable custom-target DEPENDS, SOURCES, job settings and disable legacy ARGS
+///   in nested COMMAND groups.
+///
+/// # Returns
+/// Alternative option sequences, not yet wrapped in repetition; false/false is the
+/// target-attached add_custom_command mode.
+///
+/// # Algorithm
+/// Build COMMAND and common groups, gate additions by version, then add output-only or
+/// custom-target-only groups. DEPFILE and BYPRODUCTS are generated outputs, not required inputs.
+///
+/// # Flow
+/// ```text
+///                          [custom_options inputs]
+///                                     |
+///                  +------------------+------------------+
+///                  v                                     v
+/// +--------------------------------+    +--------------------------------+
+/// |    Common + version options    |    | Output / custom-target groups  |
+/// +----------------+---------------+    +----------------+---------------+
+///                  |                                     |
+///                  +------------------+------------------+
+///                                     v
+///                              [Owned grammar]
+/// ```
+///
+/// # Examples
+/// ```text
+/// let opts = custom_options((3, 28), true, false); // Includes DEPFILE as OutputPath.
+/// ```
 fn custom_options(version: VersionPair, output: bool, target: bool) -> Vec<Vec<ArgSchemaKind>> {
     let mut command = vec![k("COMMAND")];
     command.extend(command_body(!target));
@@ -167,6 +312,39 @@ fn custom_options(version: VersionPair, output: bool, target: bool) -> Vec<Vec<A
     args
 }
 
+/// Describe output-generating and target-attached add_custom_command forms.
+/// Allocates grammar data only; no external side effects.
+///
+/// # Arguments
+/// - `version` `[in]`: requested CMake major/minor; filters syntax additions, not runtime feature
+///   activation.
+///
+/// # Returns
+/// One choice of OUTPUT paths/options or TARGET name/build phase/required COMMAND/options.
+///
+/// # Algorithm
+/// Keep the two mode sequences separate. OUTPUT uses output-specific options; TARGET requires a
+/// phase and command before shared options.
+///
+/// # Flow
+/// ```text
+///                          [custom_command inputs]
+///                                     |
+///                  +------------------+------------------+
+///                  v                                     v
+/// +--------------------------------+    +--------------------------------+
+/// |     OUTPUT paths + options     |    |     TARGET phase + COMMAND     |
+/// +----------------+---------------+    +----------------+---------------+
+///                  |                                     |
+///                  +------------------+------------------+
+///                                     v
+///                              [Owned grammar]
+/// ```
+///
+/// # Examples
+/// ```text
+/// let args = custom_command((3, 31)); // Includes output-form CODEGEN.
+/// ```
 fn custom_command(version: VersionPair) -> Vec<ArgSchemaKind> {
     vec![choice(vec![
         vec![
@@ -185,6 +363,21 @@ fn custom_command(version: VersionPair) -> Vec<ArgSchemaKind> {
     ])]
 }
 
+/// Describe add_custom_target with optional ALL, initial program and repeated options.
+/// Allocates grammar data only; no external side effects.
+///
+/// # Arguments
+/// - `version` `[in]`: requested CMake major/minor; filters syntax additions, not runtime feature
+///   activation.
+///
+/// # Returns
+/// Target name followed by optional flags/body and custom-target option groups; no target is
+/// created.
+///
+/// # Examples
+/// ```text
+/// let args = custom_target((3, 28)); // Can describe SOURCES and JOB_SERVER_AWARE.
+/// ```
 fn custom_target(version: VersionPair) -> Vec<ArgSchemaKind> {
     vec![
         Target,
@@ -194,6 +387,40 @@ fn custom_target(version: VersionPair) -> Vec<ArgSchemaKind> {
     ]
 }
 
+/// Describe normal, imported and alias add_executable signatures.
+/// Allocates grammar data only; no external side effects.
+///
+/// # Arguments
+/// - `version` `[in]`: requested CMake major/minor; filters syntax additions, not runtime feature
+///   activation.
+///
+/// # Returns
+/// Executable target followed by a mode choice; source lists may be empty from 3.11. The alias
+/// branch is present in this override tree.
+///
+/// # Algorithm
+/// Choose source cardinality by version, retaining imported GLOBAL and alias executable-target
+/// operands as distinct branches.
+///
+/// # Flow
+/// ```text
+///                            [executable inputs]
+///                                     |
+///                  +------------------+------------------+
+///                  v                                     v
+/// +--------------------------------+    +--------------------------------+
+/// |   Sources and platform flags   |    |        IMPORTED / ALIAS        |
+/// +----------------+---------------+    +----------------+---------------+
+///                  |                                     |
+///                  +------------------+------------------+
+///                                     v
+///                              [Owned grammar]
+/// ```
+///
+/// # Examples
+/// ```text
+/// let args = executable((3, 11)); // Empty source list is structurally accepted.
+/// ```
 fn executable(version: VersionPair) -> Vec<ArgSchemaKind> {
     vec![
         TargetExe,
@@ -212,6 +439,39 @@ fn executable(version: VersionPair) -> Vec<ArgSchemaKind> {
     ]
 }
 
+/// Describe normal, imported, interface and alias add_library forms.
+/// Allocates grammar data only; no external side effects.
+///
+/// # Arguments
+/// - `version` `[in]`: requested CMake major/minor; filters syntax additions, not runtime feature
+///   activation.
+///
+/// # Returns
+/// Library-target roots with versioned source cardinality, imported kinds and interface variants.
+///
+/// # Algorithm
+/// Add OBJECT imports from 3.9, empty sources from 3.11, interface sources from 3.19 and symbolic
+/// interfaces from 4.2. Keep each mode as a full alternative.
+///
+/// # Flow
+/// ```text
+///                             [library inputs]
+///                                     |
+///                  +------------------+------------------+
+///                  v                                     v
+/// +--------------------------------+    +--------------------------------+
+/// |      Sources / interface       |    |        Imported / alias        |
+/// +----------------+---------------+    +----------------+---------------+
+///                  |                                     |
+///                  +------------------+------------------+
+///                                     v
+///                              [Owned grammar]
+/// ```
+///
+/// # Examples
+/// ```text
+/// let args = library((4, 2)); // Includes INTERFACE SYMBOLIC.
+/// ```
 fn library(version: VersionPair) -> Vec<ArgSchemaKind> {
     let mut imported = vec!["STATIC", "SHARED", "MODULE", "UNKNOWN", "INTERFACE"];
     if version >= (3, 9) {
@@ -249,6 +509,39 @@ fn library(version: VersionPair) -> Vec<ArgSchemaKind> {
     vec![TargetLib, choice(forms)]
 }
 
+/// Describe named add_test and its legacy positional form.
+/// Allocates grammar data only; no external side effects.
+///
+/// # Arguments
+/// - `version` `[in]`: requested CMake major/minor; filters syntax additions, not runtime feature
+///   activation.
+///
+/// # Returns
+/// A mode choice; named mode has executable/program arguments and repeated test options.
+///
+/// # Algorithm
+/// Build named-only configuration/directory options, add list expansion and build dependencies at
+/// their thresholds, then retain the legacy name/program/value sequence.
+///
+/// # Flow
+/// ```text
+///                               [test inputs]
+///                                     |
+///                  +------------------+------------------+
+///                  v                                     v
+/// +--------------------------------+    +--------------------------------+
+/// |    NAME + COMMAND + options    |    |     Legacy name + program      |
+/// +----------------+---------------+    +----------------+---------------+
+///                  |                                     |
+///                  +------------------+------------------+
+///                                     v
+///                              [Owned grammar]
+/// ```
+///
+/// # Examples
+/// ```text
+/// let args = test((4, 4)); // Named form includes BUILD_DEPENDS.
+/// ```
 fn test(version: VersionPair) -> Vec<ArgSchemaKind> {
     let mut args = vec![
         vec![k("CONFIGURATIONS"), some(Text)],
@@ -272,6 +565,20 @@ fn test(version: VersionPair) -> Vec<ArgSchemaKind> {
     ])]
 }
 
+/// Describe source directory, optional binary directory and add_subdirectory flags.
+/// Allocates grammar data only; no external side effects.
+///
+/// # Arguments
+/// - `version` `[in]`: requested CMake major/minor; filters syntax additions, not runtime feature
+///   activation.
+///
+/// # Returns
+/// InputDirectory followed by optional OutputPath and repeated flags; SYSTEM is present from 3.25.
+///
+/// # Examples
+/// ```text
+/// let args = subdirectory((3, 25)); // Can describe src build SYSTEM.
+/// ```
 fn subdirectory(version: VersionPair) -> Vec<ArgSchemaKind> {
     let mut args = vec![vec![k("EXCLUDE_FROM_ALL")]];
     if version >= (3, 25) {
@@ -280,6 +587,20 @@ fn subdirectory(version: VersionPair) -> Vec<ArgSchemaKind> {
     vec![InputDirectory, optional(vec![OutputPath]), options(args)]
 }
 
+/// Describe build_command output variable and modern options or legacy make path.
+/// Allocates grammar data only; no external side effects.
+///
+/// # Arguments
+/// - `version` `[in]`: requested CMake major/minor; filters syntax additions, not runtime feature
+///   activation.
+///
+/// # Returns
+/// Out slot followed by options or a single generic path; PARALLEL_LEVEL is offered from 3.21.
+///
+/// # Examples
+/// ```text
+/// let args = build_command((3, 21)); // Describes a command string result, not its execution.
+/// ```
 fn build_command(version: VersionPair) -> Vec<ArgSchemaKind> {
     let mut args = vec![
         vec![k("CONFIGURATION"), Text],
@@ -292,6 +613,20 @@ fn build_command(version: VersionPair) -> Vec<ArgSchemaKind> {
     vec![Out, choice(vec![vec![options(args)], vec![Path]])]
 }
 
+/// Describe one or more literal filesystem permission names.
+/// Allocates grammar data only; no external side effects.
+///
+/// # Arguments
+/// None.
+///
+/// # Returns
+/// A nonempty repetition of documented owner/group/world and special-bit keywords; no permissions
+/// are changed.
+///
+/// # Examples
+/// ```text
+/// let mode = permissions(); // For FILE_PERMISSIONS OWNER_READ OWNER_WRITE.
+/// ```
 fn permissions() -> ArgSchemaKind {
     some(one_of(&[
         "OWNER_READ",
@@ -308,6 +643,20 @@ fn permissions() -> ArgSchemaKind {
     ]))
 }
 
+/// Describe configure_file source, destination and formatting/permission options.
+/// Allocates grammar data only; no external side effects.
+///
+/// # Arguments
+/// - `version` `[in]`: requested CMake major/minor; filters syntax additions, not runtime feature
+///   activation.
+///
+/// # Returns
+/// InputFile and OutputPath followed by repeated options; permission controls are version-filtered.
+///
+/// # Examples
+/// ```text
+/// let args = configure_file((3, 20)); // Includes FILE_PERMISSIONS.
+/// ```
 fn configure_file(version: VersionPair) -> Vec<ArgSchemaKind> {
     let mut args = vec![
         vec![k("COPYONLY")],
@@ -330,6 +679,41 @@ fn configure_file(version: VersionPair) -> Vec<ArgSchemaKind> {
     vec![InputFile, OutputPath, options(args)]
 }
 
+/// Describe visibility-scoped source lists and versioned file-set groups.
+/// Allocates grammar data only; no external side effects.
+///
+/// # Arguments
+/// - `version` `[in]`: requested CMake major/minor; filters syntax additions, not runtime feature
+///   activation.
+///
+/// # Returns
+/// Target plus one-or-more visibility groups with ordinary input files or named/typed file-set
+/// contents.
+///
+/// # Algorithm
+/// Start with ordinary InputFile contents. From 3.23 add FILE_SET groups; extend types with
+/// CXX_MODULES in 3.28 and SOURCES in 4.4. BASE_DIRS are generic path hints, not required-file
+/// checks.
+///
+/// # Flow
+/// ```text
+///                          [target_sources inputs]
+///                                     |
+///                  +------------------+------------------+
+///                  v                                     v
+/// +--------------------------------+    +--------------------------------+
+/// |     Ordinary source tokens     |    |   Versioned FILE_SET groups    |
+/// +----------------+---------------+    +----------------+---------------+
+///                  |                                     |
+///                  +------------------+------------------+
+///                                     v
+///                              [Owned grammar]
+/// ```
+///
+/// # Examples
+/// ```text
+/// let args = target_sources((3, 28)); // FILE_SET can use CXX_MODULES.
+/// ```
 fn target_sources(version: VersionPair) -> Vec<ArgSchemaKind> {
     let mut contents = vec![vec![InputFile]];
     if version >= (3, 23) {
@@ -356,6 +740,42 @@ fn target_sources(version: VersionPair) -> Vec<ArgSchemaKind> {
     ]
 }
 
+/// Describe target/package export, setup, package metadata and software-bill-of-materials modes.
+/// Allocates grammar data only; no external side effects.
+///
+/// # Arguments
+/// - `version` `[in]`: requested CMake major/minor; filters syntax additions, not runtime feature
+///   activation.
+///
+/// # Returns
+/// One choice of eligible export forms; a software bill of materials (SBOM) is represented as
+/// syntax only.
+///
+/// # Algorithm
+/// Keep TARGETS/EXPORT/PACKAGE modes; add Android, dependency setup and metadata forms by
+/// version. PACKAGE_INFO uses EXPORT first in 4.1/4.2, then PACKAGE_INFO first from 4.3; SBOM
+/// also starts in 4.3.
+///
+/// # Flow
+/// ```text
+///                              [export inputs]
+///                                     |
+///                  +------------------+------------------+
+///                  v                                     v
+/// +--------------------------------+    +--------------------------------+
+/// |   TARGETS / EXPORT / PACKAGE   |    |  Versioned SETUP / metadata /  |
+/// |                                |    |              SBOM              |
+/// +----------------+---------------+    +----------------+---------------+
+///                  |                                     |
+///                  +------------------+------------------+
+///                                     v
+///                              [Owned grammar]
+/// ```
+///
+/// # Examples
+/// ```text
+/// let args = export((4, 3)); // PACKAGE_INFO starts with the package name in this version.
+/// ```
 fn export(version: VersionPair) -> Vec<ArgSchemaKind> {
     let mut target_options = vec![
         vec![k("NAMESPACE"), Text],
@@ -445,6 +865,41 @@ fn export(version: VersionPair) -> Vec<ArgSchemaKind> {
     vec![choice(forms)]
 }
 
+/// Describe package metadata while separating APPENDIX from basic package identity.
+/// Allocates grammar data only; no external side effects.
+///
+/// # Arguments
+/// - `version` `[in]`: requested CMake major/minor; filters syntax additions, not runtime feature
+///   activation.
+/// - `installing` `[in]`: include installation common options and DESTINATION.
+///
+/// # Returns
+/// Choice of an APPENDIX sequence with common options only, or ordinary common/basic metadata
+/// options.
+///
+/// # Algorithm
+/// Collect shared versioned fields, optionally extend installation fields, then isolate APPENDIX
+/// so it cannot take VERSION/default-target metadata through the ordinary branch.
+///
+/// # Flow
+/// ```text
+///                           [package_info inputs]
+///                                     |
+///                  +------------------+------------------+
+///                  v                                     v
+/// +--------------------------------+    +--------------------------------+
+/// |    APPENDIX + common fields    |    |    Common + basic metadata     |
+/// +----------------+---------------+    +----------------+---------------+
+///                  |                                     |
+///                  +------------------+------------------+
+///                                     v
+///                              [Owned grammar]
+/// ```
+///
+/// # Examples
+/// ```text
+/// let metadata = package_info((4, 3), true); // Includes install DESTINATION and CXX_MODULES_DIRECTORY.
+/// ```
 fn package_info(version: VersionPair, installing: bool) -> ArgSchemaKind {
     let mut common = vec![vec![k("LOWER_CASE_FILE")]];
     if version >= (4, 1) {
@@ -493,6 +948,20 @@ fn package_info(version: VersionPair, installing: bool) -> ArgSchemaKind {
     ])
 }
 
+/// Describe software-bill-of-materials metadata option groups.
+/// Allocates grammar data only; no external side effects.
+///
+/// # Arguments
+/// - `installing` `[in]`: include an output DESTINATION group for installation.
+///
+/// # Returns
+/// Alternative metadata sequences for FORMAT, project identity, version/license and URLs, plus an
+/// optional installation destination group.
+///
+/// # Examples
+/// ```text
+/// let opts = sbom_options(true); // For install(SBOM ... DESTINATION share).
+/// ```
 fn sbom_options(installing: bool) -> Vec<Vec<ArgSchemaKind>> {
     // Requires CMAKE_EXPERIMENTAL_GENERATE_SBOM (4.3+).
     let mut args = vec![
@@ -513,6 +982,20 @@ fn sbom_options(installing: bool) -> Vec<Vec<ArgSchemaKind>> {
     args
 }
 
+/// Collect permission, configuration and component groups shared by installation modes.
+/// Allocates grammar data only; no external side effects.
+///
+/// # Arguments
+/// - `version` `[in]`: requested CMake major/minor; filters syntax additions, not runtime feature
+///   activation.
+///
+/// # Returns
+/// Option alternatives, including EXCLUDE_FROM_ALL from 3.6; not a complete install signature.
+///
+/// # Examples
+/// ```text
+/// let common = install_common((3, 6)); // Adds EXCLUDE_FROM_ALL.
+/// ```
 fn install_common(version: VersionPair) -> Vec<Vec<ArgSchemaKind>> {
     let mut args = vec![
         vec![k("PERMISSIONS"), permissions()],
@@ -525,6 +1008,21 @@ fn install_common(version: VersionPair) -> Vec<Vec<ArgSchemaKind>> {
     args
 }
 
+/// Extend shared installation options with artifact destinations and optional namelink controls.
+/// Allocates grammar data only; no external side effects.
+///
+/// # Arguments
+/// - `version` `[in]`: requested CMake major/minor; filters syntax additions, not runtime feature
+///   activation.
+/// - `namelink` `[in]`: include NAMELINK_ONLY/SKIP and, from 3.12, NAMELINK_COMPONENT.
+///
+/// # Returns
+/// Option alternatives including DESTINATION and OPTIONAL, with requested namelink groups.
+///
+/// # Examples
+/// ```text
+/// let opts = artifact_options((3, 12), true); // Includes NAMELINK_COMPONENT.
+/// ```
 fn artifact_options(version: VersionPair, namelink: bool) -> Vec<Vec<ArgSchemaKind>> {
     let mut args = install_common(version);
     args.extend([vec![k("DESTINATION"), OutputPath], vec![k("OPTIONAL")]]);
@@ -537,6 +1035,44 @@ fn artifact_options(version: VersionPair, namelink: bool) -> Vec<Vec<ArgSchemaKi
     args
 }
 
+/// Describe repeated artifact-kind and optional named file-set installation groups.
+/// Allocates grammar data only; no external side effects.
+///
+/// # Arguments
+/// - `version` `[in]`: requested CMake major/minor; filters syntax additions, not runtime feature
+///   activation.
+/// - `kinds` `[in]`: borrowed artifact keyword vocabulary, such as ARCHIVE and LIBRARY.
+/// - `filesets` `[in]`: allow FILE_SET groups from 3.23.
+/// - `namelink` `[in]`: pass namelink controls to ordinary artifact options; file sets always
+///   disable them.
+///
+/// # Returns
+/// Zero-or-more grouped artifact choices; FILE_SET consumes a name before its own options.
+///
+/// # Algorithm
+/// Build ordinary kind/options groups and, when enabled and supported, a separate FILE_SET
+/// name/options group. Wrap the alternatives in repetition to retain group boundaries.
+///
+/// # Flow
+/// ```text
+///                         [artifact_groups inputs]
+///                                     |
+///                  +------------------+------------------+
+///                  v                                     v
+/// +--------------------------------+    +--------------------------------+
+/// |    Kind + artifact options     |    |   Eligible FILE_SET + name +   |
+/// |                                |    |            options             |
+/// +----------------+---------------+    +----------------+---------------+
+///                  |                                     |
+///                  +------------------+------------------+
+///                                     v
+///                              [Owned grammar]
+/// ```
+///
+/// # Examples
+/// ```text
+/// let groups = artifact_groups((3, 23), &["ARCHIVE", "LIBRARY"], true, true);
+/// ```
 fn artifact_groups(
     version: VersionPair,
     kinds: &[&str],
@@ -557,6 +1093,20 @@ fn artifact_groups(
     options(groups)
 }
 
+/// Describe runtime-dependency include/exclude filters and directory hints.
+/// Allocates grammar data only; no external side effects.
+///
+/// # Arguments
+/// None.
+///
+/// # Returns
+/// Option alternatives for regex lists, generic path lists and directories; these hints are not
+/// required existing inputs.
+///
+/// # Examples
+/// ```text
+/// let filters = runtime_filters(); // For RUNTIME_DEPENDENCIES DIRECTORIES hint.
+/// ```
 fn runtime_filters() -> Vec<Vec<ArgSchemaKind>> {
     vec![
         vec![
@@ -577,6 +1127,21 @@ fn runtime_filters() -> Vec<Vec<ArgSchemaKind>> {
     ]
 }
 
+/// Describe explicit destinations or version-supported standard destination types.
+/// Allocates grammar data only; no external side effects.
+///
+/// # Arguments
+/// - `version` `[in]`: requested CMake major/minor; filters syntax additions, not runtime feature
+///   activation.
+///
+/// # Returns
+/// Choice requiring DESTINATION OutputPath, or TYPE from 3.14; LIBEXEC joins the type vocabulary
+/// in 3.31.
+///
+/// # Examples
+/// ```text
+/// let destination = install_destination((3, 31)); // Allows TYPE LIBEXEC.
+/// ```
 fn install_destination(version: VersionPair) -> ArgSchemaKind {
     let mut forms = vec![vec![k("DESTINATION"), OutputPath]];
     if version >= (3, 14) {
@@ -603,6 +1168,42 @@ fn install_destination(version: VersionPair) -> ArgSchemaKind {
     choice(forms)
 }
 
+/// Describe installation modes without copying files or running embedded scripts.
+/// Allocates grammar data only; no external side effects.
+///
+/// # Arguments
+/// - `version` `[in]`: requested CMake major/minor; filters syntax additions, not runtime feature
+///   activation.
+///
+/// # Returns
+/// One choice spanning targets, files/programs, directories, script/code, exports and
+/// version-eligible runtime/package/SBOM forms.
+///
+/// # Algorithm
+/// Build mode-specific common/options groups, preserving required destinations where encoded. Add
+/// object/module artifacts, file sets, runtime dependency forms, PACKAGE_INFO and SBOM by
+/// version. Script/code operands are data only.
+///
+/// # Flow
+/// ```text
+///                             [install inputs]
+///                                     |
+///                  +------------------+------------------+
+///                  v                                     v
+/// +--------------------------------+    +--------------------------------+
+/// |  Targets + artifact subgroups  |    |Files / directories / scripts / |
+/// |                                |    |            exports             |
+/// +----------------+---------------+    +----------------+---------------+
+///                  |                                     |
+///                  +------------------+------------------+
+///                                     v
+///                              [Owned grammar]
+/// ```
+///
+/// # Examples
+/// ```text
+/// let args = install((4, 3)); // Can describe install(PACKAGE_INFO ...).
+/// ```
 fn install(version: VersionPair) -> Vec<ArgSchemaKind> {
     let mut kinds = vec![
         "ARCHIVE",
@@ -769,6 +1370,43 @@ fn install(version: VersionPair) -> Vec<ArgSchemaKind> {
     vec![choice(forms)]
 }
 
+/// Collect source-probe options shared by try_compile and try_run.
+/// Allocates grammar data only; no external side effects.
+///
+/// # Arguments
+/// - `version` `[in]`: requested CMake major/minor; filters syntax additions, not runtime feature
+///   activation.
+/// - `running` `[in]`: select run-result outputs and run-specific version thresholds.
+/// - `modern` `[in]`: enable modern signature NO_CACHE/log options and separate run stdout/stderr
+///   outputs.
+///
+/// # Returns
+/// Option alternatives for compiler/linker settings and output variables; no compiler or
+/// executable is invoked.
+///
+/// # Algorithm
+/// Start with CMake flags, definitions and copy output; gate linking/language-standard groups by
+/// version. Choose compile-only or run output names, then modern logging/cache controls.
+///
+/// # Flow
+/// ```text
+///                         [compile_options inputs]
+///                                     |
+///                  +------------------+------------------+
+///                  v                                     v
+/// +--------------------------------+    +--------------------------------+
+/// |     Compile/link settings      |    |   Compile-only / run outputs   |
+/// +----------------+---------------+    +----------------+---------------+
+///                  |                                     |
+///                  +------------------+------------------+
+///                                     v
+///                              [Owned grammar]
+/// ```
+///
+/// # Examples
+/// ```text
+/// let opts = compile_options((3, 29), true, true); // Includes LINKER_LANGUAGE and run outputs.
+/// ```
 fn compile_options(version: VersionPair, running: bool, modern: bool) -> Vec<Vec<ArgSchemaKind>> {
     let mut args = vec![
         vec![k("CMAKE_FLAGS"), many(Value)],
@@ -833,6 +1471,41 @@ fn compile_options(version: VersionPair, running: bool, modern: bool) -> Vec<Vec
     args
 }
 
+/// Describe one or more modern source input/content/variable specifications.
+/// Allocates grammar data only; no external side effects.
+///
+/// # Arguments
+/// - `version` `[in]`: requested CMake major/minor; filters syntax additions, not runtime feature
+///   activation.
+///
+/// # Returns
+/// Nonempty repetition of optional SOURCES_TYPE followed by one source specification; type
+/// selection exists from 3.28.
+///
+/// # Algorithm
+/// Keep SOURCES, SOURCE_FROM_CONTENT, SOURCE_FROM_VAR and SOURCE_FROM_FILE as separate sequences.
+/// Attach the optional normal/module type prefix per repeated source group.
+///
+/// # Flow
+/// ```text
+///                      [source_specifications inputs]
+///                                     |
+///                  +------------------+------------------+
+///                  v                                     v
+/// +--------------------------------+    +--------------------------------+
+/// |      Optional source type      |    | Sources / content / variable / |
+/// |                                |    |              file              |
+/// +----------------+---------------+    +----------------+---------------+
+///                  |                                     |
+///                  +------------------+------------------+
+///                                     v
+///                              [Owned grammar]
+/// ```
+///
+/// # Examples
+/// ```text
+/// let sources = source_specifications((3, 28)); // SOURCE_FROM_VAR uses a Variable role.
+/// ```
 fn source_specifications(version: VersionPair) -> ArgSchemaKind {
     let sources = choice(vec![
         vec![k("SOURCES"), some(InputFile)],
@@ -848,6 +1521,39 @@ fn source_specifications(version: VersionPair) -> ArgSchemaKind {
     some(choice(vec![vec![source_type, sources]]))
 }
 
+/// Describe legacy and modern try_compile signatures without performing a probe.
+/// Allocates grammar data only; no external side effects.
+///
+/// # Arguments
+/// - `version` `[in]`: requested CMake major/minor; filters syntax additions, not runtime feature
+///   activation.
+///
+/// # Returns
+/// Out result variable followed by source-file/project alternatives; modern forms start in 3.25.
+///
+/// # Algorithm
+/// Keep legacy binary-directory/file and project sequences. From 3.25 append source-specification
+/// and explicit PROJECT/SOURCE_DIR forms, with versioned log options.
+///
+/// # Flow
+/// ```text
+///                           [try_compile inputs]
+///                                     |
+///                  +------------------+------------------+
+///                  v                                     v
+/// +--------------------------------+    +--------------------------------+
+/// |   Legacy binary/source forms   |    | Modern sources / PROJECT forms |
+/// +----------------+---------------+    +----------------+---------------+
+///                  |                                     |
+///                  +------------------+------------------+
+///                                     v
+///                              [Owned grammar]
+/// ```
+///
+/// # Examples
+/// ```text
+/// let args = try_compile((3, 25)); // Describes ok PROJECT demo SOURCE_DIR src.
+/// ```
 fn try_compile(version: VersionPair) -> Vec<ArgSchemaKind> {
     let mut forms = vec![
         vec![
@@ -892,6 +1598,40 @@ fn try_compile(version: VersionPair) -> Vec<ArgSchemaKind> {
     vec![Out, choice(forms)]
 }
 
+/// Describe compile-and-run probe syntax without compiling or running anything.
+/// Allocates grammar data only; no external side effects.
+///
+/// # Arguments
+/// - `version` `[in]`: requested CMake major/minor; filters syntax additions, not runtime feature
+///   activation.
+///
+/// # Returns
+/// Run-result Out, compile-result Out, then a legacy or eligible modern source form, each with
+/// optional ARGS.
+///
+/// # Algorithm
+/// Retain legacy binary-directory/source mode; from 3.25 add source-specification mode with
+/// modern run output controls. Both modes keep program ARGS as uninterpreted values.
+///
+/// # Flow
+/// ```text
+///                             [try_run inputs]
+///                                     |
+///                  +------------------+------------------+
+///                  v                                     v
+/// +--------------------------------+    +--------------------------------+
+/// | Legacy binary-directory source |    |  Modern source specifications  |
+/// +----------------+---------------+    +----------------+---------------+
+///                  |                                     |
+///                  +------------------+------------------+
+///                                     v
+///                              [Owned grammar]
+/// ```
+///
+/// # Examples
+/// ```text
+/// let args = try_run((3, 25)); // First two slots are possible output variables.
+/// ```
 fn try_run(version: VersionPair) -> Vec<ArgSchemaKind> {
     let mut forms = vec![vec![
         OutputPath,
@@ -909,6 +1649,8 @@ fn try_run(version: VersionPair) -> Vec<ArgSchemaKind> {
     vec![Out, Out, choice(forms)]
 }
 
+// Contains AI-generated test-module documentation edits.
+/// Build grammar regression tests loaded from the package test tree.
 #[cfg(test)]
 #[path = "../../../../../tests/unit/parser/semanticer/keyword_build.rs"]
 mod keyword_build;

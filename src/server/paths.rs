@@ -1,3 +1,8 @@
+//! Refresh cached input-path warnings through asynchronous metadata reads; never create files or run
+//! CMake.
+//! Known outputs and separate build directories are exempt. Graph-owned dependency failures are reported
+//! elsewhere. Checks are per refresh, not a filesystem watcher or a general argument validator.
+
 // AI-authored cached input-path warnings; output/search/expression paths are not existence requirements.
 mod candidates;
 pub(in crate::server) mod model;
@@ -10,6 +15,55 @@ use std::{
     path::PathBuf,
 };
 impl Service {
+    /// Replace one project's cached path warnings after asynchronous filesystem metadata checks; never
+    /// write files or run CMake.
+    /// Disabled diagnostics clears the cache without disk access. Checks follow metadata symlinks but do
+    /// not canonicalize exemption keys. Results persist until the service marks paths dirty and
+    /// refreshes again; there is no watcher.
+    ///
+    /// # Arguments
+    /// - `self` `[in,out]`: overwrites project.path_state and sets project.paths_dirty=false; reads
+    ///   filesystem metadata but leaves source text and graph unchanged.
+    /// - `owner` `[in]`: valid index of the project to refresh.
+    ///
+    /// # Returns
+    /// (); metadata errors become warnings rather than returned errors. All warnings and exemptions
+    /// replace the prior cache together.
+    ///
+    /// # Panics
+    /// Panics if owner is not a live project index; callers use indices from the current project vector.
+    ///
+    /// # Algorithm
+    /// Collect candidates, record output exemptions and separate configure binary directories, then skip
+    /// outputs, graph-owned dependency operands and any candidate with a generated choice. Cache each
+    /// metadata read for this refresh. Any valid alternative succeeds; suppress optional all-not-found
+    /// failures, otherwise deduplicate by source file/start/message and store warnings. File/Module
+    /// require files, Directory requires directories; other input kinds accept either.
+    ///
+    /// # Flow
+    /// ```text
+    ///  [Diagnostics enabled?] --no--> [Clear cache + dirty flag]
+    ///              | yes
+    ///  [Collect candidates + generated/build exemptions]
+    ///              |
+    ///  [Next input] <--------------------------------+
+    ///              |                                 |
+    ///  [Output / graph dependency / generated?] --yes--+
+    ///              | no                              |
+    ///  [Cached or async metadata for choices]         |
+    ///              |                                 |
+    ///  [Any valid / optional all missing?] --yes------+
+    ///              | no                              |
+    ///  [Append deduplicated warning] ----------------+
+    ///              | end
+    ///  [Replace state; clear dirty flag]
+    /// ```
+    ///
+    /// # Examples
+    /// Local server context (requires the initialized service and its client):
+    /// ```text
+    /// service.refresh_paths(owner).await;
+    /// ```
     pub(in crate::server) async fn refresh_paths(&mut self, owner: usize) {
         if !self.projects[owner].settings.diagnostics.enable {
             self.projects[owner].path_state = PathState::default();

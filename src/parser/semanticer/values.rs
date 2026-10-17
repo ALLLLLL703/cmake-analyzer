@@ -1,9 +1,32 @@
+//! Track a limited set of literal values without interpreting CMake.
+//!
+//! Epochs invalidate old facts cheaply. Unsupported expansion, unknown calls and conditional
+//! writes lose certainty. Workspace replay may supply directories and dependency order;
+//! the local pass has no directory context and skips deferred bodies. No I/O.
+// Contains AI-generated documentation additions.
 // AI-authored limited literal expansion; unknown values are never guessed.
 mod arguments;
 use super::{model::*, value_model::ValueBinding};
 pub(crate) use arguments::argument_value;
 use std::{collections::HashMap, sync::Arc};
 impl ValueBindings {
+    /// Overwrite one name with a text fact or explicit unknown in the current epoch. Copy-on-write isolates shared clones; no I/O.
+    ///
+    /// # Arguments
+    /// - `self` `[in,out]`: inserts/replaces one map entry, cloning shared storage only when necessary.
+    /// - `name` `[in]`: case-sensitive variable name copied into the map.
+    /// - `value` `[in]`: consumed fact, or None to mask any directory fallback as unknown.
+    ///
+    /// # Returns
+    /// () after storing the value at the current epoch.
+    ///
+    /// # Examples
+    /// ```
+    /// use cmake_analyzer::parser::semanticer::model::*;
+    /// let mut values = ValueBindings::default();
+    /// values.assign("x", Some(PossibleValue::Static("yes".into())));
+    /// assert_eq!(values.get("x", None).unwrap().text(), "yes");
+    /// ```
     pub fn assign(&mut self, name: &str, value: Option<PossibleValue>) {
         Arc::make_mut(&mut self.entries).insert(
             name.to_owned(),
@@ -13,9 +36,45 @@ impl ValueBindings {
             },
         );
     }
+    /// Advance the epoch so all existing entries become unknown without visiting them. Does not remove entries or disable fallback for names never assigned; no I/O.
+    ///
+    /// # Arguments
+    /// - `self` `[in,out]`: increments epoch; stored map entries remain unchanged.
+    ///
+    /// # Returns
+    /// () after lazy invalidation.
+    ///
+    /// # Panics
+    /// Epoch overflow can panic when integer overflow checking is enabled.
+    ///
+    /// # Examples
+    /// ```
+    /// use cmake_analyzer::parser::semanticer::model::*;
+    /// let mut values = ValueBindings::default();
+    /// values.assign("x", Some(PossibleValue::Static("yes".into())));
+    /// values.invalidate();
+    /// assert!(values.get("x", None).is_none());
+    /// ```
     pub fn invalidate(&mut self) {
         self.epoch += 1;
     }
+    /// Look up a current-epoch text fact, falling back to selected builtin directory names only when no map entry exists. No filesystem access or mutation.
+    ///
+    /// # Arguments
+    /// - `self` `[in]`: value map and epoch.
+    /// - `name` `[in]`: case-sensitive variable spelling.
+    /// - `directories` `[in]`: optional path context for source/binary/list builtin names.
+    ///
+    /// # Returns
+    /// Some cloned fact for a valid entry, or Static UTF-8 directory text; None for stale/explicit unknown entries, missing context, unsupported names or non-UTF-8 paths.
+    ///
+    /// # Examples
+    /// ```
+    /// use cmake_analyzer::parser::semanticer::model::*;
+    /// let mut values = ValueBindings::default();
+    /// values.assign("x", Some(PossibleValue::Observed("a".into())));
+    /// assert_eq!(values.get("x", None).unwrap().text(), "a");
+    /// ```
     pub fn get(&self, name: &str, directories: Option<&ValueDirectories>) -> Option<PossibleValue> {
         if let Some(binding) = self.entries.get(name) {
             return (binding.epoch == self.epoch)
@@ -34,6 +93,43 @@ impl ValueBindings {
         }?;
         Some(PossibleValue::Static(path.to_str()?.into()))
     }
+    /// Infer argument text using supported simple substitutions. No input mutation or I/O. Output is tagged Static even when substituted bindings were Observed.
+    ///
+    /// # Arguments
+    /// - `self` `[in]`: known variable text bindings.
+    /// - `arg` `[in]`: payload and lexical form to inspect.
+    /// - `dirs` `[in]`: optional builtin-directory fallback context.
+    ///
+    /// # Returns
+    /// Some Static text for bracket arguments or supported simple ${name} substitutions; None for unknown/malformed names, escapes, semicolons, environment/cache expansions or generator expressions.
+    ///
+    /// # Algorithm
+    /// Return bracket payloads directly. Reject unsupported syntax before scanning simple ${name} segments; append literal segments and known binding text, abandoning the whole result when any substitution is unknown.
+    ///
+    /// # Flow
+    /// ```text
+    ///  [argument form]       [binding map / directories]
+    ///         |                         |
+    ///      <bracket?>                    |
+    ///       /      \                    |
+    ///  [literal] <supported syntax?>      |
+    ///               /        \          |
+    ///           [unknown]  [substitute] <-+
+    ///                          |
+    ///                   <all names known?>
+    ///                       /       \
+    ///                  [unknown] [Static text]
+    /// ```
+    ///
+    /// # Examples
+    /// ```
+    /// use cmake_analyzer::parser::semanticer::model::*;
+    /// use cmake_analyzer::model::TextSpan;
+    /// let mut values = ValueBindings::default();
+    /// values.assign("x", Some(PossibleValue::Static("yes".into())));
+    /// let arg = SemanticArg { kind: vec![], content: "${x}!".into(), span: TextSpan::default(), form: SemanticArgForm::Quoted };
+    /// assert_eq!(values.expand(&arg, None).unwrap().text(), "yes!");
+    /// ```
     pub fn expand(
         &self,
         arg: &SemanticArg,
@@ -66,6 +162,56 @@ impl ValueBindings {
         expanded.push_str(rest);
         Some(PossibleValue::Static(expanded.into()))
     }
+    /// Update conservative local text facts for one source command without executing it. Unknown/dynamic-effect commands invalidate facts; supported literal set/project commands may establish them. No I/O.
+    ///
+    /// # Arguments
+    /// - `self` `[in,out]`: overwrites selected bindings or advances the invalidation epoch.
+    /// - `command` `[in]`: source command with schema and Out flags already assigned.
+    /// - `conditional` `[in]`: whether writes may be conditional; such writes do not establish text facts.
+    /// - `dirs` `[in]`: optional source/binary/list context for builtin values and project-derived paths.
+    ///
+    /// # Returns
+    /// () after applying supported facts. Unclosed commands are ignored; nonlocal/cache/environment writes do not establish ordinary local values.
+    ///
+    /// # Panics
+    /// Invalidation can overflow the epoch when integer overflow checking is enabled.
+    ///
+    /// # Algorithm
+    /// Ignore unclosed commands. Dynamic assignment names, unknown schemas, find_package and cmake_language invalidate all prior entries. Project may establish directory-derived facts. For literal local Out slots, unconditional set joins supported argument values with semicolons; other writes become unknown. In-place list/string mutations also lose certainty.
+    ///
+    /// # Flow
+    /// ```text
+    ///  [command + Out flags]      [conditional + directories]
+    ///            |                           |
+    ///            +-------------+-------------+
+    ///                          v
+    ///                  <unknown/dynamic effect?>
+    ///                     /                \
+    ///              [invalidate epoch]  <supported local write?>
+    ///                                       /          \
+    ///                                   [skip]     <literal set/project?>
+    ///                                                 /        \
+    ///                                            [known text] [unknown]
+    ///                                                 |        |
+    ///                                                 +---+----+
+    ///                                                     v
+    ///                                              [overwrite binding]
+    /// ```
+    ///
+    /// # Examples
+    /// ```
+    /// use cmake_analyzer::parser::semanticer::model::*;
+    /// use cmake_analyzer::model::TextSpan;
+    /// let command = SemanticCommandRepresent {
+    ///     documentation: None, id: CommandId { id: 0 }, kind: CommandKind::Other("custom".into()),
+    ///     span: TextSpan::default(), args: vec![], variable_references: vec![], paths: vec![],
+    ///     name: "custom".into(), closed: true, schema: None, full_span: TextSpan::default(), block: None, scope: None,
+    /// };
+    /// let mut values = ValueBindings::default();
+    /// values.assign("x", Some(PossibleValue::Static("yes".into())));
+    /// values.apply(&command, false, None);
+    /// assert!(values.get("x", None).is_none());
+    /// ```
     pub fn apply(
         &mut self,
         command: &SemanticCommandRepresent,
@@ -177,6 +323,22 @@ impl ValueBindings {
         }
     }
 }
+/// Inspect enclosing blocks for conditional and deferred source contexts. No side effects.
+///
+/// # Arguments
+/// - `buffer` `[in]`: owning block arena.
+/// - `command` `[in]`: command whose ancestry is inspected.
+///
+/// # Returns
+/// Tuple (conditional, deferred): any if/while/foreach ancestor, and any function/macro ancestor respectively.
+///
+/// # Panics
+/// Panics if a command or parent block ID is outside buffer.blocks; ancestry must be acyclic.
+///
+/// # Examples
+/// ```text
+/// let (conditional, deferred) = flags(&buffer, &buffer.commands[0]);
+/// ```
 pub(crate) fn flags(buffer: &SemanticedBuffer, command: &SemanticCommandRepresent) -> (bool, bool) {
     let (mut conditional, mut deferred) = (false, false);
     let mut block = command.block;
@@ -192,6 +354,46 @@ pub(crate) fn flags(buffer: &SemanticedBuffer, command: &SemanticCommandRepresen
     (conditional, deferred)
 }
 impl Semanticer {
+    /// Replace local sparse observations and attach matching facts to read/reference locations. Skips deferred bodies for writes and gives their reads no known text; no execution or I/O.
+    ///
+    /// # Arguments
+    /// - `self` `[in]`: analyzer, unchanged.
+    /// - `buffer` `[in,out]`: clears/replaces values and overwrites possible_value on command, unresolved and variable references.
+    ///
+    /// # Returns
+    /// () after a source-order pass using independent bindings per optional local scope; no directory context is inferred locally.
+    ///
+    /// # Panics
+    /// Requires valid acyclic block ancestry; binding invalidation can overflow its epoch.
+    ///
+    /// # Algorithm
+    /// For each command, observe reads before applying effects, skip deferred writes and invalidate after includes. Record Out writes after applying effects. Build a command/name/read-or-write lookup and copy facts back to all reference collections.
+    ///
+    /// # Flow
+    /// ```text
+    ///  [source-ordered commands]       [scope binding maps]
+    ///               |                           |
+    ///               +-------------+-------------+
+    ///                             v
+    ///                    [observe reads first]
+    ///                             |
+    ///                        <deferred?>
+    ///                         /        \
+    ///                      [skip]    [apply writes]
+    ///                         |           |
+    ///                         |     [observe outputs]
+    ///                         +-----+-----+
+    ///                               v
+    ///                     [replace sparse values]
+    ///                               |
+    ///                               v
+    ///                  [annotate reference collections]
+    /// ```
+    ///
+    /// # Examples
+    /// ```text
+    /// analyzer.collect_values(&mut buffer);
+    /// ```
     pub(crate) fn collect_values(&self, buffer: &mut SemanticedBuffer) {
         let mut scopes: HashMap<Option<ScopeId>, ValueBindings> = HashMap::new();
         buffer.values.clear();

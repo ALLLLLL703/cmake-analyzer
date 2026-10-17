@@ -1,9 +1,28 @@
 // AI-generated tests.
+//! External include indexing modes across diagnostics, symbols and definitions.
+//! Configuration reloads must change analysis without executing the marker-writing source.
 use super::{
     navigation::definition,
     session::{Project, Session, uri},
 };
 use serde_json::{Value, json};
+/// Request all workspace symbols using an empty query and require success.
+///
+/// # Arguments
+/// - `client` `[in,out]`: writes the request and consumes its reply; unrelated messages append
+///   to pending.
+/// - `id` `[in]`: request/response correlation ID.
+///
+/// # Returns
+/// An owned clone of the result array; the response envelope is consumed.
+///
+/// # Panics
+/// Panics on transport/deadline failure or a response error.
+///
+/// # Examples
+/// ```text
+/// let items = workspace_symbols(&mut client, 11).await;
+/// ```
 async fn workspace_symbols(client: &mut Session, id: i32) -> Value {
     client
         .send(json!({"jsonrpc":"2.0","id":id,"method":"workspace/symbol","params":{"query":""}}))
@@ -13,6 +32,47 @@ async fn workspace_symbols(client: &mut Session, id: i32) -> Value {
     result["result"].clone()
 }
 #[tokio::test]
+/// Check full/functions/none external indexing changes semantic features without source
+/// execution.
+/// Creates temporary files and an analyzer session; successful completion stops the session and
+/// removes fixtures.
+///
+/// # Arguments
+/// None.
+///
+/// # Returns
+/// `()` if every assertion passes; no output parameter.
+///
+/// # Panics
+/// Panics on any failed assertion or unwrapped fixture/transport/process failure.
+/// Cleanup is explicit on the success path; a panic may leave a fixture tree.
+///
+/// # Algorithm
+/// Cycle external_include modes with reload. Full/functions suppress the ext_call
+/// unknown-command diagnostic and retain its definition/symbol; none restores the diagnostic
+/// and removes those results. EXTERNAL_VALUE and ExternalTarget symbols survive only in full;
+/// EXTERNAL_VALUE diagnostics appear in functions/none. Include-path definition always reaches
+/// the external module. Require no marker in app or modules.
+///
+/// # Flow
+/// ```text
+/// [Temporary sources + settings]      [Expected: mode-specific semantic results]
+///              |                              |
+///              v                              |
+/// [LSP scenario messages]                 |
+///              |                              |
+///              +-------------+----------------+
+///                            v
+///                  [Compare assertions]
+///                            |
+///                            v
+///             [Finish session + remove tree]
+/// ```
+///
+/// # Examples
+/// ```text
+/// reload_changes_external_symbols_diagnostics_and_navigation_without_running_sources(); // #[tokio::test] supplies the runtime
+/// ```
 async fn reload_changes_external_symbols_diagnostics_and_navigation_without_running_sources() {
     let p = Project::new().await;
     let body = "include(External)\next_call()\nmessage(\"${EXTERNAL_VALUE}\")\n";

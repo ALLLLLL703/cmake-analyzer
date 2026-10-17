@@ -1,6 +1,31 @@
 // AI-generated explicit configure/action integration tests.
+//! Explicit Code Action and executeCommand scenarios, including real configure runs.
+//! [`super::session::Session`] supplies framing; action listing must not execute sources.
+//! Execution tests remove generated build files with their temporary projects.
 use super::session::{Project, Session, uri};
 use serde_json::{Value, json};
+/// Request Code Actions with an empty diagnostic context and a zero-width line range.
+/// This helper lists actions; it never executes their commands.
+///
+/// # Arguments
+/// - `client` `[in,out]`: writes the request and consumes its reply; unrelated messages append
+///   to pending.
+/// - `file` `[in]`: target document path.
+/// - `line` `[in]`: zero-based protocol line including HEADER; character is always zero.
+/// - `id` `[in]`: request/response correlation ID.
+/// - `automatic` `[in]`: true selects automatic triggerKind 2; false selects invoked
+///   triggerKind 1.
+///
+/// # Returns
+/// The full response envelope, with an action array or error.
+///
+/// # Panics
+/// Panics on session transport/deadline failures.
+///
+/// # Examples
+/// ```text
+/// let reply = actions(&mut client, &root, 1, 10, false).await;
+/// ```
 pub(super) async fn actions(
     client: &mut Session,
     file: &std::path::Path,
@@ -11,11 +36,71 @@ pub(super) async fn actions(
     client.send(json!({"jsonrpc":"2.0","id":id,"method":"textDocument/codeAction","params":{"textDocument":{"uri":uri(file)},"range":{"start":{"line":line,"character":0},"end":{"line":line,"character":0}},"context":{"diagnostics":[],"triggerKind":if automatic{2}else{1}}}})).await;
     client.response(id).await
 }
+/// Execute the command and arguments carried by a listed Code Action.
+/// May start/cancel configure or script work, or inspect expanded arguments.
+///
+/// # Arguments
+/// - `client` `[in,out]`: writes the request and consumes its reply; unrelated messages append
+///   to pending.
+/// - `action` `[in]`: Code Action object containing command.command and command.arguments.
+/// - `id` `[in]`: request/response correlation ID.
+///
+/// # Returns
+/// The full executeCommand response; started jobs may complete after this reply.
+///
+/// # Panics
+/// Panics on session transport/deadline failures; does not assert execution success.
+///
+/// # Examples
+/// ```text
+/// let reply = execute(&mut client, &listed["result"][0], 11).await;
+/// ```
 pub(super) async fn execute(client: &mut Session, action: &Value, id: i32) -> Value {
     client.send(json!({"jsonrpc":"2.0","id":id,"method":"workspace/executeCommand","params":{"command":action["command"]["command"],"arguments":action["command"]["arguments"]}})).await;
     client.response(id).await
 }
 #[tokio::test]
+/// Check only explicit execution configures, discovers runtime imports and exposes observed
+/// values.
+/// Creates temporary files and an analyzer session; successful completion stops the session and
+/// removes fixtures. Execution scenarios may run real CMake or a local stub and write temporary
+/// output.
+///
+/// # Arguments
+/// None.
+///
+/// # Returns
+/// `()` if every assertion passes; no output parameter.
+///
+/// # Panics
+/// Panics on any failed assertion or unwrapped fixture/transport/process failure.
+/// Cleanup is explicit on the success path; a panic may leave a fixture tree.
+///
+/// # Algorithm
+/// Open a project with a dynamically computed include. Automatic actions are empty and explicit
+/// listing creates no marker. Execute configure, keep symbols responsive, await success, then
+/// inspect runtime_fn and VALUE observations. Edit the root; expanded-argument actions
+/// disappear and unsaved configure is rejected with -32602.
+///
+/// # Flow
+/// ```text
+/// [Temporary sources + settings]      [Expected: runtime observations / invalidation]
+///              |                              |
+///              v                              |
+/// [LSP scenario messages]                 |
+///              |                              |
+///              +-------------+----------------+
+///                            v
+///                  [Compare assertions]
+///                            |
+///                            v
+///             [Finish session + remove tree]
+/// ```
+///
+/// # Examples
+/// ```text
+/// explicit_configure_discovers_modules_and_exposes_observed_values_then_edits_invalidate(); // #[tokio::test] supplies the runtime
+/// ```
 async fn explicit_configure_discovers_modules_and_exposes_observed_values_then_edits_invalidate() {
     let p = Project::new().await;
     let text = "project(Action NONE)\nfile(WRITE \"${CMAKE_CURRENT_SOURCE_DIR}/configured\" yes)\nfunction(path output)\nset(${output} \"${CMAKE_CURRENT_SOURCE_DIR}/runtime\" PARENT_SCOPE)\nendfunction()\npath(DIR)\ninclude(\"${DIR}/new.cmake\")\nruntime_fn()\nmessage(\"${VALUE}\")\n";
@@ -125,6 +210,46 @@ async fn explicit_configure_discovers_modules_and_exposes_observed_values_then_e
 }
 #[cfg(unix)]
 #[tokio::test]
+/// Check cancellation and bounded shutdown for configure and script jobs using a slow
+/// executable.
+/// Creates temporary files and an analyzer session; successful completion stops the session and
+/// removes fixtures. Execution scenarios may run real CMake or a local stub and write temporary
+/// output.
+///
+/// # Arguments
+/// None.
+///
+/// # Returns
+/// `()` if every assertion passes; no output parameter.
+///
+/// # Panics
+/// Panics on any failed assertion or unwrapped fixture/transport/process failure.
+/// Cleanup is explicit on the success path; a panic may leave a fixture tree.
+///
+/// # Algorithm
+/// For both execution profiles, write an executable sleep stub and list/execute its action.
+/// Query symbols while it runs, execute cancelConfigure, and require graceful shutdown within
+/// five seconds.
+///
+/// # Flow
+/// ```text
+/// [Temporary sources + settings]      [Expected: cancel true + joined shutdown]
+///              |                              |
+///              v                              |
+/// [LSP scenario messages]                 |
+///              |                              |
+///              +-------------+----------------+
+///                            v
+///                  [Compare assertions]
+///                            |
+///                            v
+///             [Finish session + remove tree]
+/// ```
+///
+/// # Examples
+/// ```text
+/// background_configure_and_script_runs_can_be_cancelled_and_shutdown_joins_them(); // #[tokio::test] supplies the runtime
+/// ```
 async fn background_configure_and_script_runs_can_be_cancelled_and_shutdown_joins_them() {
     use std::os::unix::fs::PermissionsExt;
     for script in [false, true] {

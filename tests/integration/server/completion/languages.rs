@@ -1,8 +1,57 @@
 // AI-generated tests.
+//! Language-name completion in schema-typed slots and at introduction versions.
+//! Tests preserve argument delimiters and distinguish project NONE from enable_language.
 use super::{complete, item, start};
 use crate::server::session::{Project, Session, uri};
 use serde_json::{Value, json};
 use std::path::Path;
+/// Replace the entire open overlay and immediately request completion at its marker.
+/// Writes didChange/completion frames, not fixture disk contents.
+///
+/// # Arguments
+/// - `client` `[in,out]`: writes the request and consumes its reply; unrelated messages append
+///   to pending.
+/// - `path` `[in]`: document path converted to a fixture URI.
+/// - `marked` `[in]`: full header-free replacement source; first | marks the cursor and is
+///   removed.
+/// - `cmake` `[in]`: minimum CMake version inserted as the replacement header.
+/// - `version` `[in]`: didChange document version; request ID is version + 100.
+///
+/// # Returns
+/// The cloned successful completion result from the shared complete helper.
+///
+/// # Panics
+/// Panics if the marker is absent, sending fails or completion returns an error.
+///
+/// # Algorithm
+/// Split at the first marker to count body newlines and UTF-16 column; remove that marker,
+/// prepend the requested minimum-version header, send the full-text versioned change, then
+/// query completion.
+/// The shared complete helper adds the one header line; this request is an ordering barrier.
+///
+/// # Flow
+/// ```text
+/// [Marked body source]
+///          |
+///          +-------------------------+
+///          v                         v
+///  [Remove first marker]    [Count line / UTF-16 column]
+///          |                         |
+///          v                         |
+///  [Send full didChange]             |
+///          |                         |
+///          +-------------+-----------+
+///                        v
+///      [complete: add header line, send query]
+///                        |
+///                        v
+///              [Completion result]
+/// ```
+///
+/// # Examples
+/// ```text
+/// let items = changed(&mut client, &root, "project(P LANGUAGES C|)", "4.4", 2).await;
+/// ```
 async fn changed(
     client: &mut Session,
     path: &Path,
@@ -22,6 +71,22 @@ async fn changed(
     )
     .await
 }
+/// Check whether any completion item has an exact case-sensitive label; no side effects.
+///
+/// # Arguments
+/// - `items` `[in]`: completion result array, borrowed without mutation.
+/// - `name` `[in]`: label spelling to compare.
+///
+/// # Returns
+/// true if at least one label matches; false otherwise.
+///
+/// # Panics
+/// Panics if items is not a JSON array.
+///
+/// # Examples
+/// ```text
+/// let present = has(&items, "CXX");
+/// ```
 fn has(items: &Value, name: &str) -> bool {
     items
         .as_array()
@@ -30,6 +95,45 @@ fn has(items: &Value, name: &str) -> bool {
         .any(|item| item["label"] == name)
 }
 #[tokio::test]
+/// Check all builtin language names use plain EnumMember edits only in language slots.
+/// Creates temporary files and an analyzer session; successful completion stops the session and
+/// removes fixtures.
+///
+/// # Arguments
+/// None.
+///
+/// # Returns
+/// `()` if every assertion passes; no output parameter.
+///
+/// # Panics
+/// Panics on any failed assertion or unwrapped fixture/transport/process failure.
+/// Cleanup is explicit on the success path; a panic may leave a fixture tree.
+///
+/// # Algorithm
+/// At CMake 4.4 require the complete listed language set plus project NONE, then compare CXX
+/// payload replacement ranges in repeated/quoted/bracket/incomplete arguments. enable_language
+/// includes ASM_POASM but excludes NONE. Other slots, expansions and a user project shadow
+/// exclude CXX.
+///
+/// # Flow
+/// ```text
+/// [Temporary sources + settings]      [Expected: language payload edits / exclusions]
+///              |                              |
+///              v                              |
+/// [LSP scenario messages]                 |
+///              |                              |
+///              +-------------+----------------+
+///                            v
+///                  [Compare assertions]
+///                            |
+///                            v
+///             [Finish session + remove tree]
+/// ```
+///
+/// # Examples
+/// ```text
+/// all_supported_languages_complete_from_typed_slots_and_preserve_delimiters(); // #[tokio::test] supplies the runtime
+/// ```
 async fn all_supported_languages_complete_from_typed_slots_and_preserve_delimiters() {
     let p = Project::new().await;
     let root = p.write("CMakeLists.txt", "").await;
@@ -110,6 +214,44 @@ async fn all_supported_languages_complete_from_typed_slots_and_preserve_delimite
     p.remove().await;
 }
 #[tokio::test]
+/// Check language completion respects each builtin language introduction version.
+/// Creates temporary files and an analyzer session; successful completion stops the session and
+/// removes fixtures.
+///
+/// # Arguments
+/// None.
+///
+/// # Returns
+/// `()` if every assertion passes; no output parameter.
+///
+/// # Panics
+/// Panics on any failed assertion or unwrapped fixture/transport/process failure.
+/// Cleanup is explicit on the success path; a panic may leave a fixture tree.
+///
+/// # Algorithm
+/// For CSharp/CUDA/Swift/OBJC/OBJCXX/ISPC/HIP/ASM_MARMASM/ASM_POASM, replace the
+/// minimum-version header immediately before and at introduction. Require absence before and
+/// presence at the version in project LANGUAGES completion.
+///
+/// # Flow
+/// ```text
+/// [Temporary sources + settings]      [Expected: before absent / since present]
+///              |                              |
+///              v                              |
+/// [LSP scenario messages]                 |
+///              |                              |
+///              +-------------+----------------+
+///                            v
+///                  [Compare assertions]
+///                            |
+///                            v
+///             [Finish session + remove tree]
+/// ```
+///
+/// # Examples
+/// ```text
+/// language_names_follow_cmake_introduction_versions(); // #[tokio::test] supplies the runtime
+/// ```
 async fn language_names_follow_cmake_introduction_versions() {
     let p = Project::new().await;
     let root = p.write("CMakeLists.txt", "").await;

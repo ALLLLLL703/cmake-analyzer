@@ -1,6 +1,47 @@
+//! Runtime configuration authority and safe argument validation. Temporary TOML files select
+//! settings; no project configure or script is executed.
+
+// Contains AI-generated documentation edits.
 // AI-generated manual runtime settings and argument validation tests.
 use cmake_analyzer::config::{ConfigSources, ConfigStore};
 use std::sync::atomic::Ordering;
+/// Write relative build/executable paths and bounded runtime arguments, then check normalized
+/// settings.
+///
+/// Writes, reloads and removes temporary configuration files. Enabled module defaults may inspect
+/// PATH CMake with --version; no project configure or script execution.
+///
+/// # Arguments
+/// None. The test builds its own fixture and expected results.
+///
+/// # Returns
+/// `()` after all checks pass; no data or output parameter is returned.
+///
+/// # Panics
+/// If a stated invariant fails or an unwrapped fixture/setup operation fails.
+///
+/// # Algorithm
+/// Replace the file with build/script/trace-redirection overrides, a dangling define and zero
+/// budgets; each lookup must reject the unsafe or invalid configuration.
+///
+/// # Flow
+/// ```text
+///   [runtime TOML]
+///    |
+///   [normalize paths + budgets]----------> [unsafe args / zero budgets]
+///                                         |
+///                                        [reject replacement layer]
+///                                         |
+///                                        < checks hold? >
+///                                         /         \
+///                                       [pass]     [panic]
+/// ```
+///
+/// # Examples
+/// Direct local call outside any Tokio runtime (the test attribute creates its runtime):
+/// ```text
+/// runtime_settings_layer_paths_and_reject_execution_mode_overrides();
+/// ```
 #[tokio::test]
 async fn runtime_settings_layer_paths_and_reject_execution_mode_overrides() {
     let root = std::env::temp_dir().join(format!(
@@ -55,6 +96,43 @@ async fn runtime_settings_layer_paths_and_reject_execution_mode_overrides() {
     }
     tokio::fs::remove_dir_all(root).await.unwrap();
 }
+/// Reject project-only on-save execution, then authorize it in user configuration.
+///
+/// Writes, reloads and removes temporary configuration files. Enabled module defaults may inspect
+/// PATH CMake with --version; no project configure or script execution.
+///
+/// # Arguments
+/// None. The test builds its own fixture and expected results.
+///
+/// # Returns
+/// `()` after all checks pass; no data or output parameter is returned.
+///
+/// # Panics
+/// If a stated invariant fails or an unwrapped fixture/setup operation fails.
+///
+/// # Algorithm
+/// Rewrite the project layer to opt into action mode or disable runtime; a disabled user runtime
+/// must not grant save authority. Finally load that project-named file explicitly as a global
+/// source and accept its on-save mode.
+///
+/// # Flow
+/// ```text
+///   [project on_save]
+///    |
+///   [reject without user authority]----------> [global grant + project opt-outs]
+///                                             |
+///                                            [check effective runtime mode]
+///                                             |
+///                                            < checks hold? >
+///                                             /         \
+///                                           [pass]     [panic]
+/// ```
+///
+/// # Examples
+/// Direct local call outside any Tokio runtime (the test attribute creates its runtime):
+/// ```text
+/// save_execution_requires_global_authority_and_project_settings_can_opt_out();
+/// ```
 #[tokio::test]
 async fn save_execution_requires_global_authority_and_project_settings_can_opt_out() {
     use cmake_analyzer::config::RuntimeMode;

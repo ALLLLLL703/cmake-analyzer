@@ -1,3 +1,6 @@
+//! Collect schema-gated argument names, not proven reference bindings.
+//! Variables, targets, languages and discovered names remain plain-text candidates. No I/O occurs here.
+
 use super::{
     model::{ArgumentChoices, Candidate, Input, Kind},
     roles,
@@ -15,7 +18,24 @@ use crate::{
 use lspally::server::model::{Cancellation, ServerError, ServerResult};
 use std::collections::BTreeMap;
 
+/// Case-sensitive label/kind keys borrow source names while values own rendered candidates.
+/// Example: `let names: Names<'_> = BTreeMap::new();` creates an empty collection.
 type Names<'a> = BTreeMap<(&'a str, Kind), Candidate>;
+/// Insert a safe case-sensitive argument spelling if absent; no I/O.
+///
+/// # Arguments
+/// - `names` `[in,out]`: Candidate map; appends a missing (label, kind) entry without overwriting an existing one.
+/// - `name` `[in]`: Borrowed spelling; empty, whitespace, expression, list or delimiter syntax is rejected.
+/// - `prefix` `[in]`: Case-sensitive typed prefix.
+/// - `kind` `[in]`: Presentation category, also part of the deduplication key.
+///
+/// # Returns
+/// `()`: matching safe spellings become plain-text, non-source-defined candidates.
+///
+/// # Examples
+/// ```text
+/// add(&mut names, "MY_VAR", "MY_", Kind::Variable);
+/// ```
 fn add<'a>(names: &mut Names<'a>, name: &'a str, prefix: &str, kind: Kind) {
     if !name.is_empty()
         && name.starts_with(prefix)
@@ -35,6 +55,20 @@ fn add<'a>(names: &mut Names<'a>, name: &'a str, prefix: &str, kind: Kind) {
         });
     }
 }
+/// Test lexical variable-scope ancestry within one snapshot; no side effects.
+///
+/// # Arguments
+/// - `snapshot` `[in]`: Scope arena containing both IDs.
+/// - `current` `[in]`: Active scope to walk upward; local traversal does not change the caller's value.
+/// - `wanted` `[in]`: Candidate scope; None denotes globally visible descriptors.
+///
+/// # Returns
+/// `true` for globals or a matching current/ancestor scope; `false` for unrelated or unavailable scopes.
+///
+/// # Examples
+/// ```text
+/// assert!(scope_visible(&snapshot, command.scope, None));
+/// ```
 fn scope_visible(
     snapshot: &DocumentSnapshot,
     mut current: Option<ScopeId>,
@@ -53,6 +87,20 @@ fn scope_visible(
     }
     false
 }
+/// Test whether a function/macro body encloses the cursor's block; no side effects.
+///
+/// # Arguments
+/// - `snapshot` `[in]`: Block arena qualifying both IDs.
+/// - `current` `[in]`: Active block whose parent chain is read; caller state is unchanged.
+/// - `wanted` `[in]`: Function/macro body block sought in that chain.
+///
+/// # Returns
+/// `true` if wanted is current or ancestral; `false` if the chain ends or an ID is unavailable.
+///
+/// # Examples
+/// ```text
+/// let inside_body = block_visible(&snapshot, command.block, body);
+/// ```
 fn block_visible(
     snapshot: &DocumentSnapshot,
     mut current: Option<BlockId>,
@@ -70,6 +118,41 @@ fn block_visible(
     }
     false
 }
+/// Append possible variable and enclosing formal names; no I/O or binding changes.
+///
+/// # Arguments
+/// - `input` `[in]`: Owner snapshot plus directory-qualified dependency sources.
+/// - `command` `[in]`: Active command providing lexical scope/block.
+/// - `prefix` `[in]`: Case-sensitive variable-name prefix.
+/// - `out` `[in,out]`: Map receiving missing variable candidates; existing entries remain unchanged.
+/// - `cancel` `[in]`: Stop signal checked while walking variable inventories.
+///
+/// # Returns
+/// `Ok(())` after adding visible candidates; descriptors are possible names, not proof of initialization.
+///
+/// # Errors
+/// `Err` reports cancellation; entries appended before cancellation remain in out.
+///
+/// # Algorithm
+/// Use current/ancestor lexical scopes, then formal parameters from enclosing function/macro blocks. Add only global-scope variables from distinct dependency snapshots marked directory-visible.
+///
+/// # Flow
+/// ```text
+///  [Local variables]         [Enclosing function formals]
+///         |                             |
+///  [scope ancestry]              [block ancestry]
+///         +-------------+---------------+
+///                       v
+///                 [Candidate map] <---- [Ancestor/include globals]
+///                       |
+///                       v
+///              [Possible variable names]
+/// ```
+///
+/// # Examples
+/// ```text
+/// variables(input, slot.command, "MY_", &mut names, &cancel)?;
+/// ```
 fn variables<'a>(
     input: &'a Input,
     command: &SemanticCommandRepresent,
@@ -110,6 +193,47 @@ fn variables<'a>(
     }
     Ok(())
 }
+/// Append literal target-name candidates supported by active schema roles.
+/// No I/O or reference binding occurs.
+///
+/// # Arguments
+/// - `input` `[in]`: Owner context used to reject source-shadowed declaration commands.
+/// - `snapshot` `[in]`: Source target facts; candidate spellings borrow from this snapshot.
+/// - `visible` `[in]`: Whether nonglobal imports from this source directory may be offered.
+/// - `accepted` `[in]`: Generic or executable/library/custom-target schema roles.
+/// - `prefix` `[in]`: Case-sensitive target prefix.
+/// - `out` `[in,out]`: Map receiving missing EnumMember candidates; never clears existing entries.
+/// - `cancel` `[in]`: Stop signal checked per source fact.
+///
+/// # Returns
+/// `Ok(())` after considering literal declarations, including aliases under their declaration class.
+///
+/// # Errors
+/// `Err` reports cancellation; already appended candidates remain in out.
+///
+/// # Algorithm
+/// Skip dynamic names, invisible nonglobal imports and declarations whose native command is shadowed. Classify executable/library aliases by their declaration command, then filter target kind against schema roles. This is candidate discovery, not the stricter unique-name binding used for navigation.
+///
+/// # Flow
+/// ```text
+///  [Source build facts]
+///          |
+///          v
+///  <literal + visible + native?> --no--> [Skip]
+///          | yes
+///          v
+///  [Classify declaration/alias]
+///          |
+///  <role accepts class?> --no--> [Skip]
+///          | yes
+///          v
+///  [Deduplicated EnumMember candidate]
+/// ```
+///
+/// # Examples
+/// ```text
+/// targets(input, &input.snapshot, true, &accepted, "app", &mut names, &cancel)?;
+/// ```
 fn targets<'a>(
     input: &Input,
     snapshot: &'a DocumentSnapshot,
@@ -169,6 +293,50 @@ fn targets<'a>(
     }
     Ok(())
 }
+/// Collect plain-text argument choices allowed by schemas or ordinary variable expansions.
+/// No I/O and no reference/index mutation.
+///
+/// # Arguments
+/// - `inputs` `[in]`: Owner-qualified snapshots and preloaded discovery catalogues.
+/// - `offset` `[in]`: Validated byte cursor shared by snapshots of the queried open text.
+/// - `prefix` `[in]`: Case-sensitive active spelling prefix.
+/// - `expansion` `[in]`: True for ordinary ${...} name mode: variables only, never schema keywords.
+/// - `cancel` `[in]`: Stop signal checked per owner, inventories and before returning.
+///
+/// # Returns
+/// `Ok(candidates)` sorted/deduplicated by case-sensitive (label, kind), with no snippets; empty when no safe role/site is available.
+///
+/// # Errors
+/// `Err` reports cooperative cancellation; partial local results are discarded.
+///
+/// # Algorithm
+/// Relocate each owner's argument. Expansion mode supplies only Variable; otherwise probe schema choices. Merge keywords, scoped variables, discovered module/package names, version-supported languages (plus project NONE), and role-filtered targets from local, supplemental and graph snapshots. Static/runtime visibility is not proven by these suggestions.
+///
+/// # Flow
+/// ```text
+///  [Owner argument site]
+///           |
+///      <ordinary expansion?>
+///       /                \
+///  [Variable role]    [Schema choices]
+///       |                |
+///       +-------+--------+
+///               v
+///        [Role-gated inventories]
+///          /         |          \
+///  [variables] [keywords/names] [targets]
+///          +---------+----------+
+///                    v
+///          [Case-sensitive label/kind map]
+///                    |
+///                    v
+///            [Plain-text candidates]
+/// ```
+///
+/// # Examples
+/// ```text
+/// let choices = names::collect(&inputs, offset, "MY_", true, &cancel)?;
+/// ```
 pub(super) fn collect(
     inputs: &[Input],
     offset: usize,

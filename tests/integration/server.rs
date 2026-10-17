@@ -1,4 +1,7 @@
 // AI-generated LSP integration tests.
+//! Analyzer Language Server Protocol (LSP) scenarios over framed JSON messages.
+//! [`session`] owns temporary projects and in-memory clients; feature modules assert
+//! observable replies and publications. Tests explicitly stop sessions and remove fixtures.
 #[path = "server/actions.rs"]
 mod actions;
 #[path = "server/automatic.rs"]

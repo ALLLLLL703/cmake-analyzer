@@ -1,3 +1,6 @@
+//! Merge versioned command schemas and source declarations into possible command names.
+//! Source shadows win; candidates do not establish bindings. No I/O occurs.
+
 use super::{
     arguments,
     context::identifier,
@@ -10,6 +13,18 @@ use crate::parser::semanticer::{
 use lspally::server::model::{Cancellation, ServerError, ServerResult};
 use std::collections::{BTreeMap, btree_map::Entry};
 
+/// Classify a command schema for display; no side effects.
+///
+/// # Arguments
+/// - `schema` `[in]`: Provenance and command spelling; build-command classification applies only to native schemas.
+///
+/// # Returns
+/// Keyword for control schemas, Module for selected native build commands, Function otherwise.
+///
+/// # Examples
+/// ```text
+/// let category = kind(schema);
+/// ```
 fn kind(schema: &CommandSchema) -> Kind {
     if matches!(schema.from, CommandSchemaFrom::KeyWord) {
         return Kind::Keyword;
@@ -20,6 +35,20 @@ fn kind(schema: &CommandSchema) -> Kind {
         Kind::Function
     }
 }
+/// Classify native build/module commands using spelling conventions and an explicit list.
+/// No side effects; this is presentation, not semantic command dispatch.
+///
+/// # Arguments
+/// - `name` `[in]`: Canonical native command spelling; matching is case-sensitive.
+///
+/// # Returns
+/// `true` for recognized build/module families and listed names; `false` for other names.
+///
+/// # Examples
+/// ```text
+/// assert!(build_command("target_sources"));
+/// assert!(!build_command("message"));
+/// ```
 fn build_command(name: &str) -> bool {
     name.starts_with("add_")
         || name.starts_with("target_")
@@ -69,12 +98,40 @@ fn build_command(name: &str) -> bool {
                 | "subdir_depends"
         )
 }
+/// Check command identifier validity and ASCII-case-insensitive prefix; no side effects.
+///
+/// # Arguments
+/// - `name` `[in]`: Full command spelling.
+/// - `prefix` `[in]`: Typed command prefix, possibly empty.
+///
+/// # Returns
+/// `true` for a valid identifier starting with the prefix ignoring ASCII case; `false` otherwise.
+///
+/// # Examples
+/// ```text
+/// assert!(matches("My_Command", "my_"));
+/// ```
 fn matches(name: &str, prefix: &str) -> bool {
     identifier(name)
         && name
             .get(..prefix.len())
             .is_some_and(|name| name.eq_ignore_ascii_case(prefix))
 }
+/// Insert a matching schema candidate under a lowercase key; no I/O.
+///
+/// # Arguments
+/// - `schema` `[in]`: Native or external schema supplying spelling, kind and required parameters.
+/// - `prefix` `[in]`: Case-insensitive command prefix.
+/// - `snippets` `[in]`: Whether to compute required parameter pieces.
+/// - `out` `[in,out]`: Map receiving/overwriting this lowercase command entry; nonmatching entries are unchanged.
+///
+/// # Returns
+/// `()`: a matching candidate was inserted, or the map was left unchanged.
+///
+/// # Examples
+/// ```text
+/// schema(command_schema, "mes", false, &mut out);
+/// ```
 fn schema(
     schema: &CommandSchema,
     prefix: &str,
@@ -94,6 +151,42 @@ fn schema(
         },
     );
 }
+/// Merge a source declaration, preferring it over native schemas; no I/O.
+///
+/// # Arguments
+/// - `function` `[in]`: Declaration with source definition and formal parameter names; builtin-only records are ignored.
+/// - `prefix` `[in]`: Case-insensitive command prefix.
+/// - `snippets` `[in]`: Whether formals become placeholders.
+/// - `out` `[in,out]`: Inserts/overwrites native entries; existing source entries retain spelling and lose parameters if signatures disagree.
+///
+/// # Returns
+/// `()`: the candidate map is updated only for matching source-defined functions/macros.
+///
+/// # Algorithm
+/// Ignore records without source definitions. Build formal placeholders only when
+/// snippets are enabled. A first source declaration replaces any native entry;
+/// a later source declaration keeps the original spelling, but clears parameters
+/// when its signature differs so insertion cannot pick an arbitrary overload.
+///
+/// # Flow
+/// ```text
+/// [Matching source declaration]
+///              |
+///        <existing source?>
+///          /           \
+///         no           yes
+///          |            |
+/// [Insert/replace] <same parameters?>
+///                    /         \
+///                  yes         no
+///                   |           |
+///                [Keep]   [Clear parameters]
+/// ```
+///
+/// # Examples
+/// ```text
+/// function(declaration, "my_", true, &mut out);
+/// ```
 fn function(
     function: &SemanticFunction,
     prefix: &str,
@@ -126,6 +219,46 @@ fn function(
         }
     }
 }
+/// Merge possible command spellings across owners without creating reference bindings.
+/// Read-only analysis; no I/O.
+///
+/// # Arguments
+/// - `inputs` `[in]`: Owner-local queried snapshots and optional reference indexes.
+/// - `prefix` `[in]`: Case-insensitive command-name prefix.
+/// - `snippets` `[in]`: Whether to collect safe required-call parameters.
+/// - `cancel` `[in]`: Stop signal checked per owner, command and declaration.
+///
+/// # Returns
+/// `Ok(candidates)` is sorted/deduplicated by lowercase spelling; source declarations win and conflicting source signatures use name-only insertion.
+///
+/// # Errors
+/// `Err` reports cooperative cancellation; no analysis is mutated.
+///
+/// # Algorithm
+/// Borrow effective version layers, falling back to the builtin minimum for unknown/unsupported versions. Overlay observed external schemas, then source declarations from owner indexes and local semantics so user shadows always win.
+///
+/// # Flow
+/// ```text
+///  [Owner snapshots]          [Versioned builtin layers]
+///          |                            |
+///          +-------------+--------------+
+///                        v
+///                [Lowercase-key map]
+///                        ^
+///                        |
+///              [Observed external schemas]
+///                        |
+///                        v
+///             [Source declarations override]
+///                        |
+///                        v
+///           [Sorted possible command candidates]
+/// ```
+///
+/// # Examples
+/// ```text
+/// let choices = candidates::collect(&inputs, "add_", false, &cancel)?;
+/// ```
 pub(super) fn collect(
     inputs: &[Input],
     prefix: &str,

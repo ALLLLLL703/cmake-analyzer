@@ -1,3 +1,6 @@
+//! Find argument payloads and ordinary variable-name replacements in retained text.
+//! Byte spans exclude wrappers; all lookups are read-only and perform no I/O.
+
 use super::{
     context,
     model::{ArgumentSite, Site},
@@ -10,6 +13,37 @@ use crate::{
     workspace::model::DocumentSnapshot,
 };
 
+/// Locate an argument slot, recovering an unfinished literal when parsing omitted it.
+/// Reads retained syntax only; no side effects.
+///
+/// # Arguments
+/// - `snapshot` `[in]`: Matching source, lexer and semantic command arenas.
+/// - `offset` `[in]`: Validated UTF-8 byte cursor.
+///
+/// # Returns
+/// `Some(slot)` identifies a parsed payload, recovered literal payload, or empty insertion gap; `None` rejects comments, outside calls and wrapper interiors.
+///
+/// # Algorithm
+/// Find the containing command after excluding comments and zero parenthesis depth. Prefer parsed payloads, reject delimiter interiors, then recover quote/bracket payload starts from lexer errors (skipping the bracket's first newline). Otherwise use the source-order insertion ordinal.
+///
+/// # Flow
+/// ```text
+///  [Cursor inside call?] --no--> [None]
+///            | yes
+///            v
+///  <parsed payload?> --yes--> [Borrow command + slot]
+///            | no
+///            v
+///  <unfinished literal?> --yes--> [Recover payload start]
+///            | no                         |
+///            v                            v
+///  [Empty gap + ordinal]            [Recovered slot]
+/// ```
+///
+/// # Examples
+/// ```text
+/// let slot = argument_context::argument(&snapshot, snapshot.text.len());
+/// ```
 pub(super) fn argument(snapshot: &DocumentSnapshot, offset: usize) -> Option<ArgumentSite<'_>> {
     if context::in_comment(snapshot, offset) || snapshot.lexed.parenthesis_depth(offset) == 0 {
         return None;
@@ -79,6 +113,21 @@ pub(super) fn argument(snapshot: &DocumentSnapshot, offset: usize) -> Option<Arg
         form: SemanticArgForm::Unquoted,
     })
 }
+/// Create a plain argument payload replacement while preserving its wrappers.
+/// No I/O or mutation.
+///
+/// # Arguments
+/// - `snapshot` `[in]`: Source and lexer corresponding to the argument.
+/// - `argument` `[in]`: Payload span and command slot from argument().
+/// - `offset` `[in]`: Validated byte cursor within that payload.
+///
+/// # Returns
+/// `Some(site)` replaces the entire payload with a case-preserving prefix; `None` rejects nested parentheses, invalid ranges, whitespace, escapes, lists or expansion syntax.
+///
+/// # Examples
+/// ```text
+/// let site = argument_context::bare(&snapshot, &slot, offset);
+/// ```
 pub(super) fn bare(
     snapshot: &DocumentSnapshot,
     argument: &ArgumentSite<'_>,
@@ -104,6 +153,47 @@ pub(super) fn bare(
     })
 }
 /// Innermost ordinary ${...} only; escaped, ENV/CACHE, and bracket-literal references are excluded.
+/// Find only the innermost ordinary `${...}` name; no side effects.
+/// Escaped starts, ENV/CACHE namespaces and bracket-literal references are excluded.
+///
+/// # Arguments
+/// - `snapshot` `[in]`: Source text matching the argument payload.
+/// - `argument` `[in]`: Argument form and payload bounds from argument().
+/// - `offset` `[in]`: Validated byte cursor inside the payload.
+///
+/// # Returns
+/// `Some(site)` replaces only the variable name, preserving `${`, `}` and surrounding text; `None` means no supported innermost name.
+///
+/// # Panics
+/// Invalid internal byte bounds can panic while indexing/slicing. The caller supplies a slot from the same snapshot and a validated cursor.
+///
+/// # Algorithm
+/// Scan from payload start to the cursor with a stack: ordinary openings store name starts, ENV/CACHE openings store an excluded marker, closing braces pop, and escapes skip a byte. Use only the stack top and stop the replacement at the next brace or payload end. Nested syntax remaining in the name rejects the site.
+///
+/// # Flow
+/// ```text
+///  [Payload bytes before cursor]
+///                 |
+///                 v
+///          <next byte sequence?>
+///           /       |        \
+///     [escape]  [opening]   [closing]
+///        |          |          |
+///     [skip]   [push start/   [pop]
+///        |      excluded]      |
+///        +----------+----------+
+///                   | repeat
+///                   v
+///         [Top ordinary name?] --no--> [None]
+///                   | yes
+///                   v
+///        [Name-only replacement span]
+/// ```
+///
+/// # Examples
+/// ```text
+/// let variable_site = argument_context::expansion(&snapshot, &slot, offset);
+/// ```
 pub(super) fn expansion(
     snapshot: &DocumentSnapshot,
     argument: &ArgumentSite<'_>,

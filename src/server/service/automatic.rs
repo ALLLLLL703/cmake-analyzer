@@ -1,3 +1,7 @@
+//! Invalidate observed runtime data and drain authorized save requests.
+//! Pending saves are keyed by entry path, so another save at that key replaces the
+//! previous request. Idle-loop scheduling rechecks open text, ownership and runtime
+//! settings, and uses the same action dispatcher as manual requests.
 // AI-authored opt-in save scheduling through the manual action entrypoints.
 use super::super::{
     action::model::{ActionKind, ActionRequest},
@@ -7,6 +11,34 @@ use crate::{config::RuntimeMode, runtime_cmake::model::ExecutionMode};
 use lspally::server::model::*;
 use std::{collections::BTreeSet, path::Path};
 impl Service {
+    /// Cancel accepted jobs and clear runtime layers for every profile related to one file.
+    /// Does not await jobs or change static graphs; unrelated entry keys remain active.
+    ///
+    /// # Arguments
+    /// - `self` `[in,out]`: Related running markers removed/cancelled, installed runtime cleared and path caches marked dirty.
+    /// - `path` `[in]`: Normalized changed/saved/closed file matched against root, bindings or members.
+    ///
+    /// # Returns
+    /// `()` after removing matching running markers and marking their projects' path caches dirty.
+    ///
+    /// # Algorithm
+    /// Collect related root keys first, remove/cancel their running markers, then clear runtime on all profiles sharing those keys. Join-set tasks are reaped later.
+    ///
+    /// # Flow
+    /// ```text
+    ///  [File path]
+    ///       |
+    ///  [Collect root keys] ---> [Remove + cancel running markers]
+    ///       |
+    ///  [All profiles at keys]
+    ///       |
+    ///  [Clear runtime + dirty paths]
+    /// ```
+    ///
+    /// # Examples
+    /// ```text
+    /// service.invalidate_runtime_file(&path);
+    /// ```
     pub(super) fn invalidate_runtime_file(&mut self, path: &Path) {
         let roots: BTreeSet<_> = self
             .projects
@@ -30,6 +62,37 @@ impl Service {
             }
         }
     }
+    /// Drain pending save requests at an idle point and dispatch eligible runtime actions.
+    /// Busy requests are reinserted; invalid/closed/profile-changed requests are dropped. Logs action failures to the client.
+    ///
+    /// # Arguments
+    /// - `self` `[in,out]`: Pending saves drained/requeued; accepted actions may populate jobs/running state and notify the client.
+    ///
+    /// # Returns
+    /// `()` after this scheduling pass; launch failures are logged rather than returned.
+    ///
+    /// # Algorithm
+    /// Take the coalesced map, recheck open file, owner settings, root and mode. Requeue when the root/job limit is busy. Otherwise choose run-script/configure and call the same run_action dispatcher as manual execution with a fresh cancellation signal.
+    ///
+    /// # Flow
+    /// ```text
+    ///  [Take pending saves]
+    ///          |
+    ///  <Open + eligible owner?> -- no --> [Drop request]
+    ///          | yes
+    ///  <Root/slots busy?> -- yes --> [Reinsert request]
+    ///          | no
+    ///  [Dispatch configure/script]
+    ///          |
+    ///  <Failure?> -- yes --> [Client warning log]
+    ///          | no
+    ///  [Next pending save]
+    /// ```
+    ///
+    /// # Examples
+    /// ```text
+    /// service.start_saved_runs().await;
+    /// ```
     pub(super) async fn start_saved_runs(&mut self) {
         for (root, saved) in std::mem::take(&mut self.saved_runs) {
             let Some(document) = self.documents.get(&saved.file) else {

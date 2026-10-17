@@ -1,8 +1,45 @@
 // AI-generated tests.
+
+//! Check lifecycle, ordering, cancellation, and protocol errors over an in-memory session.
+//! Fixtures exchange JSON frames and record events; no files or child processes.
+
 use super::session::Session;
 use lspally::server::ExitStatus;
 use serde_json::json;
 
+/// Initialize the duplex fixture, including its outgoing configuration callback.
+/// Exchanges in-memory frames and joins tasks; no files or subprocesses.
+///
+/// # Arguments
+/// None; the test constructs its own fixtures.
+///
+/// # Returns
+/// `()` after all checks pass.
+///
+/// # Panics
+/// If fixture setup or any documented assertion fails.
+///
+/// # Algorithm
+/// Query events and require exactly configured, then a graceful shutdown.
+///
+/// # Flow
+/// ```text
+/// [initialize / initialized] --> [server asks configuration]
+///            ^                            |
+///            |                            v
+///     [reply configured] <---------- [reader receives reply]
+///            |
+///            v
+/// [events query: configured] --> [graceful shutdown]
+/// ```
+///
+/// # Examples
+/// Local test-module context, outside any running Tokio runtime:
+/// the macro-generated test wrapper runs its own runtime and returns `()`.
+/// Prefer the test harness; ignored measurements require explicit selection.
+/// ```text
+/// configuration_callback_keeps_reader_live();
+/// ```
 #[tokio::test]
 async fn configuration_callback_keeps_reader_live() {
     let mut s = Session::new();
@@ -15,6 +52,43 @@ async fn configuration_callback_keeps_reader_live() {
     assert_eq!(s.finish().await.unwrap(), ExitStatus::Graceful);
 }
 
+/// Open Unicode text at version 1, send versions 2 and 3, then hover at character 4.
+/// Exchanges in-memory frames and appends fixture events; the file URI is never opened.
+///
+/// # Arguments
+/// None; the test constructs its own fixtures.
+///
+/// # Returns
+/// `()` after all checks pass.
+///
+/// # Panics
+/// If fixture setup or any documented assertion fails.
+///
+/// # Algorithm
+/// Require URI/version-qualified empty diagnostics, partial progress, a null hover, ordered events, and graceful shutdown.
+///
+/// # Flow
+/// ```text
+/// [open v1: Unicode text] --> [empty diagnostics v1]
+///            |                        |
+///            v                        v
+/// [changes v2 then v3]          [partial progress]
+///            |
+///            v
+/// [hover character 4] ------> [null result]
+///            |                    |
+///            +---------+----------+
+///                      v
+///             [require ordered events]
+/// ```
+///
+/// # Examples
+/// Local test-module context, outside any running Tokio runtime:
+/// the macro-generated test wrapper runs its own runtime and returns `()`.
+/// Prefer the test harness; ignored measurements require explicit selection.
+/// ```text
+/// updates_precede_queries_and_publish_versioned_empty_diagnostics();
+/// ```
 #[tokio::test]
 async fn updates_precede_queries_and_publish_versioned_empty_diagnostics() {
     let mut s = Session::new();
@@ -48,6 +122,45 @@ async fn updates_precede_queries_and_publish_versioned_empty_diagnostics() {
     assert_eq!(s.finish().await.unwrap(), ExitStatus::Graceful);
 }
 
+/// Send a pre-initialize request, malformed JSON, invalid hover parameters, an unknown method, and a Unicode echo.
+/// Uses in-memory transport/tasks only; no files or subprocesses.
+///
+/// # Arguments
+/// None; the test constructs its own fixtures.
+///
+/// # Returns
+/// `()` after all checks pass.
+///
+/// # Panics
+/// If fixture setup or any documented assertion fails.
+///
+/// # Algorithm
+/// Require codes -32002, -32700 with null ID, -32602, -32601, an exact echo, and graceful shutdown.
+///
+/// # Flow
+/// ```text
+/// [before initialize] --> [request: -32002]
+///          |
+///          +-- [raw malformed JSON] --> [-32700 / null ID]
+///          |
+///          v
+///    [initialize]
+///          |
+///          +-- [invalid hover] ------> [-32602]
+///          +-- [unknown method] -----> [-32601]
+///          +-- [Unicode echo] -------> [unchanged JSON]
+///          |
+///          v
+///  [graceful shutdown]
+/// ```
+///
+/// # Examples
+/// Local test-module context, outside any running Tokio runtime:
+/// the macro-generated test wrapper runs its own runtime and returns `()`.
+/// Prefer the test harness; ignored measurements require explicit selection.
+/// ```text
+/// invalid_packets_and_known_parameters_do_not_fall_back_to_extensions();
+/// ```
 #[tokio::test]
 async fn invalid_packets_and_known_parameters_do_not_fall_back_to_extensions() {
     let mut s = Session::new();
@@ -76,6 +189,44 @@ async fn invalid_packets_and_known_parameters_do_not_fall_back_to_extensions() {
     assert_eq!(s.finish().await.unwrap(), ExitStatus::Graceful);
 }
 
+/// Start custom/wait, cancel ID 2 twice, then send an echo with ID 3.
+/// Cancels a fixture handler and exchanges in-memory frames; no files or subprocesses.
+///
+/// # Arguments
+/// None; the test constructs its own fixtures.
+///
+/// # Returns
+/// `()` after all checks pass.
+///
+/// # Panics
+/// If fixture setup or any documented assertion fails.
+///
+/// # Algorithm
+/// Require one -32800 response for ID 2, the next response to be the echo, and graceful shutdown.
+///
+/// # Flow
+/// ```text
+/// [custom/wait ID 2] <-- [cancel ID 2]
+///          |
+///          v
+/// [one -32800 response]
+///          |
+///          +-- [cancel ID 2 again] --> [no extra response]
+///          |
+///          v
+/// [echo ID 3] ---------------> [next frame is echo]
+///          |
+///          v
+/// [graceful shutdown]
+/// ```
+///
+/// # Examples
+/// Local test-module context, outside any running Tokio runtime:
+/// the macro-generated test wrapper runs its own runtime and returns `()`.
+/// Prefer the test harness; ignored measurements require explicit selection.
+/// ```text
+/// cancelling_a_request_yields_one_response_and_preserves_connection();
+/// ```
 #[tokio::test]
 async fn cancelling_a_request_yields_one_response_and_preserves_connection() {
     let mut s = Session::new();
@@ -98,6 +249,42 @@ async fn cancelling_a_request_yields_one_response_and_preserves_connection() {
     assert_eq!(s.finish().await.unwrap(), ExitStatus::Graceful);
 }
 
+/// Use one session for exit before initialization and a second for EOF during custom/wait.
+/// Drops duplex client halves and joins server tasks; no files or subprocesses.
+///
+/// # Arguments
+/// None; the test constructs its own fixtures.
+///
+/// # Returns
+/// `()` after all checks pass.
+///
+/// # Panics
+/// If fixture setup or any documented assertion fails.
+///
+/// # Algorithm
+/// Require Abnormal for the first and Disconnected for the second.
+///
+/// # Flow
+/// ```text
+/// [session A]                    [session B]
+///      |                              |
+///      v                              v
+/// [early exit]              [initialize / custom/wait]
+///      |                              |
+///      v                              v
+/// [finish]                         [EOF / finish]
+///      |                              |
+///      v                              v
+/// [Abnormal]                    [Disconnected]
+/// ```
+///
+/// # Examples
+/// Local test-module context, outside any running Tokio runtime:
+/// the macro-generated test wrapper runs its own runtime and returns `()`.
+/// Prefer the test harness; ignored measurements require explicit selection.
+/// ```text
+/// exit_without_shutdown_is_abnormal_and_eof_retires_waiting_handler();
+/// ```
 #[tokio::test]
 async fn exit_without_shutdown_is_abnormal_and_eof_retires_waiting_handler() {
     let mut s = Session::new();

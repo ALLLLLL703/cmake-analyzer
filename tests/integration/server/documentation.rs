@@ -1,10 +1,30 @@
 // AI-generated builtin/source-documentation hover regressions.
+//! Native CMake help and source-comment hover documentation scenarios.
+//! Native help is optional; source bindings, comment edits, Markdown and byte limits
+//! are checked through [`super::hovers::hover`]. Tests remove their temporary projects.
 use super::{
     hovers::hover,
     session::{HEADER, Project, Session, uri},
 };
 use cmake_analyzer::server::ServerOptions;
 use serde_json::json;
+/// Run PATH cmake --help-command for a native-help comparison, without configuring a project.
+/// Captures stdout and stderr; unlike server inspection this helper has no timeout.
+///
+/// # Arguments
+/// - `command` `[in]`: command-name argument supplied after --help-command, not shell text.
+///
+/// # Returns
+/// Some(stdout) for a successful process; None if spawning/waiting fails or exit is
+/// unsuccessful.
+///
+/// # Panics
+/// Panics if successful stdout is not UTF-8. Process errors are returned as None, not Result.
+///
+/// # Examples
+/// ```text
+/// let expected = local_help("set").await;
+/// ```
 async fn local_help(command: &str) -> Option<String> {
     let output = tokio::process::Command::new("cmake")
         .args(["--help-command", command])
@@ -17,6 +37,43 @@ async fn local_help(command: &str) -> Option<String> {
         .then(|| String::from_utf8(output.stdout).unwrap())
 }
 #[tokio::test]
+/// Check builtin hover uses PATH CMake help independently of disabled project execution.
+/// Creates temporary files and an analyzer session; successful completion stops the session and
+/// removes fixtures.
+///
+/// # Arguments
+/// None.
+///
+/// # Returns
+/// `()` if every assertion passes; no output parameter.
+///
+/// # Panics
+/// Panics on any failed assertion or unwrapped fixture/transport/process failure.
+/// Cleanup is explicit on the success path; a panic may leave a fixture tree.
+///
+/// # Algorithm
+/// Disable runtime and set an invalid project executable, then hover set. Compare exactly with
+/// local cmake --help-command set when available; otherwise require a null hover.
+///
+/// # Flow
+/// ```text
+/// [Temporary sources + settings]      [Expected: native help or null]
+///              |                              |
+///              v                              |
+/// [LSP scenario messages]                 |
+///              |                              |
+///              +-------------+----------------+
+///                            v
+///                  [Compare assertions]
+///                            |
+///                            v
+///             [Finish session + remove tree]
+/// ```
+///
+/// # Examples
+/// ```text
+/// command_hover_uses_native_help_or_returns_none_without_it(); // #[tokio::test] supplies the runtime
+/// ```
 async fn command_hover_uses_native_help_or_returns_none_without_it() {
     let p = Project::new().await;
     tokio::fs::write(
@@ -43,6 +100,45 @@ async fn command_hover_uses_native_help_or_returns_none_without_it() {
     p.remove().await;
 }
 #[tokio::test]
+/// Check native command and exact/template variable help uses plaintext without generator
+/// metadata.
+/// Creates temporary files and an analyzer session; successful completion stops the session and
+/// removes fixtures.
+///
+/// # Arguments
+/// None.
+///
+/// # Returns
+/// `()` if every assertion passes; no output parameter.
+///
+/// # Panics
+/// Panics on any failed assertion or unwrapped fixture/transport/process failure.
+/// Cleanup is explicit on the success path; a panic may leave a fixture tree.
+///
+/// # Algorithm
+/// If native set help is unavailable, clean up and return. Otherwise hover project/set, a
+/// language template, a builtin directory, CMAKE_ARGV7, function ARGV0 and a project SOURCE_DIR
+/// variable. Require the expected help headings and no generator path/header leakage.
+///
+/// # Flow
+/// ```text
+/// [Temporary sources + settings]      [Expected: native headings + plaintext]
+///              |                              |
+///              v                              |
+/// [LSP scenario messages]                 |
+///              |                              |
+///              +-------------+----------------+
+///                            v
+///                  [Compare assertions]
+///                            |
+///                            v
+///             [Finish session + remove tree]
+/// ```
+///
+/// # Examples
+/// ```text
+/// builtin_commands_and_exact_multi_template_and_argument_variables_have_docs(); // #[tokio::test] supplies the runtime
+/// ```
 async fn builtin_commands_and_exact_multi_template_and_argument_variables_have_docs() {
     let p = Project::new().await;
     let text = "project(MyProject LANGUAGES CXX)\nset(CMAKE_CXX_FLAGS_DEBUG flags)\nmessage(\"${CMAKE_CURRENT_SOURCE_DIR}\" \"${CMAKE_CXX_FLAGS_DEBUG}\" \"${MyProject_SOURCE_DIR}\")\nmessage(\"${CMAKE_ARGV7}\")\nfunction(f P)\nmessage(\"${ARGV0}\")\nendfunction()\n";
@@ -84,6 +180,45 @@ async fn builtin_commands_and_exact_multi_template_and_argument_variables_have_d
     p.remove().await;
 }
 #[tokio::test]
+/// Check imported function, macro and variable comments follow bindings and refresh after
+/// comment edits.
+/// Creates temporary files and an analyzer session; successful completion stops the session and
+/// removes fixtures.
+///
+/// # Arguments
+/// None.
+///
+/// # Returns
+/// `()` if every assertion passes; no output parameter.
+///
+/// # Panics
+/// Panics on any failed assertion or unwrapped fixture/transport/process failure.
+/// Cleanup is explicit on the success path; a panic may leave a fixture tree.
+///
+/// # Algorithm
+/// Include a module that supersedes outdated local variable documentation. Hover each imported
+/// declaration use, exclude the outdated marker, edit only the function comment (including an
+/// emoji), and require the updated text with the old comment absent.
+///
+/// # Flow
+/// ```text
+/// [Temporary sources + settings]      [Expected: bound and refreshed comments]
+///              |                              |
+///              v                              |
+/// [LSP scenario messages]                 |
+///              |                              |
+///              +-------------+----------------+
+///                            v
+///                  [Compare assertions]
+///                            |
+///                            v
+///             [Finish session + remove tree]
+/// ```
+///
+/// # Examples
+/// ```text
+/// imported_function_macro_and_set_docs_follow_bindings_and_comment_only_edits(); // #[tokio::test] supplies the runtime
+/// ```
 async fn imported_function_macro_and_set_docs_follow_bindings_and_comment_only_edits() {
     let p = Project::new().await;
     let shared_text = "# External function documentation.\nfunction(external_fn)\nendfunction()\n#[=[\nExternal variable documentation.\n]=]\nset(EXTERNAL one)\n# External macro documentation.\nmacro(external_macro)\nendmacro()\n";
@@ -132,6 +267,45 @@ async fn imported_function_macro_and_set_docs_follow_bindings_and_comment_only_e
     p.remove().await;
 }
 #[tokio::test]
+/// Check detached/trailing comments stay unattached and Markdown hover respects a UTF-8 byte
+/// budget.
+/// Creates temporary files and an analyzer session; successful completion stops the session and
+/// removes fixtures.
+///
+/// # Arguments
+/// None.
+///
+/// # Returns
+/// `()` if every assertion passes; no output parameter.
+///
+/// # Panics
+/// Panics on any failed assertion or unwrapped fixture/transport/process failure.
+/// Cleanup is explicit on the success path; a panic may leave a fixture tree.
+///
+/// # Algorithm
+/// Configure max_view_bytes=128 and Markdown preference. Hover functions near blank/trailing
+/// comments and one with a long emoji comment; exclude detached markers, require Markdown and
+/// at most 128 bytes, and retain an emoji for the documented function.
+///
+/// # Flow
+/// ```text
+/// [Temporary sources + settings]      [Expected: Markdown <=128 bytes]
+///              |                              |
+///              v                              |
+/// [LSP scenario messages]                 |
+///              |                              |
+///              +-------------+----------------+
+///                            v
+///                  [Compare assertions]
+///                            |
+///                            v
+///             [Finish session + remove tree]
+/// ```
+///
+/// # Examples
+/// ```text
+/// blank_lines_and_trailing_comments_do_not_attach_and_markdown_respects_byte_limit(); // #[tokio::test] supplies the runtime
+/// ```
 async fn blank_lines_and_trailing_comments_do_not_attach_and_markdown_respects_byte_limit() {
     let p = Project::new().await;
     tokio::fs::write(

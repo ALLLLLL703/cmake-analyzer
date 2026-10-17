@@ -1,11 +1,67 @@
+//! Shared file/library/path/program search signatures.
+//! Trees expose output-variable roles and explicit search options, not search
+//! results; construction never probes a path, reads an environment variable,
+//! invokes a validator or executes CMake. For `find_library(lib NAMES z PATHS
+//! hint)`, `lib` is an output name and `hint` is a generic path, not an input
+//! that must exist. The cache caller filters these overrides by native registration.
+
 use super::super::*;
 
+/// Collect the four native find-file/library/path/program overrides.
+/// Allocates grammar data only; no external side effects.
+///
+/// # Arguments
+/// - `v` `[in]`: requested CMake major/minor controlling syntax additions.
+///
+/// # Returns
+/// Four owned (command name, roots) pairs using the shared command-sensitive builder.
+///
+/// # Examples
+/// ```text
+/// let overrides = schemas((3, 25));
+/// assert_eq!(overrides.len(), 4);
+/// ```
 pub(super) fn schemas(v: (u32, u32)) -> Vec<(&'static str, Vec<ArgSchemaKind>)> {
     ["find_file", "find_library", "find_path", "find_program"]
         .into_iter()
         .map(|name| (name, args(v, name)))
         .collect()
 }
+/// Describe one find command with search hints, literal flags and a result variable.
+/// Allocates grammar data only; no external side effects.
+///
+/// # Arguments
+/// - `v` `[in]`: requested CMake major/minor controlling syntax additions.
+/// - `command` `[in]`: native command spelling; only find_library/find_program enable NAMES_PER_DIR.
+///
+/// # Returns
+/// Out followed by repeated option groups, including an open text branch for shorthand names/paths.
+///
+/// # Algorithm
+/// Create generic path or ENV/name hint lists; add common flags and versioned
+/// required/cache/registry/validator options. Keep NAMES_PER_DIR command-specific and an open
+/// text alternative for legacy shorthand.
+///
+/// # Flow
+/// ```text
+///                               [args inputs]
+///                                     |
+///                  +------------------+------------------+
+///                  v                                     v
+/// +--------------------------------+    +--------------------------------+
+/// |  NAMES / HINTS / PATHS groups  |    |  Flags / versioned controls /  |
+/// |                                |    |           shorthand            |
+/// +----------------+---------------+    +----------------+---------------+
+///                  |                                     |
+///                  +------------------+------------------+
+///                                     v
+///                              [Owned grammar]
+/// ```
+///
+/// # Examples
+/// ```text
+/// let args = args((3, 25), "find_library"); // VALIDATOR is a Command slot, not invoked.
+/// ```
 fn args(v: (u32, u32), command: &str) -> Vec<ArgSchemaKind> {
     let paths = many(choice(vec![vec![k("ENV"), Text], vec![Path]]));
     let mut opts = vec![

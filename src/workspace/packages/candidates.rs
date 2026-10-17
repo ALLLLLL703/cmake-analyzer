@@ -1,3 +1,6 @@
+//! Search exact config directories before shallow conventional package-prefix layouts.
+//! Filesystem probes accept open overlays, remember missing candidates and avoid recursive scans.
+// Contains AI-generated documentation additions.
 use super::model::Request;
 use crate::workspace::{Workspace, documents::absolute};
 use std::{
@@ -5,6 +8,21 @@ use std::{
     path::{Path, PathBuf},
 };
 
+/// List immediate directories whose names begin with a package name, ignoring ASCII case. Reads one
+/// directory; no recursion or mutation.
+///
+/// # Arguments
+/// - `base` `[in]`: Directory to enumerate.
+/// - `name` `[in]`: Required filename prefix.
+///
+/// # Returns
+/// Sorted child paths; missing/unreadable directories or iteration failures yield the successfully
+/// collected prefix of results.
+///
+/// # Examples
+/// ```text
+/// let versions = children(Path::new("/usr/lib/cmake"), "Foo").await;
+/// ```
 async fn children(base: &Path, name: &str) -> Vec<PathBuf> {
     let mut result = Vec::new();
     let Ok(mut entries) = tokio::fs::read_dir(base).await else {
@@ -24,6 +42,39 @@ async fn children(base: &Path, name: &str) -> Vec<PathBuf> {
     result.sort();
     result
 }
+/// Enumerate conventional package directories and one lib architecture level. Reads shallow
+/// directories only; no arbitrary recursive walk.
+///
+/// # Arguments
+/// - `root` `[in]`: Package installation prefix.
+/// - `names` `[in]`: Accepted package names used for case-insensitive prefix matching.
+///
+/// # Returns
+/// Ordered conventional candidates, including missing exact package directories and sorted
+/// discovered variants.
+///
+/// # Algorithm
+/// Probe root, lib/cmake, lib64/cmake, share/cmake and share; for each name include discovered
+/// prefixes and an exact name, plus cmake/CMake children. Enumerate immediate lib architecture
+/// directories and their cmake package children.
+///
+/// # Flow
+/// ```text
+/// [prefix]
+///     |
+///  [fixed root/lib/share bases]      [lib architectures]
+///     |                                  |
+///  [name-prefix children + exact]   [cmake/name children]
+///     |                                  |
+///  [package/cmake/CMake] ----------------+
+///                       |
+///               [ordered candidates]
+/// ```
+///
+/// # Examples
+/// ```text
+/// let dirs = directories(Path::new("/usr"), &["Foo".into()]).await;
+/// ```
 async fn directories(root: &Path, names: &[String]) -> Vec<PathBuf> {
     let mut result = Vec::new();
     for name in names {
@@ -62,6 +113,24 @@ async fn directories(root: &Path, names: &[String]) -> Vec<PathBuf> {
     }
     result
 }
+/// Probe suffix/filename combinations at one config directory. Reads file metadata and overlay
+/// state, never contents.
+///
+/// # Arguments
+/// - `workspace` `[in]`: Overlay identities accepted as files.
+/// - `base` `[in]`: Candidate config directory.
+/// - `request` `[in]`: Suffixes and filenames in request order.
+/// - `checked` `[in,out]`: Appends normalized paths to the deduplication set.
+/// - `candidates` `[in,out]` : Appends each newly checked path, including missing paths; does not
+///   clear existing candidates.
+///
+/// # Returns
+/// Some first overlay/existing file; None if all new candidates fail.
+///
+/// # Examples
+/// ```text
+/// let entry = find_at(workspace, base, request, &mut checked, &mut candidates).await;
+/// ```
 async fn find_at(
     workspace: &Workspace,
     base: &Path,
@@ -92,6 +161,45 @@ async fn find_at(
     }
     None
 }
+/// Find the first static config entrypoint, trying exact roots before conventional layouts. Reads
+/// shallow directories and metadata; no execution.
+///
+/// # Arguments
+/// - `workspace` `[in]`: Overlay identities and immutable lookup state.
+/// - `roots` `[in]`: Ordered owned roots; duplicate normalized roots are skipped.
+/// - `source` `[in]`: Source directory used to resolve relative roots.
+/// - `request` `[in]`: Package names, suffixes and filenames.
+/// - `candidates` `[in,out]` : Appends newly checked paths, including missing higher-priority
+///   choices.
+///
+/// # Returns
+/// Some first file/overlay found; None after exhausting supported candidates. Unreadable
+/// directories are skipped.
+///
+/// # Algorithm
+/// Normalize/deduplicate roots. Try root, root/cmake and root/CMake without enumerating
+/// installations first. Only then enumerate fixed conventional package layouts; suppress duplicate
+/// file probes across the search.
+///
+/// # Flow
+/// ```text
+/// [ordered roots]
+///        |
+///  [normalize/deduplicate]
+///        |
+///  [exact root/cmake/CMake] ---> <found?> -- yes --> [return]
+///        | no
+///  [conventional layouts]
+///        |
+///  [suffix/filename probes] ---> <found?> -- no --> [next root]
+///                                  | yes
+///                               [return]
+/// ```
+///
+/// # Examples
+/// ```text
+/// let config = find(workspace, roots, source, request, &mut candidates).await;
+/// ```
 pub(super) async fn find(
     workspace: &Workspace,
     roots: Vec<PathBuf>,

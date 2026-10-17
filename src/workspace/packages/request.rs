@@ -1,7 +1,45 @@
+//! Parse the supported literal subset of find_package operands without I/O or execution.
+//! Unsupported root/registry policies and unresolved operands decline static lookup.
+// Contains AI-generated documentation additions.
 use super::model::Request;
 use crate::parser::build_struct::model::Dependency;
 use std::path::{Path, PathBuf};
 
+/// Parse the supported literal find_package search subset without I/O or mutation. Does not verify
+/// versions, components or toolchain semantics.
+///
+/// # Arguments
+/// - `dependency` `[in]` : Package request and remaining operands; the caller provides the package
+///   name.
+///
+/// # Returns
+/// Some search plan with generated or explicit config filenames; None for dynamic arguments,
+/// unsupported registry/root policies, conflicting modes, empty names or invalid CONFIGS paths.
+///
+/// # Algorithm
+/// Track NAMES/CONFIGS/HINTS/PATHS/PATH_SUFFIXES sections and default-path switches.
+/// Search-specific options force config mode. Decline unsupported root/registry policy rather than
+/// guessing. Default filenames use NameConfig.cmake and lowercase-name-config.cmake.
+///
+/// # Flow
+/// ```text
+/// [literal arguments]
+///         |
+///  <supported flags?> -- no --> [None]
+///         | yes
+///  [collect sections/modes]
+///         |
+///  <consistent names/configs?>
+///       /                \
+///     None       [generate filenames]
+///                        |
+///                    [Some plan]
+/// ```
+///
+/// # Examples
+/// ```text
+/// let request = parse(dependency);
+/// ```
 pub(super) fn parse(dependency: &Dependency) -> Option<Request> {
     let mut names = vec![dependency.path.text.clone()];
     let mut hints = Vec::new();

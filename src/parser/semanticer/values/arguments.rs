@@ -1,9 +1,25 @@
+//! Resolve argument text only from agreeing read-position observations. No I/O.
+// Contains AI-generated documentation additions.
 use crate::parser::semanticer::model::{
     ArgumentReference, PossibleValue, ReferenceIndex, ReferenceKind, ReferenceLocation,
     SemanticCommandRepresent, SemanticedBuffer, ValueBindings,
 };
 
-/// Resolve only values attached to this read position; conflicting visits stay unknown.
+/// Infer one argument using only text facts attached to its read positions. Conflicting visits stay unknown; no mutation or I/O.
+///
+/// # Arguments
+/// - `buffer` `[in]`: local observations used when no workspace index is supplied.
+/// - `index` `[in]`: optional aggregate reference observations; when present, no local fallback occurs.
+/// - `command` `[in]`: source argument forms and extracted reads.
+/// - `argument` `[in]`: zero-based source slot.
+///
+/// # Returns
+/// Some expanded Static text if every needed read agrees and expansion is supported; None for invalid slot, missing/conflicting facts or unsupported syntax.
+///
+/// # Examples
+/// ```text
+/// let value = argument_value(&buffer, Some(&index), &buffer.commands[0], 1);
+/// ```
 pub(crate) fn argument_value(
     buffer: &SemanticedBuffer,
     index: Option<&ReferenceIndex>,
@@ -21,6 +37,19 @@ pub(crate) fn argument_value(
     }
     values.expand(arg, None)
 }
+/// Clone a fact only when every supplied observation agrees, including its origin tag. Consumes the iterator without other effects.
+///
+/// # Arguments
+/// - `values` `[in]`: iterator of optional borrowed facts.
+///
+/// # Returns
+/// Some cloned first fact if the iterator is nonempty and all entries equal that known fact; None for empty, unknown or conflicting input.
+///
+/// # Examples
+/// ```text
+/// let fact = PossibleValue::Static("yes".into());
+/// assert_eq!(unanimous([Some(&fact), Some(&fact)].into_iter()), Some(fact));
+/// ```
 fn unanimous<'a>(
     mut values: impl Iterator<Item = Option<&'a PossibleValue>>,
 ) -> Option<PossibleValue> {
@@ -29,6 +58,40 @@ fn unanimous<'a>(
         .all(|value| value == Some(first))
         .then(|| first.clone())
 }
+/// Resolve one exact read position from workspace or local observations, requiring agreement. No side effects.
+///
+/// # Arguments
+/// - `buffer` `[in]`: local value observations.
+/// - `index` `[in]`: aggregate index, used exclusively when Some.
+/// - `reference` `[in]`: name and exact file/command/span read location.
+///
+/// # Returns
+/// Known cloned fact only when matching observations are present and unanimous; None otherwise.
+///
+/// # Algorithm
+/// Choose exactly one observation source: the workspace index when supplied, otherwise local observations. Match the case-sensitive name and exact file/command/span/read location, then require all facts to agree.
+///
+/// # Flow
+/// ```text
+///  [requested read position]
+///              |
+///        <workspace index?>
+///           /          \
+///     [aggregate]    [local values]
+///           |          |
+///           +-----+----+
+///                 v
+///      [exact location/name filter]
+///                 |
+///         <known and unanimous?>
+///            /            \
+///       [cloned fact]   [unknown]
+/// ```
+///
+/// # Examples
+/// ```text
+/// let value = reference_value(&buffer, None, &command.variable_references[0]);
+/// ```
 fn reference_value(
     buffer: &SemanticedBuffer,
     index: Option<&ReferenceIndex>,

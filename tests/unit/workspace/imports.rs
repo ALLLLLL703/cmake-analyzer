@@ -1,9 +1,52 @@
 // AI-generated tests.
+
+//! Check static include/package lookup and independent external indexing policies.
+//! Uses temporary version-pinned source files through [`super::Project`]; never runs project commands.
+
 use super::Project;
 use cmake_analyzer::{
     parser::build_struct::model::DependencyKind,
     workspace::{Workspace, model::ExternalIndex},
 };
+/// Import External and its nested module from an app under Full, Functions, and None policies.
+/// Writes/reads/removes temporary app/module files; no project execution.
+///
+/// # Arguments
+/// None; the test constructs its own fixtures.
+///
+/// # Returns
+/// `()` after all checks pass.
+///
+/// # Panics
+/// If fixture setup or any documented assertion fails.
+///
+/// # Algorithm
+/// Require resolved include edges without diagnostics; functions survive Full/Functions, while variables, writes, and targets survive Full only.
+///
+/// # Flow
+/// ```text
+/// [app] --> [External module] --> [Nested module]
+///    |
+///    v
+/// < indexing mode >
+///    |         |          |
+///  Full     Functions    None
+///    |         |          |
+///    v         v          v
+/// [all facts] [functions] [edge only]
+///    |         |          |
+///    +---------+----------+
+///              v
+///  [require expected visible facts]
+/// ```
+///
+/// # Examples
+/// Local test-module context, outside any running Tokio runtime:
+/// the macro-generated test wrapper runs its own runtime and returns `()`.
+/// Prefer the test harness; ignored measurements require explicit selection.
+/// ```text
+/// external_modes_control_functions_variables_targets_and_nested_imports();
+/// ```
 #[tokio::test]
 async fn external_modes_control_functions_variables_targets_and_nested_imports() {
     let p = Project::new().await;
@@ -60,6 +103,47 @@ async fn external_modes_control_functions_variables_targets_and_nested_imports()
         );
     }
 }
+/// Create FindDemo, DemoConfig, Special, and RealConfig fixtures and exercise nine package lookup forms.
+/// Writes/reads/removes temporary package layouts and performs static path lookup; no project execution.
+///
+/// # Arguments
+/// None; the test constructs its own fixtures.
+///
+/// # Returns
+/// `()` after all checks pass.
+///
+/// # Panics
+/// If fixture setup or any documented assertion fails.
+///
+/// # Algorithm
+/// Require expected package filenames and visits without diagnostics; separately require functions-only versus disabled package indexing to omit targets and control function visibility.
+///
+/// # Flow
+/// ```text
+/// [FindDemo / DemoConfig / custom configs]
+///                     |
+///                     v
+///           [nine static lookup forms] <--+
+///                     |                  | next form
+///                     v                  |
+///           [expected file / visit] -----+
+///                     |
+///                     v
+///          < package indexing policy >
+///              /                  \
+///         Functions               None
+///             |                     |
+///             v                     v
+///  [functions, no targets]    [no functions/targets]
+/// ```
+///
+/// # Examples
+/// Local test-module context, outside any running Tokio runtime:
+/// the macro-generated test wrapper runs its own runtime and returns `()`.
+/// Prefer the test harness; ignored measurements require explicit selection.
+/// ```text
+/// find_package_respects_modes_prefixes_hints_names_and_independent_external_policy();
+/// ```
 #[tokio::test]
 async fn find_package_respects_modes_prefixes_hints_names_and_independent_external_policy() {
     let p = Project::new().await;
@@ -160,6 +244,40 @@ async fn find_package_respects_modes_prefixes_hints_names_and_independent_extern
         );
     }
 }
+/// Disable module lookup for a named include, literal relative include, and CONFIG package lookup.
+/// Writes/reads/removes temporary files and changes lookup settings; no project execution.
+///
+/// # Arguments
+/// None; the test constructs its own fixtures.
+///
+/// # Returns
+/// `()` after all checks pass.
+///
+/// # Panics
+/// If fixture setup or any documented assertion fails.
+///
+/// # Algorithm
+/// Require only the literal file include to resolve despite configured module/prefix paths.
+///
+/// # Flow
+/// ```text
+/// [disable module lookup]
+///            |
+///       +----+---------------+----------------+
+///       v                    v                v
+/// [named include]    [literal .cmake]    [CONFIG package]
+///       |                    |                |
+///       v                    v                v
+///  [unresolved]          [resolved]       [unresolved]
+/// ```
+///
+/// # Examples
+/// Local test-module context, outside any running Tokio runtime:
+/// the macro-generated test wrapper runs its own runtime and returns `()`.
+/// Prefer the test harness; ignored measurements require explicit selection.
+/// ```text
+/// disabled_module_lookup_keeps_literal_file_dependencies();
+/// ```
 #[tokio::test]
 async fn disabled_module_lookup_keeps_literal_file_dependencies() {
     let p = Project::new().await;
@@ -181,6 +299,44 @@ async fn disabled_module_lookup_keeps_literal_file_dependencies() {
     assert!(g.edges[1].resolved.is_some());
     assert!(g.edges[2].resolved.is_none());
 }
+/// Analyze absent optional CONFIG and REQUIRED MODULE package requests.
+/// Writes/reads/removes a temporary root; static lookup only, no project execution.
+///
+/// # Arguments
+/// None; the test constructs its own fixtures.
+///
+/// # Returns
+/// `()` after all checks pass.
+///
+/// # Panics
+/// If fixture setup or any documented assertion fails.
+///
+/// # Algorithm
+/// Require two edges but exactly one diagnostic naming AlsoAbsent.
+///
+/// # Flow
+/// ```text
+/// [two absent package requests]
+///             |
+///        +----+-------------------+
+///        v                        v
+/// [optional CONFIG]       [REQUIRED MODULE]
+///        |                        |
+///        v                        v
+/// [edge, no diagnostic]   [edge + AlsoAbsent diagnostic]
+///        |                        |
+///        +------------+-----------+
+///                     v
+///         [2 edges / 1 diagnostic]
+/// ```
+///
+/// # Examples
+/// Local test-module context, outside any running Tokio runtime:
+/// the macro-generated test wrapper runs its own runtime and returns `()`.
+/// Prefer the test harness; ignored measurements require explicit selection.
+/// ```text
+/// optional_missing_packages_and_required_missing_packages_are_distinct();
+/// ```
 #[tokio::test]
 async fn optional_missing_packages_and_required_missing_packages_are_distinct() {
     let p = Project::new().await;

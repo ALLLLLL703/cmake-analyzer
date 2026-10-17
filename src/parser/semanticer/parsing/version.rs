@@ -1,3 +1,7 @@
+//! Parse declared CMake versions or query the installed executable as a fallback.
+//!
+//! Only `cmake --version` may run; project configure and scripts are never invoked here.
+// Contains AI-generated documentation additions.
 // AI-generated implementation.
 use crate::parser::{
     nparser::model::NParsedNode,
@@ -5,6 +9,24 @@ use crate::parser::{
 };
 
 impl CMakeVersion {
+    /// Parse two or three unsigned numeric version components. No side effects.
+    ///
+    /// # Arguments
+    /// - `text` `[in]`: dotted major.minor or major.minor.patch spelling.
+    ///
+    /// # Returns
+    /// Ok(version) with patch zero when omitted; Err(message) for invalid syntax.
+    ///
+    /// # Errors
+    /// Missing, nonnumeric, overflowing or extra components return an invalid-version message.
+    ///
+    /// # Examples
+    /// ```
+    /// use cmake_analyzer::parser::semanticer::model::*;
+    /// let version = CMakeVersion::parse("3.31").unwrap();
+    /// assert_eq!((version.major, version.minor, version.patch), (3, 31, 0));
+    /// assert!(CMakeVersion::parse("3").is_err());
+    /// ```
     pub fn parse(text: &str) -> Result<Self, String> {
         let mut parts = text.split('.');
         let major = parts
@@ -33,6 +55,48 @@ impl CMakeVersion {
 }
 
 impl Semanticer {
+    /// Read the first declared VERSION pair, or asynchronously query `cmake --version` on PATH. Never runs configure, project commands or scripts.
+    ///
+    /// # Arguments
+    /// - `self` `[in]`: analyzer whose parser nodes are scanned without mutation.
+    /// - `source` `[in]`: source matching parser-node spans.
+    ///
+    /// # Returns
+    /// Ok(minimum version) for a valid declaration/range, otherwise the detected host version; Err(message) on invalid declaration or host-query failure.
+    ///
+    /// # Errors
+    /// Invalid/reversed declared ranges, mismatched version spans, process launch/nonzero status, non-UTF-8 output or an absent/unparseable version line return messages.
+    ///
+    /// # Algorithm
+    /// Scan command nodes in order for cmake_minimum_required and its VERSION pair. Validate both ends of a range, returning the minimum. Only if no pair is found, run a kill-on-drop version query and parse its stdout.
+    ///
+    /// # Flow
+    /// ```text
+    ///  [parser nodes]           [source spans]
+    ///        |                       |
+    ///        +----------+------------+
+    ///                   v
+    ///           <VERSION pair?>
+    ///              /        \
+    ///            yes        no
+    ///             |          |
+    ///       [parse/range] [cmake --version]
+    ///             |          |
+    ///             +----+-----+
+    ///                  v
+    ///         [version or error]
+    /// ```
+    ///
+    /// # Examples
+    /// ```no_run
+    /// use cmake_analyzer::parser::semanticer::model::*;
+    /// use cmake_analyzer::parser::nparser::model::NParsedBuffer;
+    /// # async fn example() -> Result<(), String> {
+    /// let analyzer = Semanticer::new(NParsedBuffer::default(), Default::default());
+    /// let version = analyzer.scan_version("").await?; // Requires cmake on PATH.
+    /// # Ok(())
+    /// # }
+    /// ```
     pub async fn scan_version(&self, source: &str) -> Result<CMakeVersion, String> {
         for node in &self.buffer.nodes {
             let NParsedNode::Command(command) = &node.content else {

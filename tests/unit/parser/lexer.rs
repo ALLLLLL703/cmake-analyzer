@@ -1,3 +1,7 @@
+//! Lexer test modules for construction, argument delimiters, comments, errors, token positions and
+//! borrowed payload text. Tests scan in-memory strings only.
+
+// Contains AI-generated documentation edits.
 // Contains AI-generated test scaffolding edits.
 
 #[cfg(test)]

@@ -1,3 +1,7 @@
+//! Find static Find-module or config entrypoints with caller values and configured prefixes.
+//! Searches files and environment hints, not package versions/components, providers, registry,
+//! CPS metadata or toolchain policy. Never executes package code.
+// Contains AI-generated documentation additions.
 mod candidates;
 mod model;
 mod request;
@@ -5,6 +9,20 @@ use super::{Workspace, model::DirectoryContext};
 use crate::parser::{build_struct::model::Dependency, semanticer::model::ValueBindings};
 use std::path::{Path, PathBuf};
 
+/// Split one known semicolon-separated search hint into nonempty paths. No filesystem access or
+/// mutation.
+///
+/// # Arguments
+/// - `values` `[in]`: Optional conservative bindings.
+/// - `name` `[in]`: Case-sensitive variable name to query.
+///
+/// # Returns
+/// Paths in value order, or empty for absent/unknown bindings.
+///
+/// # Examples
+/// ```text
+/// let prefixes = value_paths(Some(values), "CMAKE_PREFIX_PATH");
+/// ```
 fn value_paths(values: Option<&ValueBindings>, name: &str) -> Vec<PathBuf> {
     values
         .and_then(|values| values.get(name, None))
@@ -18,6 +36,49 @@ fn value_paths(values: Option<&ValueBindings>, name: &str) -> Vec<PathBuf> {
         })
         .unwrap_or_default()
 }
+/// Assemble ordered config roots from known values, request flags and environment. Reads process
+/// environment but performs no file I/O or mutation.
+///
+/// # Arguments
+/// - `dependency` `[in]`: Package name used for NAME_DIR/NAME_ROOT hints.
+/// - `request` `[in]`: Parsed flags and explicit hints.
+/// - `values` `[in]`: Optional known package/prefix bindings.
+/// - `configured` `[in]` : Configured default prefixes, used only when system/default paths are
+///   enabled.
+///
+/// # Returns
+/// Roots ordered as package DIR, explicit hints, then enabled known/environment/default families.
+/// Relative paths are retained for later source-context joining.
+///
+/// # Algorithm
+/// Start with the known package DIR and explicit hints regardless of default-path flags. If
+/// defaults remain enabled, append enabled known ROOT/prefix families, permitted environment hints
+/// and configured system prefixes. Preserve order and duplicates for later candidate-level
+/// deduplication.
+///
+/// # Flow
+/// ```text
+/// [known Package_DIR]       [explicit hints]
+///           |                      |
+///           +----> [ordered roots]-+
+///                          |
+///                  <defaults enabled?>
+///                    /             \
+///                  no              yes
+///                   |     [known ROOT/prefix families]
+///                   |              |
+///                   |     [enabled environment hints]
+///                   |              |
+///                   |     [configured system prefixes]
+///                   +--------------+
+///                          |
+///                    [return roots]
+/// ```
+///
+/// # Examples
+/// ```text
+/// let search_roots = roots(dependency, request, Some(values), &configured);
+/// ```
 fn roots(
     dependency: &Dependency,
     request: &model::Request,
@@ -56,6 +117,44 @@ fn roots(
     roots
 }
 impl Workspace {
+    /// Resolve a supported Find-module/config entrypoint without evaluating package code. Probes
+    /// shallow directories, metadata, overlays and permitted environment hints.
+    ///
+    /// # Arguments
+    /// - `self` `[in]`: Workspace search configuration and overlay identities; unchanged.
+    /// - `dependency` `[in]` : Request with a literal first operand; dynamic requests decline
+    ///   lookup.
+    /// - `caller` `[in]`: List-file identity used to select builtin-module precedence.
+    /// - `directory` `[in]`: Current source directory and optional binary context.
+    /// - `values` `[in]`: Known package hints and CMAKE_FIND_PACKAGE_PREFER_CONFIG preference.
+    ///
+    /// # Returns
+    /// (chosen entrypoint, checked candidates), or (None, empty) for unsupported operands;
+    /// unresolved supported search retains checked candidates.
+    ///
+    /// # Algorithm
+    /// Parse literal flags. Unless config is preferred, try FindName.cmake first when allowed.
+    /// Search enabled config roots exactly, then conventional prefix layouts. If config is
+    /// preferred, allowed module fallback runs last.
+    /// Version/component/toolchain/provider/registry/CPS evaluation is deliberately absent.
+    ///
+    /// # Flow
+    /// ```text
+    /// [parse request] ---> <supported?> -- no --> [none]
+    ///        | yes
+    ///  <prefer config?>
+    ///     /           \
+    ///  [Find module] [config roots]
+    ///     | miss       | miss
+    ///  [config roots] [Find module]
+    ///     \           /
+    ///       [first match + checked paths]
+    /// ```
+    ///
+    /// # Examples
+    /// ```text
+    /// let (entry, checked) = workspace.resolve_package(dependency, caller, directory, Some(values)).await;
+    /// ```
     pub(super) async fn resolve_package(
         &self,
         dependency: &Dependency,

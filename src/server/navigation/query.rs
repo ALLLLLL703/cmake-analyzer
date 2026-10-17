@@ -1,3 +1,6 @@
+//! Capture each owner's index with its own file-ID map before joined worker conversion.
+//! Dependency-path definition lookup may read metadata; symbol lookup retains immutable snapshots.
+
 use super::{
     dependencies, locations,
     model::{Input, Query},
@@ -9,6 +12,48 @@ use crate::{
 use lspally::server::model::*;
 use std::{path::Path, sync::Arc};
 impl Service {
+    /// Capture owner-qualified bindings and join navigation conversion after the service barrier.
+    /// Dependency definition lookup may read metadata/search paths; symbol conversion is read-only.
+    ///
+    /// # Arguments
+    /// - `self` `[in]`: Service with flushed workspaces, open-document URIs and negotiated encoding.
+    /// - `document` `[in]`: Local queried document URI.
+    /// - `position` `[in]`: Cursor in the service's negotiated client coordinates.
+    /// - `query` `[in]`: Definition or references and declaration policy.
+    /// - `cancel` `[in]`: Cooperative stop signal carried into dependency and symbol lookup.
+    ///
+    /// # Returns
+    /// `Ok(locations)` is a deduplicated set of usable source/file-start locations, possibly empty.
+    ///
+    /// # Errors
+    /// `Err` reports invalid URI/position/ranges, cancellation or joined-worker failure.
+    ///
+    /// # Algorithm
+    /// Intercept only definition requests on native dependency operands. Otherwise retain each owner's snapshots, file-ID map, reference and target indexes. Use graph indexes only if the queried file participates. Preserve open client URIs, encode closed file URIs, then join locations::query without borrowing mutable workspace state.
+    ///
+    /// # Flow
+    /// ```text
+    ///  [Ordered Service]
+    ///         |
+    ///  <dependency definition?> --handled--> [File-start links]
+    ///         | not handled
+    ///         v
+    ///  [For each owner: snapshot + index + files]
+    ///         |                         |
+    ///         v                         v
+    ///  [Owner A Input]             [Owner B Input]
+    ///         +------------+------------+
+    ///                      v
+    ///           [Joined locations worker]
+    ///                      |
+    ///                      v
+    ///               [URI/range results]
+    /// ```
+    ///
+    /// # Examples
+    /// ```text
+    /// let locations = service.navigate(uri, position, Query::Definition, cancel).await?;
+    /// ```
     pub(in crate::server) async fn navigate(
         &self,
         document: Uri,

@@ -1,6 +1,46 @@
+//! Formatter defaults and independent field precedence through temporary TOML layers; invalid sizes
+//! and unknown settings must fail.
+
+// Contains AI-generated documentation edits.
 // AI-generated tests.
 use super::{ConfigSources, ConfigStore, NEXT};
 use std::sync::atomic::Ordering;
+/// Check two-space/100-column defaults, then merge user tab settings, project save/width settings
+/// and an explicit indent override.
+///
+/// Writes, reloads and removes temporary configuration files. Enabled module defaults may inspect
+/// PATH CMake with --version; no project configure or script execution.
+///
+/// # Arguments
+/// None. The test builds its own fixture and expected results.
+///
+/// # Returns
+/// `()` after all checks pass; no data or output parameter is returned.
+///
+/// # Panics
+/// If a stated invariant fails or an unwrapped fixture/setup operation fails.
+///
+/// # Algorithm
+/// Reload after zero, oversized, wrong-type and unknown-field replacements to require errors.
+///
+/// # Flow
+/// ```text
+///   [three format layers]
+///    |
+///   [check independent fields]----------> [invalid size / field]
+///                                        |
+///                                       [reject reload]
+///                                        |
+///                                       < checks hold? >
+///                                        /         \
+///                                      [pass]     [panic]
+/// ```
+///
+/// # Examples
+/// Direct local call outside any Tokio runtime (the test attribute creates its runtime):
+/// ```text
+/// formatting_defaults_layer_and_reject_invalid_sizes_or_fields();
+/// ```
 #[tokio::test]
 async fn formatting_defaults_layer_and_reject_invalid_sizes_or_fields() {
     let root = std::env::temp_dir().join(format!(

@@ -1,3 +1,7 @@
+//! Collect conservative path candidates from schema roles, per-visit values and recorded arguments.
+//! Resolution is lexical: no filesystem reads or project execution occur here. Unknown expansions,
+//! list-splitting ambiguity and unexecuted deferred inputs are not guessed.
+
 // AI-authored schema path resolution using command-qualified values, not final variable summaries.
 use super::model::Candidate;
 use crate::{
@@ -8,9 +12,74 @@ use std::{
     collections::HashMap,
     path::{Path, PathBuf},
 };
+/// Resolve a textual path against its source directory without touching the filesystem.
+///
+/// # Arguments
+/// - `base` `[in]`: absolute context directory for relative text.
+/// - `text` `[in]`: candidate path spelling.
+///
+/// # Returns
+/// Some lexically normalized absolute path, or None if the shared path resolver rejects it.
+///
+/// # Examples
+/// Local server context:
+/// ```text
+/// let path = resolve(std::path::Path::new("/src"), "main.c");
+/// ```
 fn resolve(base: &Path, text: &str) -> Option<PathBuf> {
     crate::parser::interpreter_commands::resolve_path(base, Path::new(text)).ok()
 }
+/// Append conservative path candidates for one command; no filesystem access or CMake execution.
+/// The output vector is appended to, never cleared. Output/byproduct and GENERATED annotations create
+/// exemptions, not input requirements.
+///
+/// # Arguments
+/// - `command` `[in]`: semantic command with schema path roles and original argument forms.
+/// - `file` `[in]`: source document for warning anchors.
+/// - `dirs` `[in]`: visit- or event-specific source/binary directory context.
+/// - `bindings` `[in]`: position-qualified values for static expansion; unused when observed arguments are
+///   supplied.
+/// - `project` `[in]`: module enable flag and search directories.
+/// - `observed` `[in]`: optional executed argument list; must align one-to-one with raw arguments.
+/// - `only_outputs` `[in]`: true excludes input requirements from statically conditional commands.
+/// - `result` `[in,out]`: candidate vector; append resolved records, preserve existing records.
+///
+/// # Returns
+/// (); no record is appended for an ambiguous/unknown expansion or disabled bare-module search.
+///
+/// # Algorithm
+/// Use recorded arguments only when counts and earlier unquoted arguments cannot shift positions.
+/// Otherwise expand static values only if earlier unquoted splitting is unambiguous; reject unknown,
+/// empty, list, glob or generator-expression static paths. Add custom-command outputs/byproducts and
+/// literal GENERATED source properties. Resolve a bare module through configured/builtin directories,
+/// other paths against dirs.source, and append role/optional/dependency metadata. Recorded paths reject
+/// empty/list/generator expressions but do not apply the static glob filter.
+///
+/// # Flow
+/// ```text
+///  [Raw command + values or observations]
+///                     |
+///           [Safe positional expansion?] --no--> [Skip role]
+///                     | yes
+///           [Add output annotations]
+///                     |
+///          [Each role: output-only filter]
+///                     |
+///           [Bare module search?]
+///               /             |
+///  [Configured search roots]  [Source-relative path]
+///               |             |
+///               +------+------+
+///                      v
+///             [Append Candidate]
+/// ```
+///
+/// # Examples
+/// Local server context:
+/// ```text
+/// let mut result = Vec::new();
+/// candidates(&command, &path, &dirs, &bindings, project, None, false, &mut result);
+/// ```
 fn candidates(
     command: &SemanticCommandRepresent,
     file: &Path,
@@ -149,6 +218,21 @@ fn candidates(
         });
     }
 }
+/// Test whether a command can contribute schema paths or supported generated-output annotations; no side
+/// effects.
+///
+/// # Arguments
+/// - `command` `[in]`: semantic command; names are compared case-insensitively.
+///
+/// # Returns
+/// True for nonempty schema paths, add_custom_command, add_custom_target or set_source_files_properties;
+/// false otherwise.
+///
+/// # Examples
+/// Local server context:
+/// ```text
+/// let needs_collection = relevant(&command);
+/// ```
 fn relevant(command: &SemanticCommandRepresent) -> bool {
     !command.paths.is_empty()
         || command.name.eq_ignore_ascii_case("add_custom_command")
@@ -157,6 +241,48 @@ fn relevant(command: &SemanticCommandRepresent) -> bool {
             .name
             .eq_ignore_ascii_case("set_source_files_properties")
 }
+/// Collect static and installed-runtime path candidates without I/O or project execution.
+/// No new dependencies or semantic bindings are installed. Conditional static commands contribute only
+/// outputs; deferred or unclosed static commands contribute nothing. Recorded builtin events may
+/// contribute their executed inputs.
+///
+/// # Arguments
+/// - `project` `[in]`: workspace graph or file members, settings and installed runtime observations.
+///
+/// # Returns
+/// New candidate vector, possibly empty; repeated source visits/events may produce duplicates for later
+/// refresh deduplication.
+///
+/// # Algorithm
+/// With a graph, group read values by invocation/command and use each visit directory context, excluding
+/// user-shadowed commands. Without a graph, use file-local references and member-parent directories with
+/// the same shadow/deferred/conditional filters. Finally append builtin runtime events that map
+/// unambiguously to source commands, using observed arguments and source directories.
+///
+/// # Flow
+/// ```text
+///  [Project workspace]
+///           |
+///      [Has graph?]
+///        /       |
+///  [Visit reads] [Member-local reads]
+///        |       |
+///        +---+---+
+///            v
+///  [Skip shadows/deferred/unclosed]
+///            |
+///  [Static candidates: conditional outputs only]
+///            |
+///  [Mapped builtin runtime events]
+///            |
+///  [Append observed candidates] ---> [Return vector]
+/// ```
+///
+/// # Examples
+/// Local server context:
+/// ```text
+/// let inputs = candidates::collect(project);
+/// ```
 pub(super) fn collect(project: &Project) -> Vec<Candidate> {
     let mut result = Vec::new();
     let workspace = &project.workspace;

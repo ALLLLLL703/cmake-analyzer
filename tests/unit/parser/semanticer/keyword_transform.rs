@@ -1,3 +1,8 @@
+//! Private file/string/list/path/math schema tests attached by `schema::builtin::all_transform`.
+//! Synthetic commands and a sentinel path probe full matching without performing the represented
+//! operations.
+
+// Contains AI-generated documentation edits.
 // AI-generated tests.
 use super::schemas;
 use crate::{
@@ -18,6 +23,26 @@ use crate::{
 };
 use std::{collections::BTreeSet, sync::Arc};
 
+/// Wrap one versioned command grammar from the enclosing module's schemas in a builtin
+/// CommandSchema. Allocates local schema data only; no CMake execution or external side effects.
+///
+/// # Arguments
+/// - `command` `[in]`: Exact command name in this module's versioned catalog.
+/// - `version` `[in]`: CMake (major, minor) selecting available grammar nodes.
+///
+/// # Returns
+/// An owned builtin schema with its argument nodes wrapped as ArgSchema entries and generic builtin
+/// command kind.
+///
+/// # Panics
+/// If the requested command is absent at that version.
+///
+/// # Examples
+/// Local test-module context:
+/// ```text
+/// let grammar = schema("file", (4, 4));
+/// assert!(!grammar.args.is_empty());
+/// ```
 fn schema(command: &str, version: (u32, u32)) -> CommandSchema {
     let args = schemas(version)
         .into_iter()
@@ -32,6 +57,27 @@ fn schema(command: &str, version: (u32, u32)) -> CommandSchema {
     }
 }
 
+/// Collect owned completion words for a partial argument list using [`schema`]. Cancellation is
+/// disabled; only local allocations occur and no represented command is executed.
+///
+/// # Arguments
+/// - `command` `[in]`: Exact command name from the enclosing grammar family.
+/// - `version` `[in]`: CMake (major, minor) used to construct the schema.
+/// - `prefix` `[in]`: Arguments through the active slot; the final string is the typed prefix,
+///   including an empty string for a new slot.
+///
+/// # Returns
+/// Sorted, deduplicated keyword strings returned by the production completion matcher; empty for
+/// scalar or unreachable slots.
+///
+/// # Panics
+/// If the command is absent at the requested version.
+///
+/// # Examples
+/// Local test-module context:
+/// ```text
+/// assert!(keywords("file", (4, 4), &["RE"]).contains(&"READ".to_owned()));
+/// ```
 fn keywords(command: &str, version: (u32, u32), prefix: &[&str]) -> Vec<String> {
     completion_keywords(&schema(command, version), prefix, || false)
         .into_iter()
@@ -39,6 +85,24 @@ fn keywords(command: &str, version: (u32, u32), prefix: &[&str]) -> Vec<String> 
         .collect()
 }
 
+/// Construct a closed synthetic semantic command for matcher/role tests without lexing source.
+/// Assigns bracket form to every argument so values stay literal; only local allocation occurs.
+///
+/// # Arguments
+/// - `schema` `[in]`: Owned schema supplying command name/kind and stored behind Arc.
+/// - `arguments` `[in]`: Literal payload strings copied into arguments in order; each receives a
+///   synthetic one-byte span at its index.
+///
+/// # Returns
+/// A command with ID 0, no block/scope/documentation/references/paths and empty initial argument
+/// roles. Its synthetic spans are not real source locations.
+///
+/// # Examples
+/// Local test-module context:
+/// ```text
+/// let call = command(schema("file", (4, 4)), &["READ", "in", "out"]);
+/// assert_eq!(call.args[1].content, "in");
+/// ```
 fn command(schema: CommandSchema, arguments: &[&str]) -> SemanticCommandRepresent {
     SemanticCommandRepresent {
         name: schema.command_name.clone(),
@@ -71,6 +135,46 @@ fn command(schema: CommandSchema, arguments: &[&str]) -> SemanticCommandRepresen
 }
 
 // A required final path probes full matching using the production matcher, not prefix matching.
+/// Probe full-call grammar matching by appending a required input-file sentinel. Changes a local
+/// schema and argument vector only; does not read the sentinel or execute the command.
+///
+/// # Arguments
+/// - `name` `[in]`: Transform-family command to look up.
+/// - `version` `[in]`: CMake (major, minor) selecting its grammar.
+/// - `args` `[in]`: Complete candidate arguments before the sentinel is added.
+///
+/// # Returns
+/// True when path extraction recognizes the final sentinel as a file at its appended index,
+/// indicating full-call acceptance; false otherwise.
+///
+/// # Panics
+/// If the command is absent at the version.
+///
+/// # Algorithm
+/// Append InputFile to the schema and sentinel to the values, construct a bracket-form command and
+/// ask production path extraction whether the final slot matches.
+///
+/// # Flow
+/// ```text
+///    [schema]                 [candidate args]
+///        |                           |
+/// [append InputFile]          [append sentinel]
+///        |                           |
+///        +-------------+-------------+
+///                      v
+///             [path_arguments]
+///                      |
+///             < final file slot? >
+///                 /         \
+///             [true]       [false]
+/// ```
+///
+/// # Examples
+/// Local test-module context:
+/// ```text
+/// assert!(accepts("file", (4, 4), &["READ", "input", "result"]));
+/// assert!(!accepts("file", (4, 4), &["READ", "input"]));
+/// ```
 fn accepts(name: &str, version: (u32, u32), args: &[&str]) -> bool {
     let mut schema = schema(name, version);
     schema.args.push(ArgSchema { kind: K::InputFile });
@@ -81,6 +185,41 @@ fn accepts(name: &str, version: (u32, u32), args: &[&str]) -> bool {
         .any(|path| path.argument == args.len() - 1 && path.kind == PathKind::File)
 }
 
+/// Compare complete root keyword sets for file, string, list, cmake_path and math at 4.4.
+///
+/// Only local values and analysis buffers are created or changed; no file, network or process side
+/// effects.
+///
+/// # Arguments
+/// None. The test builds its own fixture and expected results.
+///
+/// # Returns
+/// `()` after all checks pass; no data or output parameter is returned.
+///
+/// # Panics
+/// If a stated invariant fails.
+///
+/// # Algorithm
+/// Set comparison catches both missing and stray operations.
+///
+/// # Flow
+/// ```text
+///   [five transform families]
+///    |
+///   [probe root completion]------------> [explicit operation-name sets]
+///                                       |
+///                                      [compare full unique sets]
+///                                       |
+///                                      < checks hold? >
+///                                       /         \
+///                                     [pass]     [panic]
+/// ```
+///
+/// # Examples
+/// Local test-module call:
+/// ```text
+/// keyword_transform_complete_root_subcommands();
+/// ```
 #[test]
 fn keyword_transform_complete_root_subcommands() {
     for (name, expected) in [
@@ -108,6 +247,42 @@ fn keyword_transform_complete_root_subcommands() {
     }
 }
 
+/// Probe file operation-specific options, encodings, permissions, archive and transfer forms.
+///
+/// Only local values and analysis buffers are created or changed; no file, network or process side
+/// effects.
+///
+/// # Arguments
+/// None. The test builds its own fixture and expected results.
+///
+/// # Returns
+/// `()` after all checks pass; no data or output parameter is returned.
+///
+/// # Panics
+/// If a stated invariant fails.
+///
+/// # Algorithm
+/// Require download-only hash/range options to stay scoped, while a non-enumerated archive encoding
+/// remains accepted by full matching.
+///
+/// # Flow
+/// ```text
+///   [file operation prefix table]
+///    |
+///   [probe contextual options]-------------> [download / archive variants]
+///                                           |
+///                                          [check choices + full acceptance]
+///                                           |
+///                                          < checks hold? >
+///                                           /         \
+///                                         [pass]     [panic]
+/// ```
+///
+/// # Examples
+/// Local test-module call:
+/// ```text
+/// keyword_transform_file_option_slots();
+/// ```
 #[test]
 fn keyword_transform_file_option_slots() {
     for (prefix, expected) in [
@@ -228,6 +403,42 @@ fn keyword_transform_file_option_slots() {
     ));
 }
 
+/// Probe nested regex/JSON, list filter/transform/sort, path component/conversion and math
+/// output-format branches.
+///
+/// Only local values and analysis buffers are created or changed; no file, network or process side
+/// effects.
+///
+/// # Arguments
+/// None. The test builds its own fixture and expected results.
+///
+/// # Returns
+/// `()` after all checks pass; no data or output parameter is returned.
+///
+/// # Panics
+/// If a stated invariant fails.
+///
+/// # Algorithm
+/// Compare exact keyword sets so scalar and operation-specific slots stay distinct.
+///
+/// # Flow
+/// ```text
+///   [string/list/path/math prefixes]
+///    |
+///   [probe nested operation slots]------------> [expected word sets]
+///                                              |
+///                                             [compare exact sets]
+///                                              |
+///                                             < checks hold? >
+///                                              /         \
+///                                            [pass]     [panic]
+/// ```
+///
+/// # Examples
+/// Local test-module call:
+/// ```text
+/// keyword_transform_string_list_path_modes();
+/// ```
 #[test]
 fn keyword_transform_string_list_path_modes() {
     for (name, prefix, expected) in [
@@ -303,6 +514,43 @@ fn keyword_transform_string_list_path_modes() {
     }
 }
 
+/// Append a sentinel input-file operand to probe full-call acceptance for valid and malformed
+/// file/string/list/path/math signatures.
+///
+/// Only local values and analysis buffers are created or changed; no file, network or process side
+/// effects.
+///
+/// # Arguments
+/// None. The test builds its own fixture and expected results.
+///
+/// # Returns
+/// `()` after all checks pass; no data or output parameter is returned.
+///
+/// # Panics
+/// If a stated invariant fails.
+///
+/// # Algorithm
+/// Missing scalars, illegal option combinations and reordered operands must fail; partial required
+/// slots must not invent keywords.
+///
+/// # Flow
+/// ```text
+///   [valid / invalid call tables]
+///    |
+///   [append file sentinel]-----------------> [production full matcher]
+///                                           |
+///                                          [accept valid; reject malformed]
+///                                           |
+///                                          < checks hold? >
+///                                           /         \
+///                                         [pass]     [panic]
+/// ```
+///
+/// # Examples
+/// Local test-module call:
+/// ```text
+/// keyword_transform_required_scalars_and_ordering();
+/// ```
 #[test]
 fn keyword_transform_required_scalars_and_ordering() {
     for (name, args) in [
@@ -472,6 +720,43 @@ fn keyword_transform_required_scalars_and_ordering() {
     }
 }
 
+/// For every supported version, compare transform keyword availability with a table of
+/// introductions.
+///
+/// Only local values and analysis buffers are created or changed; no file, network or process side
+/// effects.
+///
+/// # Arguments
+/// None. The test builds its own fixture and expected results.
+///
+/// # Returns
+/// `()` after all checks pass; no data or output parameter is returned.
+///
+/// # Panics
+/// If a stated invariant fails.
+///
+/// # Algorithm
+/// Also check cmake_path's introduction, zero-operand file operations from 3.30 and
+/// download-without-output support from 3.19 through full matching.
+///
+/// # Flow
+/// ```text
+///   [all versions + gate table]
+///    |
+///   [probe keyword availability]----------> [sentinel full-call cases]
+///                                          |
+///                                         [check operation minima + gates]
+///                                          |
+///                                         < checks hold? >
+///                                          /         \
+///                                        [pass]     [panic]
+/// ```
+///
+/// # Examples
+/// Local test-module call:
+/// ```text
+/// keyword_transform_version_boundaries();
+/// ```
 #[test]
 fn keyword_transform_version_boundaries() {
     let cases = [
@@ -768,6 +1053,43 @@ fn keyword_transform_version_boundaries() {
     }
 }
 
+/// Construct bracket-form synthetic calls and track variable writes to compare exact
+/// output-argument indices.
+///
+/// Only local values and analysis buffers are created or changed; no file, network or process side
+/// effects.
+///
+/// # Arguments
+/// None. The test builds its own fixture and expected results.
+///
+/// # Returns
+/// `()` after all checks pass; no data or output parameter is returned.
+///
+/// # Panics
+/// If a stated invariant fails.
+///
+/// # Algorithm
+/// Separately verify target/name roles, file GENERATE target binding, generic dependency hints and
+/// empty completion inside opaque payloads.
+///
+/// # Flow
+/// ```text
+///   [synthetic bracket-form calls]
+///    |
+///   [track output roles]--------------------> [target/path/opaque probes]
+///                                            |
+///                                           [compare indices + excluded hints]
+///                                            |
+///                                           < checks hold? >
+///                                            /         \
+///                                          [pass]     [panic]
+/// ```
+///
+/// # Examples
+/// Local test-module call:
+/// ```text
+/// keyword_transform_roles_and_opaque_operands();
+/// ```
 #[test]
 fn keyword_transform_roles_and_opaque_operands() {
     for (name, args, expected) in [
@@ -926,6 +1248,54 @@ fn keyword_transform_roles_and_opaque_operands() {
     }
 }
 
+/// Append active-slot witnesses and return a representative continuation for transform grammars.
+/// Consumes a prefix locally, appends to the supplied vector and performs no I/O.
+///
+/// # Arguments
+/// - `kinds` `[in]`: Structured argument sequence; alternatives must contain at least one branch.
+/// - `prefix` `[in]`: Owned preceding arguments extended locally for the returned continuation.
+/// - `result` `[in,out]`: Witness vector; append (prefix ending in an empty active slot, keyword)
+///   pairs without clearing prior entries.
+///
+/// # Returns
+/// The representative prefix after the sequence: uses the first choice continuation, omits optional
+/// groups and adopts one repeated continuation when min is positive. Other branch witnesses still
+/// remain in result.
+///
+/// # Panics
+/// On empty choices or Unmodeled, Action or AllOf nodes; these are outside the expected transform
+/// grammar.
+///
+/// # Algorithm
+/// Record literals at an empty active slot, traverse every choice for witnesses but keep its first
+/// continuation, visit optionals without committing them and commit one repeated group only when
+/// required.
+///
+/// # Flow
+/// ```text
+///              [schema node]
+///                     |
+///          +----------+----------+
+///          |                     |
+///      [literal]              [group]
+///          |               /     |      \
+/// [append active probe] choice optional repeat
+/// [extend prefix]         |      |       |
+///          |         [first]   [omit] [min > 0?]
+///          |              |      |       |
+///          +--------------+------+-------+
+///                         v
+///               [return continuation]
+/// ```
+///
+/// # Examples
+/// Local test-module context:
+/// ```text
+/// let mut probes = vec![];
+/// let after = keyword_witnesses(&[K::Keyword("READ".into())], vec![], &mut probes);
+/// assert_eq!(after, ["READ"]);
+/// assert_eq!(probes[0], (vec!["".into()], "READ".into()));
+/// ```
 fn keyword_witnesses(
     kinds: &[K],
     mut prefix: Vec<String>,
@@ -965,6 +1335,43 @@ fn keyword_witnesses(
     prefix
 }
 
+/// Recursively create active-slot witnesses for every transform literal across all supported
+/// versions, then require the real prefix matcher to offer each word at its generated position.
+///
+/// Only local values and analysis buffers are created or changed; no file, network or process side
+/// effects.
+///
+/// # Arguments
+/// None. The test builds its own fixture and expected results.
+///
+/// # Returns
+/// `()` after all checks pass; no data or output parameter is returned.
+///
+/// # Panics
+/// If a stated invariant fails.
+///
+/// # Algorithm
+/// Recursively create active-slot witnesses for every transform literal across all supported
+/// versions, then require the real prefix matcher to offer each word at its generated position.
+///
+/// # Flow
+/// ```text
+///   [all supported transform schemas]
+///    |
+///   [generate active-slot witnesses]-----------> [production prefix matcher]
+///                                               |
+///                                              [require every literal reachable]
+///                                               |
+///                                              < checks hold? >
+///                                               /         \
+///                                             [pass]     [panic]
+/// ```
+///
+/// # Examples
+/// Local test-module call:
+/// ```text
+/// keyword_transform_every_literal_is_reachable_in_all_supported_versions();
+/// ```
 #[test]
 fn keyword_transform_every_literal_is_reachable_in_all_supported_versions() {
     for version in (0..=31)
@@ -986,6 +1393,26 @@ fn keyword_transform_every_literal_is_reachable_in_all_supported_versions() {
     }
 }
 
+/// Probe COPY after a completed destination and after a PATTERN. Compare exact allowed option sets
+/// and require DESTINATION to disappear once consumed.
+///
+/// Only local values and analysis buffers are created or changed; no file, network or process side
+/// effects.
+///
+/// # Arguments
+/// None. The test builds its own fixture and expected results.
+///
+/// # Returns
+/// `()` after all checks pass; no data or output parameter is returned.
+///
+/// # Panics
+/// If a stated invariant fails.
+///
+/// # Examples
+/// Local test-module call:
+/// ```text
+/// keyword_transform_copy_destination_not_repeated();
+/// ```
 #[test]
 fn keyword_transform_copy_destination_not_repeated() {
     for (prefix, expected) in [
@@ -1005,6 +1432,26 @@ fn keyword_transform_copy_destination_not_repeated() {
     }
 }
 
+/// Probe ARCHIVE_CREATE before and after `COMPRESSION Zstd`. COMPRESSION_LEVEL must appear only
+/// after a compression selection.
+///
+/// Only local values and analysis buffers are created or changed; no file, network or process side
+/// effects.
+///
+/// # Arguments
+/// None. The test builds its own fixture and expected results.
+///
+/// # Returns
+/// `()` after all checks pass; no data or output parameter is returned.
+///
+/// # Panics
+/// If a stated invariant fails.
+///
+/// # Examples
+/// Local test-module call:
+/// ```text
+/// keyword_transform_compression_level_is_scoped_to_compression();
+/// ```
 #[test]
 fn keyword_transform_compression_level_is_scoped_to_compression() {
     assert!(
@@ -1034,6 +1481,45 @@ fn keyword_transform_compression_level_is_scoped_to_compression() {
     );
 }
 
+/// Construct file/path calls and compare every returned path index/kind, including symbolic-link
+/// source exclusion, archive paths and generic cmake_path operands that must not require existing
+/// files.
+///
+/// Only local values and analysis buffers are created or changed; no file, network or process side
+/// effects.
+///
+/// # Arguments
+/// None. The test builds its own fixture and expected results.
+///
+/// # Returns
+/// `()` after all checks pass; no data or output parameter is returned.
+///
+/// # Panics
+/// If a stated invariant fails.
+///
+/// # Algorithm
+/// Construct file/path calls and compare every returned path index/kind, including symbolic-link
+/// source exclusion, archive paths and generic cmake_path operands that must not require existing
+/// files.
+///
+/// # Flow
+/// ```text
+///   [synthetic file/path call table]
+///    |
+///   [extract typed path arguments]------------> [expected ordered index/kind pairs]
+///                                              |
+///                                             [compare; generic paths excluded]
+///                                              |
+///                                             < checks hold? >
+///                                              /         \
+///                                            [pass]     [panic]
+/// ```
+///
+/// # Examples
+/// Local test-module call:
+/// ```text
+/// keyword_transform_input_output_path_roles();
+/// ```
 #[test]
 fn keyword_transform_input_output_path_roles() {
     for (name, args, expected) in [

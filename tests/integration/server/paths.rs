@@ -1,7 +1,49 @@
 // AI-generated known-input path warning and generated/output exclusion tests.
+//! Known-input path warnings, generated-output exclusions and save-time refresh.
+//! Fixture file creation is explicit; analysis must not run the CMake source commands.
 use super::session::{Project, Session, uri};
 use serde_json::json;
 #[tokio::test]
+/// Check known-input warnings exclude outputs/generated/unknown/optional paths and refresh on
+/// save.
+/// Creates temporary files and an analyzer session; successful completion stops the session and
+/// removes fixtures.
+///
+/// # Arguments
+/// None.
+///
+/// # Returns
+/// `()` if every assertion passes; no output parameter.
+///
+/// # Panics
+/// Panics on any failed assertion or unwrapped fixture/transport/process failure.
+/// Cleanup is explicit on the success path; a panic may leave a fixture tree.
+///
+/// # Algorithm
+/// Create file/directory type mismatches and missing source/input paths alongside
+/// generated/output declarations. Require named severity-2 warnings, the required-include line
+/// and exact missing.c start; exclude every listed output/optional/conditional expression.
+/// Create later.txt, save and require its warning gone.
+///
+/// # Flow
+/// ```text
+/// [Temporary sources + settings]      [Expected: input warnings / output exclusions]
+///              |                              |
+///              v                              |
+/// [LSP scenario messages]                 |
+///              |                              |
+///              +-------------+----------------+
+///                            v
+///                  [Compare assertions]
+///                            |
+///                            v
+///             [Finish session + remove tree]
+/// ```
+///
+/// # Examples
+/// ```text
+/// input_paths_warn_without_checking_outputs_generated_unknown_or_optional_paths(); // #[tokio::test] supplies the runtime
+/// ```
 async fn input_paths_warn_without_checking_outputs_generated_unknown_or_optional_paths() {
     let p = Project::new().await;
     tokio::fs::create_dir_all(p.0.join("existing_dir"))

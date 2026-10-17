@@ -1,3 +1,6 @@
+//! Stream escaped workspace summaries, visit trees, scopes and diagnostics to a formatter.
+//! Iterative rendering preserves repeated visits and never loads dependencies or executes CMake.
+// Contains AI-generated documentation additions.
 // AI-generated implementation.
 // review over
 use super::model::{
@@ -11,17 +14,47 @@ use std::{
     path::Path,
 };
 
+/// Report title style; ignored when color output is disabled.
 const TITLE: Style = Style::new().bright_magenta().bold();
+/// Section heading style; ignored when color output is disabled.
 const HEADING: Style = Style::new().bright_blue().bold();
+/// File, command and visit identifiers style; ignored when color output is disabled.
 const ID: Style = Style::new().bright_cyan();
+/// Escaped file paths style; ignored when color output is disabled.
 const FILE: Style = Style::new().bright_white().bold();
+/// Include/package and successful-state labels style; ignored when color output is disabled.
 const INCLUDE: Style = Style::new().green();
+/// Child-directory and binary-directory labels style; ignored when color output is disabled.
 const CHILD: Style = Style::new().blue().bold();
+/// Scope and deferred-context labels style; ignored when color output is disabled.
 const SCOPE: Style = Style::new().magenta();
+/// Unresolved, absent and conditional graph labels style; ignored when color output is disabled.
 const WARNING: Style = Style::new().bright_yellow().bold();
+/// Error labels style; ignored when color output is disabled.
 const ERROR: Style = Style::new().bright_red().bold();
+/// Coordinates and tree guides style; ignored when color output is disabled.
 const MUTED: Style = Style::new().bright_black();
 
+/// Append a styled or plain display value. Writes only to the supplied formatter, not files or
+/// protocol streams directly.
+///
+/// # Arguments
+/// - `f` `[in,out]`: Formatter; appends without clearing previous text.
+/// - `colored` `[in]`: Whether terminal styles are emitted.
+/// - `style` `[in]`: Style used only when colored is true.
+/// - `text` `[in]`: Display value to append.
+///
+/// # Returns
+/// Ok(()) after appending the requested text; Err(fmt::Error) on formatter failure.
+///
+/// # Errors
+/// Returns fmt::Error if writing any fragment to the formatter fails; already appended output is
+/// not rolled back.
+///
+/// # Examples
+/// ```text
+/// paint(f, false, TITLE, "CMAKE WORKSPACE")?;
+/// ```
 fn paint(f: &mut Formatter<'_>, colored: bool, style: Style, text: impl Display) -> fmt::Result {
     if colored {
         write!(f, "{}", text.style(style))
@@ -30,6 +63,24 @@ fn paint(f: &mut Formatter<'_>, colored: bool, style: Style, text: impl Display)
     }
 }
 impl Workspace {
+    /// Create a borrowed workspace overview and graph-only adapter. No output, parsing or I/O
+    /// occurs until the caller formats the view.
+    ///
+    /// # Arguments
+    /// - `self` `[in]` : Workspace borrowed for statistics and a graph passing dirty/revision
+    ///   checks.
+    /// - `colored` `[in]`: Whether later rendering uses terminal styles.
+    ///
+    /// # Returns
+    /// WorkspaceDisplay; its public DependcyGraphDisplay field can be rendered separately.
+    ///
+    /// # Examples
+    /// ```
+    /// use cmake_analyzer::workspace::Workspace;
+    /// fn report(workspace: &Workspace) -> String {
+    ///     workspace.display(false).DependcyGraphDisplay.to_string()
+    /// }
+    /// ```
     pub fn display(&self, colored: bool) -> WorkspaceDisplay<'_> {
         WorkspaceDisplay {
             workspace: self,
@@ -43,12 +94,55 @@ impl Workspace {
     }
 }
 impl DependencyGraphDisplay<'_> {
+    /// Append an escaped path relative to the root's parent where possible. No filesystem access or
+    /// graph mutation.
+    ///
+    /// # Arguments
+    /// - `self` `[in]`: Borrowed graph view, root and color policy.
+    /// - `f` `[in,out]`: Formatter; appends output without clearing earlier text.
+    /// - `path` `[in]`: Absolute or external path to label.
+    /// - `style` `[in]`: Requested terminal label style.
+    ///
+    /// # Returns
+    /// Ok(()) after appending the requested text; Err(fmt::Error) on formatter failure.
+    ///
+    /// # Errors
+    /// Returns fmt::Error if writing any fragment to the formatter fails; already appended output
+    /// is not rolled back.
+    ///
+    /// # Examples
+    /// ```text
+    /// view.path(f, &visit.file, FILE)?;
+    /// ```
     fn path(&self, f: &mut Formatter<'_>, path: &Path, style: Style) -> fmt::Result {
         let base = self.root.file.parent().unwrap_or(Path::new(""));
         let short = path.strip_prefix(base).unwrap_or(path);
         // Debug formatting keeps control characters inside labels, not in the terminal.
         paint(f, self.colored, style, format_args!("{short:?}"))
     }
+    /// Append visit/file/revision/scope IDs and an escaped path. No filesystem access or graph
+    /// mutation.
+    ///
+    /// # Arguments
+    /// - `self` `[in]`: Borrowed graph view, root and color policy.
+    /// - `f` `[in,out]`: Formatter; appends output without clearing earlier text.
+    /// - `graph` `[in]`: Graph containing the selected visit.
+    /// - `id` `[in]`: Valid invocation index in graph.
+    ///
+    /// # Returns
+    /// Ok(()) after appending the requested text; Err(fmt::Error) on formatter failure.
+    ///
+    /// # Errors
+    /// Returns fmt::Error if writing any fragment to the formatter fails; already appended output
+    /// is not rolled back.
+    ///
+    /// # Panics
+    /// Panics if id is not a graph invocation index; tree callers use graph-owned indices.
+    ///
+    /// # Examples
+    /// ```text
+    /// view.visit(f, graph, 0)?;
+    /// ```
     fn visit(&self, f: &mut Formatter<'_>, graph: &RootGraph, id: usize) -> fmt::Result {
         let visit = &graph.invocations[id];
         paint(
@@ -65,6 +159,50 @@ impl DependencyGraphDisplay<'_> {
         write!(f, " ")?;
         self.path(f, &visit.file, FILE)
     }
+    /// Append dependency kind, child/path/status and caller-source markers. No dependency loading,
+    /// execution or graph mutation.
+    ///
+    /// # Arguments
+    /// - `self` `[in]`: Borrowed graph view, root and color policy.
+    /// - `f` `[in,out]`: Formatter; appends output without clearing earlier text.
+    /// - `graph` `[in]`: Graph used to label entered child visits.
+    /// - `edge` `[in]`: Dependency result and conditional/deferred/optional flags.
+    /// - `dependency` `[in]`: Optional original operands used to label unresolved paths.
+    ///
+    /// # Returns
+    /// Ok(()) after appending the requested text; Err(fmt::Error) on formatter failure.
+    ///
+    /// # Errors
+    /// Returns fmt::Error if writing any fragment to the formatter fails; already appended output
+    /// is not rolled back.
+    ///
+    /// # Panics
+    /// Panics if an entered edge points outside graph.invocations; produced graphs preserve this
+    /// invariant.
+    ///
+    /// # Algorithm
+    /// Show the child visit if entered. Otherwise label the resolved path, original operand or
+    /// unknown marker, then classify candidate/not-visited/unresolved/optional-absent/missing
+    /// state. Append optional and source-control context without claiming execution.
+    ///
+    /// # Flow
+    /// ```text
+    /// [dependency edge]
+    ///         |
+    ///  <child invocation?>
+    ///     /           \
+    ///  [visit label] [path/original/?]
+    ///     |           |
+    ///     |      [unvisited status]
+    ///     +-----------+
+    ///            |
+    ///  [flags + caller coordinates]
+    /// ```
+    ///
+    /// # Examples
+    /// ```text
+    /// view.edge(f, graph, &graph.edges[0], Some(dependency))?;
+    /// ```
     fn edge(
         &self,
         f: &mut Formatter<'_>,
@@ -134,6 +272,50 @@ impl DependencyGraphDisplay<'_> {
         )?;
         writeln!(f)
     }
+    /// Append an ASCII dependency tree without recursive printing. Repeated visits retain separate
+    /// branches; no I/O beyond formatter output.
+    ///
+    /// # Arguments
+    /// - `self` `[in]`: Borrowed graph view, root and color policy.
+    /// - `f` `[in,out]`: Formatter; appends output without clearing earlier text.
+    /// - `graph` `[in]`: Graph whose caller/child indices and snapshot origins are consistent.
+    ///
+    /// # Returns
+    /// Ok(()) after appending the requested text; Err(fmt::Error) on formatter failure.
+    ///
+    /// # Errors
+    /// Returns fmt::Error if writing any fragment to the formatter fails; already appended output
+    /// is not rolled back.
+    ///
+    /// # Panics
+    /// Panics for inconsistent edge caller/child indices; this expects a graph produced by
+    /// workspace traversal.
+    ///
+    /// # Algorithm
+    /// Index child edges once per caller and dependency labels once per snapshot. Print root, then
+    /// use an explicit visit/next-edge/last-sibling stack to preserve indentation. Empty graphs
+    /// print a root-not-loaded marker.
+    ///
+    /// # Flow
+    /// ```text
+    /// [graph edges]        [snapshot facts]
+    ///        |                    |
+    ///  [children by caller] [dependency label map]
+    ///        +----------+---------+
+    ///                   |
+    ///             <root loaded?>
+    ///              /          \
+    ///        [empty marker] [iterative stack]
+    ///                          |       ^
+    ///                    [edge/indent]-+
+    ///                          |
+    ///                        [done]
+    /// ```
+    ///
+    /// # Examples
+    /// ```text
+    /// view.tree(f, graph)?;
+    /// ```
     fn tree(&self, f: &mut Formatter<'_>, graph: &RootGraph) -> fmt::Result {
         let mut children = vec![Vec::new(); graph.invocations.len()];
         for (index, edge) in graph.edges.iter().enumerate() {
@@ -193,6 +375,43 @@ impl DependencyGraphDisplay<'_> {
         }
         Ok(())
     }
+    /// Append workspace failures and deduplicated semantic/build/reference diagnostics. Suppresses
+    /// unknown-command errors resolved across files; no analysis mutation or filesystem access.
+    ///
+    /// # Arguments
+    /// - `self` `[in]`: Borrowed graph view, root and color policy.
+    /// - `f` `[in,out]`: Formatter; appends output without clearing earlier text.
+    /// - `graph` `[in]`: Saved diagnostics, snapshots and contextual reference warnings.
+    ///
+    /// # Returns
+    /// Ok(()) after appending the requested text; Err(fmt::Error) on formatter failure.
+    ///
+    /// # Errors
+    /// Returns fmt::Error if writing any fragment to the formatter fails; already appended output
+    /// is not rolled back.
+    ///
+    /// # Algorithm
+    /// Map file revisions to callers and resolved calls to source spans. Print graph failures, then
+    /// each unique snapshot's semantic/build errors while suppressing resolved unknown commands.
+    /// Append contextual warnings and print a clean marker only when none were emitted.
+    ///
+    /// # Flow
+    /// ```text
+    /// [workspace failures]    [unique snapshots]    [reference warnings]
+    ///           |                      |                    |
+    ///  [caller/source labels] [suppress resolved calls]     |
+    ///           |                      |                    |
+    ///           +----------> [append diagnostics] <---------+
+    ///                                |
+    ///                           <count zero?>
+    ///                             /      \
+    ///                          clean    done
+    /// ```
+    ///
+    /// # Examples
+    /// ```text
+    /// view.diagnostics(f, graph)?;
+    /// ```
     fn diagnostics(&self, f: &mut Formatter<'_>, graph: &RootGraph) -> fmt::Result {
         writeln!(f)?;
         paint(f, self.colored, HEADING, "DIAGNOSTICS")?;
@@ -339,6 +558,44 @@ impl DependencyGraphDisplay<'_> {
     }
 }
 impl Display for DependencyGraphDisplay<'_> {
+    /// Append graph tree, scope summaries and diagnostics, or a pending/stale notice. No graph
+    /// mutation or filesystem access.
+    ///
+    /// # Arguments
+    /// - `self` `[in]`: Borrowed graph view, root and color policy.
+    /// - `f` `[in,out]`: Formatter; appends output without clearing earlier text.
+    ///
+    /// # Returns
+    /// Ok(()) after appending the requested text; Err(fmt::Error) on formatter failure.
+    ///
+    /// # Errors
+    /// Returns fmt::Error if writing any fragment to the formatter fails; already appended output
+    /// is not rolled back.
+    ///
+    /// # Algorithm
+    /// Write the graph heading; absent captured graph returns after a refresh notice. Otherwise
+    /// print the tree, graph scope ancestry/project/write sets, then diagnostics.
+    ///
+    /// # Flow
+    /// ```text
+    /// [graph heading]
+    ///        |
+    ///  <captured graph?>
+    ///    /             \
+    ///  pending      [tree]
+    ///    |             |
+    ///  return       [scope loop]
+    ///                  |
+    ///              [diagnostics]
+    /// ```
+    ///
+    /// # Examples
+    /// ```
+    /// use cmake_analyzer::workspace::Workspace;
+    /// fn report(workspace: &Workspace) -> String {
+    ///     format!("{}", workspace.display(false).DependcyGraphDisplay)
+    /// }
+    /// ```
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         paint(f, self.colored, HEADING, "DEPENDENCY GRAPH")?;
         writeln!(f)?;
@@ -379,6 +636,45 @@ impl Display for DependencyGraphDisplay<'_> {
     }
 }
 impl Display for WorkspaceDisplay<'_> {
+    /// Append root/cache statistics and the borrowed dependency graph report. Escapes source
+    /// labels; no analysis mutation, file loading or execution occurs.
+    ///
+    /// # Arguments
+    /// - `self` `[in]`: Borrowed workspace overview and its captured graph adapter.
+    /// - `f` `[in,out]`: Formatter; appends the overview and graph without clearing previous text.
+    ///
+    /// # Returns
+    /// Ok(()) after appending the requested text; Err(fmt::Error) on formatter failure.
+    ///
+    /// # Errors
+    /// Returns fmt::Error if writing any fragment to the formatter fails; already appended output
+    /// is not rolled back.
+    ///
+    /// # Algorithm
+    /// Render root and optional binary path, document/overlay/pending counts, optional graph counts
+    /// and the static-analysis notice. Delegate graph/scopes/diagnostics to the captured graph
+    /// adapter.
+    ///
+    /// # Flow
+    /// ```text
+    /// [workspace root]      [cache counters]
+    ///         |                     |
+    ///         +----> [overview] <---+
+    ///                     |
+    ///              <captured graph?>
+    ///                 /        \
+    ///            counts        omit counts
+    ///                 \        /
+    ///               [graph Display]
+    /// ```
+    ///
+    /// # Examples
+    /// ```
+    /// use cmake_analyzer::workspace::Workspace;
+    /// fn report(workspace: &Workspace) -> String {
+    ///     format!("{}", workspace.display(false))
+    /// }
+    /// ```
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         paint(f, self.colored, TITLE, "CMAKE WORKSPACE")?;
         writeln!(f)?;

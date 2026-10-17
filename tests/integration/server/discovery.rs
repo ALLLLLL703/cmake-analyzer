@@ -1,8 +1,49 @@
 // AI-generated missing-candidate and ownership-transition regressions.
+//! Missing dependency overlays and transitions from imported to standalone documents.
+//! Open text must survive ownership changes; fixture trees are explicitly removed.
 use super::session::*;
 use serde_json::json;
 
 #[tokio::test]
+/// Check opening an unsaved missing dependency clears its importer diagnostics at the same
+/// version.
+/// Creates temporary files and an analyzer session; successful completion stops the session and
+/// removes fixtures.
+///
+/// # Arguments
+/// None.
+///
+/// # Returns
+/// `()` if every assertion passes; no output parameter.
+///
+/// # Panics
+/// Panics on any failed assertion or unwrapped fixture/transport/process failure.
+/// Cleanup is explicit on the success path; a panic may leave a fixture tree.
+///
+/// # Algorithm
+/// Include a nonexistent external path and require a nonempty root report. didOpen that target
+/// with a valid set command; require empty reports for both root and dependency, each still
+/// version 1.
+///
+/// # Flow
+/// ```text
+/// [Temporary sources + settings]      [Expected: unchanged-version clear reports]
+///              |                              |
+///              v                              |
+/// [LSP scenario messages]                 |
+///              |                              |
+///              +-------------+----------------+
+///                            v
+///                  [Compare assertions]
+///                            |
+///                            v
+///             [Finish session + remove tree]
+/// ```
+///
+/// # Examples
+/// ```text
+/// missing_external_dependency_is_owned_and_overlay_clears_parent_report(); // #[tokio::test] supplies the runtime
+/// ```
 async fn missing_external_dependency_is_owned_and_overlay_clears_parent_report() {
     let project = Project::new().await;
     let missing = project.0.join("external/new.cmake");
@@ -41,6 +82,44 @@ async fn missing_external_dependency_is_owned_and_overlay_clears_parent_report()
 }
 
 #[tokio::test]
+/// Check dependency detachment preserves unsaved module text and subsequent edits.
+/// Creates temporary files and an analyzer session; successful completion stops the session and
+/// removes fixtures.
+///
+/// # Arguments
+/// None.
+///
+/// # Returns
+/// `()` if every assertion passes; no output parameter.
+///
+/// # Panics
+/// Panics on any failed assertion or unwrapped fixture/transport/process failure.
+/// Cleanup is explicit on the success path; a panic may leave a fixture tree.
+///
+/// # Algorithm
+/// Open an external module with UNSAVED instead of disk content, then open its root without the
+/// include. Symbols must retain UNSAVED; a later module didChange must expose LATER despite
+/// losing the importer.
+///
+/// # Flow
+/// ```text
+/// [Temporary sources + settings]      [Expected: UNSAVED then LATER symbols]
+///              |                              |
+///              v                              |
+/// [LSP scenario messages]                 |
+///              |                              |
+///              +-------------+----------------+
+///                            v
+///                  [Compare assertions]
+///                            |
+///                            v
+///             [Finish session + remove tree]
+/// ```
+///
+/// # Examples
+/// ```text
+/// detached_external_module_becomes_standalone_without_losing_text(); // #[tokio::test] supplies the runtime
+/// ```
 async fn detached_external_module_becomes_standalone_without_losing_text() {
     let project = Project::new().await;
     let module = project.write("external/module.cmake", "set(DISK x)").await;

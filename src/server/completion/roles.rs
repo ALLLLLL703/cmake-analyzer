@@ -1,3 +1,6 @@
+//! Probe schema keywords and name roles after conservative prior-argument expansion.
+//! Unknown unquoted splitting and native user shadows suppress guesses. No I/O or binding mutation occurs.
+
 use super::model::{ArgumentChoices, ArgumentSite, Input};
 use crate::parser::semanticer::{
     model::{ReferenceKind, SemanticArgForm},
@@ -6,6 +9,21 @@ use crate::parser::semanticer::{
     values::argument_value,
 };
 
+/// Check whether an owner-local command call is bound to a source function/macro.
+/// Read-only; no side effects.
+///
+/// # Arguments
+/// - `input` `[in]`: Owner index and local semantic declarations.
+/// - `command` `[in]`: Snapshot-local command ID being tested.
+/// - `file` `[in]`: File ID qualified by this input owner.
+///
+/// # Returns
+/// `true` if resolved graph calls or local source call references match file/command; `false` otherwise.
+///
+/// # Examples
+/// ```text
+/// let user_call = roles::shadowed(input, command.id, input.snapshot.semantics.id);
+/// ```
 pub(super) fn shadowed(
     input: &Input,
     command: crate::parser::semanticer::model::CommandId,
@@ -27,6 +45,48 @@ pub(super) fn shadowed(
             call.file == file && call.command == command && call.kind == ReferenceKind::Call
         })
 }
+/// Probe reachable schema keywords and name roles for the active argument.
+/// Does not bind references, change values or perform I/O.
+///
+/// # Arguments
+/// - `input` `[in]`: Owner-qualified snapshot and position-qualified known values.
+/// - `argument` `[in]`: Command and active slot; its ordinal cannot exceed the parsed argument count.
+/// - `prefix` `[in]`: Case-preserving active payload prefix appended after prior arguments.
+/// - `cancel` `[in]`: Stop signal forwarded to keyword probing; this function itself does not return a cancellation error.
+///
+/// # Returns
+/// Borrowed keywords and name-role alternatives; empty when schema is absent, a native call is user-shadowed, or prior unquoted expansion may change slot positions. Cancellation can shorten keyword results; outer collection checks it.
+///
+/// # Panics
+/// Panics if the active ordinal exceeds command.args.len(); argument_context supplies a valid parsed or trailing slot.
+///
+/// # Algorithm
+/// Prepare preceding values once. Use literal text or known position-qualified expansions; quoted unknowns retain their raw contents, but unknown/empty/list-producing unquoted expansions stop inference. Append the active prefix and run shared schema role/keyword matching. External schemas keep their own roles.
+///
+/// # Flow
+/// ```text
+///  [Command schema] --missing/native shadow--> [Empty choices]
+///         | usable
+///         v
+///  [Prepare earlier arguments]
+///         |
+///  <unknown unquoted split?> --yes--> [Empty choices]
+///         | no
+///         v
+///  [Append active prefix]
+///         |
+///         +------------------+
+///         v                  v
+///  [Name-role matcher] [Cancellable keyword probes]
+///         +------------------+
+///                  v
+///           [ArgumentChoices]
+/// ```
+///
+/// # Examples
+/// ```text
+/// let choices = roles::choices(input, &slot, "PRI", &cancel);
+/// ```
 pub(super) fn choices<'a>(
     input: &'a Input,
     argument: &ArgumentSite<'a>,

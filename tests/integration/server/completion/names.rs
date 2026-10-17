@@ -1,8 +1,25 @@
 // AI-generated schema-driven variable/target completion integration tests.
+//! Case-sensitive variable and target names in typed arguments and expansions.
+//! Tests isolate lexical, directory and imported visibility using current unsaved overlays.
 use super::{complete, item, start};
 use crate::server::session::{HEADER, Project, Session, uri};
 use serde_json::{Value, json};
 use std::path::Path;
+/// Remove the first | marker and compute body-relative cursor coordinates; no side effects.
+///
+/// # Arguments
+/// - `source` `[in]`: fixture source containing a | marker; later markers are retained.
+///
+/// # Returns
+/// A tuple of (owned marker-free source, zero-based body line, UTF-16 column on that line).
+///
+/// # Panics
+/// Panics if no | marker is present.
+///
+/// # Examples
+/// ```text
+/// let (text, line, column) = cursor(r#"message("😀 ${MY|}")"#);
+/// ```
 fn cursor(source: &str) -> (String, usize, usize) {
     let offset = source.find('|').unwrap();
     let before = &source[..offset];
@@ -10,11 +27,73 @@ fn cursor(source: &str) -> (String, usize, usize) {
     let column = before.rsplit('\n').next().unwrap().encode_utf16().count();
     (source.replacen('|', "", 1), line, column)
 }
+/// Replace the entire open overlay and immediately request completion at its marker.
+/// Writes didChange/completion frames, not fixture disk contents.
+///
+/// # Arguments
+/// - `client` `[in,out]`: writes the request and consumes its reply; unrelated messages append
+///   to pending.
+/// - `path` `[in]`: document path converted to a fixture URI.
+/// - `marked` `[in]`: full header-free replacement source; first | marks the cursor and is
+///   removed.
+/// - `version` `[in]`: didChange document version.
+/// - `id` `[in]`: request/response correlation ID.
+///
+/// # Returns
+/// The cloned successful completion result from the shared complete helper.
+///
+/// # Panics
+/// Panics if the marker is absent, sending fails or completion returns an error.
+///
+/// # Algorithm
+/// Split at the first marker to count body newlines and UTF-16 column; remove that marker,
+/// prepend HEADER, send the full-text versioned change, then query completion.
+/// The shared complete helper adds the one header line; this request is an ordering barrier.
+///
+/// # Flow
+/// ```text
+/// [Marked body source]
+///          |
+///          +-------------------------+
+///          v                         v
+///  [Remove first marker]    [Count line / UTF-16 column]
+///          |                         |
+///          v                         |
+///  [Send full didChange]             |
+///          |                         |
+///          +-------------+-----------+
+///                        v
+///      [complete: add header line, send query]
+///                        |
+///                        v
+///              [Completion result]
+/// ```
+///
+/// # Examples
+/// ```text
+/// let items = changed(&mut client, &root, "include(Loc|)", 2, 10).await;
+/// ```
 async fn changed(client: &mut Session, path: &Path, marked: &str, version: i32, id: i32) -> Value {
     let (text, line, column) = cursor(marked);
     client.send(json!({"jsonrpc":"2.0","method":"textDocument/didChange","params":{"textDocument":{"uri":uri(path),"version":version},"contentChanges":[{"text":format!("{HEADER}{text}")}]}})).await;
     complete(client, path, line, column, id).await
 }
+/// Check whether any completion item has an exact case-sensitive label; no side effects.
+///
+/// # Arguments
+/// - `items` `[in]`: completion result array, borrowed without mutation.
+/// - `name` `[in]`: label spelling to compare.
+///
+/// # Returns
+/// true if at least one label matches; false otherwise.
+///
+/// # Panics
+/// Panics if items is not a JSON array.
+///
+/// # Examples
+/// ```text
+/// let present = has(&items, "MY_FIRST");
+/// ```
 fn has(items: &Value, name: &str) -> bool {
     items
         .as_array()
@@ -24,6 +103,47 @@ fn has(items: &Value, name: &str) -> bool {
 }
 
 #[tokio::test]
+/// Check variable roles and ordinary expansions offer names with case-sensitive,
+/// wrapper-preserving edits.
+/// Creates temporary files and an analyzer session; successful completion stops the session and
+/// removes fixtures.
+///
+/// # Arguments
+/// None.
+///
+/// # Returns
+/// `()` if every assertion passes; no output parameter.
+///
+/// # Panics
+/// Panics on any failed assertion or unwrapped fixture/transport/process failure.
+/// Cleanup is explicit on the success path; a panic may leave a fixture tree.
+///
+/// # Algorithm
+/// Enable reserve_arg and query set/unset/list/output-variable slots plus complete/incomplete
+/// expansions. Require MY_FIRST/MY_SECOND but not my_lower, kind 6, plain text and no snippet
+/// placeholders; inspect the emoji-prefixed replacement range. Value slots,
+/// bracket/escaped/environment references, comments and unknown splitting yield no items.
+/// Native CMAKE_CURRENT_SOURCE_DIR still completes.
+///
+/// # Flow
+/// ```text
+/// [Temporary sources + settings]      [Expected: case-sensitive Variable edits]
+///              |                              |
+///              v                              |
+/// [LSP scenario messages]                 |
+///              |                              |
+///              +-------------+----------------+
+///                            v
+///                  [Compare assertions]
+///                            |
+///                            v
+///             [Finish session + remove tree]
+/// ```
+///
+/// # Examples
+/// ```text
+/// schema_variable_slots_and_expansions_offer_case_sensitive_names_not_values(); // #[tokio::test] supplies the runtime
+/// ```
 async fn schema_variable_slots_and_expansions_offer_case_sensitive_names_not_values() {
     let p = Project::new().await;
     tokio::fs::write(
@@ -115,6 +235,46 @@ async fn schema_variable_slots_and_expansions_offer_case_sensitive_names_not_val
     p.remove().await;
 }
 #[tokio::test]
+/// Check literal target/alias completion kinds, delimiter ranges and executable/library role
+/// filtering.
+/// Creates temporary files and an analyzer session; successful completion stops the session and
+/// removes fixtures.
+///
+/// # Arguments
+/// None.
+///
+/// # Returns
+/// `()` if every assertion passes; no output parameter.
+///
+/// # Panics
+/// Panics on any failed assertion or unwrapped fixture/transport/process failure.
+/// Cleanup is explicit on the success path; a panic may leave a fixture tree.
+///
+/// # Algorithm
+/// Declare library, executable, custom target and alias. Require all in general target slots as
+/// plain EnumMember 20, with exact quoted payload range. Library aliases exclude
+/// executable/custom targets and executable aliases exclude libraries. Known APP expansion
+/// preserves roles, PUBLIC is keyword-only, and replacing the overlay removes old target names.
+///
+/// # Flow
+/// ```text
+/// [Temporary sources + settings]      [Expected: typed targets + alias filtering]
+///              |                              |
+///              v                              |
+/// [LSP scenario messages]                 |
+///              |                              |
+///              +-------------+----------------+
+///                            v
+///                  [Compare assertions]
+///                            |
+///                            v
+///             [Finish session + remove tree]
+/// ```
+///
+/// # Examples
+/// ```text
+/// schema_targets_use_enum_member_and_keep_alias_names_quotes_and_typed_roles(); // #[tokio::test] supplies the runtime
+/// ```
 async fn schema_targets_use_enum_member_and_keep_alias_names_quotes_and_typed_roles() {
     let p = Project::new().await;
     let base = "add_library(MyLib STATIC source.c)\nadd_executable(MyApp main.c)\nadd_custom_target(MyCustom)\nadd_library(My::Alias ALIAS MyLib)\nset(MY_VARIABLE yes)\n";
@@ -210,6 +370,46 @@ async fn schema_targets_use_enum_member_and_keep_alias_names_quotes_and_typed_ro
     p.remove().await;
 }
 #[tokio::test]
+/// Check variable/target completion respects includes, directory ancestry and function/macro
+/// formals.
+/// Creates temporary files and an analyzer session; successful completion stops the session and
+/// removes fixtures.
+///
+/// # Arguments
+/// None.
+///
+/// # Returns
+/// `()` if every assertion passes; no output parameter.
+///
+/// # Panics
+/// Panics on any failed assertion or unwrapped fixture/transport/process failure.
+/// Cleanup is explicit on the success path; a panic may leave a fixture tree.
+///
+/// # Algorithm
+/// Root sees SHARED_MODULE/SHARED_ROOT but not CHILD_ONLY; ordinary ChildLib is visible while
+/// ChildImported is not. Current function locals/formals and macro formals complete, unrelated
+/// function locals/formals do not. Opening the child exposes inherited shared root/module
+/// variables.
+///
+/// # Flow
+/// ```text
+/// [Temporary sources + settings]      [Expected: scope-qualified completion names]
+///              |                              |
+///              v                              |
+/// [LSP scenario messages]                 |
+///              |                              |
+///              +-------------+----------------+
+///                            v
+///                  [Compare assertions]
+///                            |
+///                            v
+///             [Finish session + remove tree]
+/// ```
+///
+/// # Examples
+/// ```text
+/// imports_and_parent_directory_variables_are_available_without_leaking_child_or_function_locals(); // #[tokio::test] supplies the runtime
+/// ```
 async fn imports_and_parent_directory_variables_are_available_without_leaking_child_or_function_locals()
  {
     let p = Project::new().await;
@@ -288,6 +488,45 @@ async fn imports_and_parent_directory_variables_are_available_without_leaking_ch
     p.remove().await;
 }
 #[tokio::test]
+/// Check shadowed native list has no builtin variable slots while ordinary expansions still
+/// complete.
+/// Creates temporary files and an analyzer session; successful completion stops the session and
+/// removes fixtures.
+///
+/// # Arguments
+/// None.
+///
+/// # Returns
+/// `()` if every assertion passes; no output parameter.
+///
+/// # Panics
+/// Panics on any failed assertion or unwrapped fixture/transport/process failure.
+/// Cleanup is explicit on the success path; a panic may leave a fixture tree.
+///
+/// # Algorithm
+/// Declare user list and MY_VARIABLE in a standalone file. Bare list(APPEND MY...) yields []; a
+/// ${MY...} argument still offers MY_VARIABLE. Replace the overlay with NEW_VARIABLE and
+/// require only the new name.
+///
+/// # Flow
+/// ```text
+/// [Temporary sources + settings]      [Expected: shadow suppression / fresh names]
+///              |                              |
+///              v                              |
+/// [LSP scenario messages]                 |
+///              |                              |
+///              +-------------+----------------+
+///                            v
+///                  [Compare assertions]
+///                            |
+///                            v
+///             [Finish session + remove tree]
+/// ```
+///
+/// # Examples
+/// ```text
+/// user_shadows_do_not_inherit_native_parameter_roles_but_expansions_still_work(); // #[tokio::test] supplies the runtime
+/// ```
 async fn user_shadows_do_not_inherit_native_parameter_roles_but_expansions_still_work() {
     let p = Project::new().await;
     let base = "set(MY_VARIABLE yes)\nfunction(list input)\nendfunction()\n";

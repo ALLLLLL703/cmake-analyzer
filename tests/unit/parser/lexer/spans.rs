@@ -1,3 +1,7 @@
+//! Token and cursor coordinates use byte ranges and Unicode-scalar columns. In-memory tests also
+//! cover borrowed slicing and colored display.
+
+// Contains AI-generated documentation edits.
 // Contains AI-generated tests or test edits.
 
 use cmake_analyzer::{
@@ -5,6 +9,27 @@ use cmake_analyzer::{
     parser::lexer::model::{LexContent, Lexer, RawBuffer},
 };
 
+/// Scan mixed tabs, Chinese text, an escaped quote/crab/multiline string and CRLF. Compare every
+/// token's byte endpoints, scalar row/column and raw source text, then check the string payload
+/// omits quotes.
+///
+/// Only local values and analysis buffers are created or changed; no file, network or process side
+/// effects.
+///
+/// # Arguments
+/// None. The test builds its own fixture and expected results.
+///
+/// # Returns
+/// `()` after all checks pass; no data or output parameter is returned.
+///
+/// # Panics
+/// If a stated invariant fails.
+///
+/// # Examples
+/// Local test-module call:
+/// ```text
+/// tokens_keep_exact_ranges_and_start_positions();
+/// ```
 #[test]
 fn tokens_keep_exact_ranges_and_start_positions() {
     let source = " \tfoo(中 \"a\\\"🦀\n尾\")\r\nbar";
@@ -32,6 +57,26 @@ fn tokens_keep_exact_ranges_and_start_positions() {
     assert_eq!(result.lex[3].text(source), Some("a\\\"🦀\n尾"));
 }
 
+/// Scan two quotes and require an empty string payload with the full 0..2 token range at row/column
+/// zero.
+///
+/// Only local values and analysis buffers are created or changed; no file, network or process side
+/// effects.
+///
+/// # Arguments
+/// None. The test builds its own fixture and expected results.
+///
+/// # Returns
+/// `()` after all checks pass; no data or output parameter is returned.
+///
+/// # Panics
+/// If a stated invariant fails.
+///
+/// # Examples
+/// Local test-module call:
+/// ```text
+/// empty_strings_have_a_two_byte_token_range();
+/// ```
 #[test]
 fn empty_strings_have_a_two_byte_token_range() {
     let mut lexer = Lexer::new(RawBuffer::new("\"\""));
@@ -46,6 +91,26 @@ fn empty_strings_have_a_two_byte_token_range() {
     );
 }
 
+/// Advance over Chinese text and a newline before parsing the remaining indented identifier.
+/// Require absolute byte 6..9 and row 1, column 2 rather than suffix-relative coordinates.
+///
+/// Only local values and analysis buffers are created or changed; no file, network or process side
+/// effects.
+///
+/// # Arguments
+/// None. The test builds its own fixture and expected results.
+///
+/// # Returns
+/// `()` after all checks pass; no data or output parameter is returned.
+///
+/// # Panics
+/// If a stated invariant fails or an unwrapped fixture/setup operation fails.
+///
+/// # Examples
+/// Local test-module call:
+/// ```text
+/// parsing_from_an_existing_cursor_keeps_absolute_positions();
+/// ```
 #[test]
 fn parsing_from_an_existing_cursor_keeps_absolute_positions() {
     let mut lexer = Lexer::new(RawBuffer::new("前\n  abc"));
@@ -63,6 +128,26 @@ fn parsing_from_an_existing_cursor_keeps_absolute_positions() {
     assert_eq!(result.lex[0].text("前\n  abc"), Some("abc"));
 }
 
+/// Manually assign five valid byte offsets in `中\nabc` and require each zero-width cursor span to
+/// use that offset's row and scalar column.
+///
+/// Only local values and analysis buffers are created or changed; no file, network or process side
+/// effects.
+///
+/// # Arguments
+/// None. The test builds its own fixture and expected results.
+///
+/// # Returns
+/// `()` after all checks pass; no data or output parameter is returned.
+///
+/// # Panics
+/// If a stated invariant fails.
+///
+/// # Examples
+/// Local test-module call:
+/// ```text
+/// cursor_spans_locate_the_cursor_instead_of_the_end_of_the_document();
+/// ```
 #[test]
 fn cursor_spans_locate_the_cursor_instead_of_the_end_of_the_document() {
     let mut buffer = RawBuffer::new("中\nabc");
@@ -76,6 +161,26 @@ fn cursor_spans_locate_the_cursor_instead_of_the_end_of_the_document() {
     }
 }
 
+/// Read valid Unicode/ASCII/empty-end spans and reject split-scalar, out-of-bounds and reversed
+/// byte ranges against one raw buffer.
+///
+/// Only local values and analysis buffers are created or changed; no file, network or process side
+/// effects.
+///
+/// # Arguments
+/// None. The test builds its own fixture and expected results.
+///
+/// # Returns
+/// `()` after all checks pass; no data or output parameter is returned.
+///
+/// # Panics
+/// If a stated invariant fails.
+///
+/// # Examples
+/// Local test-module call:
+/// ```text
+/// span_text_uses_half_open_utf8_ranges_including_empty_eof();
+/// ```
 #[test]
 fn span_text_uses_half_open_utf8_ranges_including_empty_eof() {
     let buffer = RawBuffer::new("中x");
@@ -97,6 +202,26 @@ fn span_text_uses_half_open_utf8_ranges_including_empty_eof() {
     }
 }
 
+/// Render a call with a quoted argument as exact plain token lines and require ANSI escape bytes
+/// when color is enabled.
+///
+/// Only local values and analysis buffers are created or changed; no file, network or process side
+/// effects.
+///
+/// # Arguments
+/// None. The test builds its own fixture and expected results.
+///
+/// # Returns
+/// `()` after all checks pass; no data or output parameter is returned.
+///
+/// # Panics
+/// If a stated invariant fails.
+///
+/// # Examples
+/// Local test-module call:
+/// ```text
+/// display_still_formats_token_content_with_optional_color();
+/// ```
 #[test]
 fn display_still_formats_token_content_with_optional_color() {
     let mut lexer = Lexer::new(RawBuffer::new("foo(\"bar\")"));

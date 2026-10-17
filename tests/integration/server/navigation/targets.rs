@@ -1,18 +1,92 @@
 // AI-generated target definition/reference navigation tests.
+//! Literal target/alias definitions and typed operand references.
+//! Tests distinguish imported invocation-directory visibility, user shadows and pending edits.
 #[path = "targets_owners.rs"]
 mod owners;
 use super::super::session::{HEADER, Project, Session, uri};
 use super::{definition, references};
 use serde_json::{Value, json};
+/// Compute the UTF-16 column of the first exact name occurrence on a body line; no side
+/// effects.
+///
+/// # Arguments
+/// - `text` `[in]`: header-free multiline fixture source.
+/// - `line` `[in]`: zero-based body line to inspect.
+/// - `name` `[in]`: substring whose first occurrence determines the column.
+///
+/// # Returns
+/// The count of UTF-16 code units before the first occurrence; no HEADER line adjustment.
+///
+/// # Panics
+/// Panics if the line or substring is absent.
+///
+/// # Examples
+/// ```text
+/// let col = column("get_target_property(🌟 Core TYPE)", 0, "Core");
+/// ```
 fn column(text: &str, line: usize, name: &str) -> usize {
     let text = text.lines().nth(line).unwrap();
     text[..text.find(name).unwrap()].encode_utf16().count()
 }
+/// Count locations in a navigation response result array; no side effects.
+///
+/// # Arguments
+/// - `response` `[in]`: full response envelope whose result must be an array.
+///
+/// # Returns
+/// The result array length; no deduplication is performed here.
+///
+/// # Panics
+/// Panics if result is null, absent or not an array.
+///
+/// # Examples
+/// ```text
+/// let locations = count(&reply);
+/// ```
 fn count(response: &Value) -> usize {
     response["result"].as_array().unwrap().len()
 }
 
 #[tokio::test]
+/// Check target/alias payload spans and schema-role references exclude ordinary values.
+/// Creates temporary files and an analyzer session; successful completion stops the session and
+/// removes fixtures.
+///
+/// # Arguments
+/// None.
+///
+/// # Returns
+/// `()` if every assertion passes; no output parameter.
+///
+/// # Panics
+/// Panics on any failed assertion or unwrapped fixture/transport/process failure.
+/// Cleanup is explicit on the success path; a panic may leave a fixture tree.
+///
+/// # Algorithm
+/// Declare Core/App/Assets/CoreAlias; navigate quoted/bracket target operands and the alias
+/// original. Require exact declaration ranges and 5/6 Core references without/with declaration,
+/// one alias use, and Assets binding. External names and quote delimiters return null; known
+/// scalar APP expansion preserves a later target role while list-valued APP suppresses it.
+///
+/// # Flow
+/// ```text
+/// [Temporary sources + settings]      [Expected: target counts + typed exclusions]
+///              |                              |
+///              v                              |
+/// [LSP scenario messages]                 |
+///              |                              |
+///              +-------------+----------------+
+///                            v
+///                  [Compare assertions]
+///                            |
+///                            v
+///             [Finish session + remove tree]
+/// ```
+///
+/// # Examples
+/// ```text
+/// literal_targets_aliases_and_schema_operands_have_distinct_definitions_and_references(); // #[tokio::test] supplies the runtime
+/// ```
 async fn literal_targets_aliases_and_schema_operands_have_distinct_definitions_and_references() {
     let p = Project::new().await;
     let text = "add_library(\"Core\" STATIC core.c)\nadd_executable(App main.c)\nadd_custom_target(Assets)\nadd_library(CoreAlias ALIAS Core)\ntarget_link_libraries(App PUBLIC \"Core\" CoreAlias external)\nadd_dependencies(App Assets)\nget_target_property(🌟 [=[Core]=] TYPE)\ntarget_include_directories(Core PRIVATE Core)\nset(NAME Core)\nmessage(\"${NAME}\")\nset(APP App)\ntarget_link_libraries(${APP} PUBLIC Core)\nset(APP \"App;Other\")\ntarget_link_libraries(${APP} PUBLIC Core)\n";
@@ -78,6 +152,44 @@ async fn literal_targets_aliases_and_schema_operands_have_distinct_definitions_a
 }
 
 #[tokio::test]
+/// Check imported target and alias visibility follows include invocation directories.
+/// Creates temporary files and an analyzer session; successful completion stops the session and
+/// removes fixtures.
+///
+/// # Arguments
+/// None.
+///
+/// # Returns
+/// `()` if every assertion passes; no output parameter.
+///
+/// # Panics
+/// Panics on any failed assertion or unwrapped fixture/transport/process failure.
+/// Cleanup is explicit on the success path; a panic may leave a fixture tree.
+///
+/// # Algorithm
+/// Visit the same imported-target module from sibling directories plus a nested child. Root
+/// cannot see Scoped/ScopedAlias but sees root Shared and ordinary ATarget. References for a
+/// and b remain separate; a/deep inherits a's ScopedAlias declaration.
+///
+/// # Flow
+/// ```text
+/// [Temporary sources + settings]      [Expected: directory-qualified target sets]
+///              |                              |
+///              v                              |
+/// [LSP scenario messages]                 |
+///              |                              |
+///              +-------------+----------------+
+///                            v
+///                  [Compare assertions]
+///                            |
+///                            v
+///             [Finish session + remove tree]
+/// ```
+///
+/// # Examples
+/// ```text
+/// imported_and_alias_visibility_follows_invocation_directories_not_file_paths(); // #[tokio::test] supplies the runtime
+/// ```
 async fn imported_and_alias_visibility_follows_invocation_directories_not_file_paths() {
     let p = Project::new().await;
     let common = p
@@ -157,6 +269,44 @@ async fn imported_and_alias_visibility_follows_invocation_directories_not_file_p
 }
 
 #[tokio::test]
+/// Check native target roles are not inherited by shadows or inferred from ordinary values.
+/// Creates temporary files and an analyzer session; successful completion stops the session and
+/// removes fixtures.
+///
+/// # Arguments
+/// None.
+///
+/// # Returns
+/// `()` if every assertion passes; no output parameter.
+///
+/// # Panics
+/// Panics on any failed assertion or unwrapped fixture/transport/process failure.
+/// Cleanup is explicit on the success path; a panic may leave a fixture tree.
+///
+/// # Algorithm
+/// Declare Real, expand NAME in target_sources, then shadow target_sources and add_library.
+/// Require only one bound Real reference; shadow arguments and Fake declarations/uses have null
+/// definitions, while NAME still links to its set declaration.
+///
+/// # Flow
+/// ```text
+/// [Temporary sources + settings]      [Expected: one Real use / null Fake links]
+///              |                              |
+///              v                              |
+/// [LSP scenario messages]                 |
+///              |                              |
+///              +-------------+----------------+
+///                            v
+///                  [Compare assertions]
+///                            |
+///                            v
+///             [Finish session + remove tree]
+/// ```
+///
+/// # Examples
+/// ```text
+/// user_shadows_dynamic_names_and_ordinary_values_do_not_create_target_bindings(); // #[tokio::test] supplies the runtime
+/// ```
 async fn user_shadows_dynamic_names_and_ordinary_values_do_not_create_target_bindings() {
     let p = Project::new().await;
     let text = "add_library(Real INTERFACE)\nset(NAME Real)\ntarget_sources(\"${NAME}\" PRIVATE Real)\nfunction(target_sources ARG)\nendfunction()\ntarget_sources(Real PRIVATE item.c)\nfunction(add_library ARG)\nendfunction()\nadd_library(Fake INTERFACE)\ntarget_link_libraries(Real PRIVATE Fake Unknown)\n";
@@ -185,6 +335,44 @@ async fn user_shadows_dynamic_names_and_ordinary_values_do_not_create_target_bin
 }
 
 #[tokio::test]
+/// Check file-local target navigation refreshes renamed declarations and UTF-16 operand spans.
+/// Creates temporary files and an analyzer session; successful completion stops the session and
+/// removes fixtures.
+///
+/// # Arguments
+/// None.
+///
+/// # Returns
+/// `()` if every assertion passes; no output parameter.
+///
+/// # Panics
+/// Panics on any failed assertion or unwrapped fixture/transport/process failure.
+/// Cleanup is explicit on the success path; a panic may leave a fixture tree.
+///
+/// # Algorithm
+/// Start with Old and require two references including declaration. Replace the overlay with a
+/// moved New declaration, emoji-bearing use and stale Old use; require the new range, null Old
+/// definition and two New references.
+///
+/// # Flow
+/// ```text
+/// [Temporary sources + settings]      [Expected: moved New / stale Old null]
+///              |                              |
+///              v                              |
+/// [LSP scenario messages]                 |
+///              |                              |
+///              +-------------+----------------+
+///                            v
+///                  [Compare assertions]
+///                            |
+///                            v
+///             [Finish session + remove tree]
+/// ```
+///
+/// # Examples
+/// ```text
+/// standalone_target_references_follow_pending_utf16_edits(); // #[tokio::test] supplies the runtime
+/// ```
 async fn standalone_target_references_follow_pending_utf16_edits() {
     let p = Project::new().await;
     let text = "add_library(Old INTERFACE)\nget_target_property(🌟 Old TYPE)\n";

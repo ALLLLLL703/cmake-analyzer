@@ -1,6 +1,12 @@
+//! Unix child-process error, output-budget, timeout and cancellation tests. Executable shell
+//! fixtures live in temporary directories; these tests do not configure real projects.
+
+// Contains AI-generated documentation edits.
 // AI-generated process failure, output-bound, and cancellation tests.
 #[cfg(unix)]
 mod unix {
+    //! Unix-only fixture processes with explicit capture/timeout/cancellation budgets.
+    //! Helpers write executable shell bodies; tests launch them and remove temporary roots.
     use cmake_analyzer::runtime_cmake::{
         configure,
         model::{ConfigureOptions, RunId},
@@ -10,7 +16,33 @@ mod unix {
         sync::atomic::{AtomicU64, Ordering},
         time::Duration,
     };
+    /// Process-local suffix counter for collision-free temporary fixture names.
+    /// Example: `NEXT.fetch_add(1, Ordering::Relaxed)` reserves the next local suffix.
     static NEXT: AtomicU64 = AtomicU64::new(0);
+    /// Write a unique executable shell fixture and prepare bounded configure options. A joined blocking
+    /// writer closes the executable before later exec to avoid executable-file-busy races; this helper
+    /// itself launches no child.
+    ///
+    /// # Arguments
+    /// - `script` `[in]`: Fixed shell body embedded verbatim after the shebang and script-generation
+    ///   label; callers control all fixture statements.
+    ///
+    /// # Returns
+    /// Configure-mode options using the fake executable, a unique root as source, root/build as build
+    /// path, no extra arguments, five-second timeout and bounded output/error capture. Caller removes
+    /// source_directory after the run.
+    ///
+    /// # Panics
+    /// If directory creation, the blocking writer task, file writing or chmod fails.
+    ///
+    /// # Examples
+    /// Local test-module context (await inside an async test):
+    /// ```text
+    /// let options = options("printf 'fixture error\\n' >&2; exit 1").await;
+    /// let root = options.source_directory.clone();
+    /// // Pass options to configure for a fixture run, then clean up.
+    /// tokio::fs::remove_dir_all(root).await.unwrap();
+    /// ```
     async fn options(script: &str) -> ConfigureOptions {
         use std::os::unix::fs::PermissionsExt;
         let root = std::env::temp_dir().join(format!(
@@ -41,6 +73,27 @@ mod unix {
             max_error_bytes: 128,
         }
     }
+    /// Run one fake executable that emits a fatal stderr line and exits nonzero, then one that emits
+    /// non-JSON output successfully. Require useful failure details and a missing-JSON-trace error;
+    /// remove each temporary process fixture.
+    ///
+    /// Writes/chmods temporary shell executables, launches fixture children through configure and
+    /// deletes fixture roots on success; no real project is configured.
+    ///
+    /// # Arguments
+    /// None. The test builds its own fixture and expected results.
+    ///
+    /// # Returns
+    /// `()` after all checks pass; no data or output parameter is returned.
+    ///
+    /// # Panics
+    /// If a stated invariant fails or an unwrapped fixture/setup operation fails.
+    ///
+    /// # Examples
+    /// Direct local call outside any Tokio runtime (the test attribute creates its runtime):
+    /// ```text
+    /// failures_surface_non_trace_details_and_invalid_trace_is_not_published();
+    /// ```
     #[tokio::test]
     async fn failures_surface_non_trace_details_and_invalid_trace_is_not_published() {
         for (script, expected) in [
@@ -59,6 +112,43 @@ mod unix {
             tokio::fs::remove_dir_all(root).await.unwrap();
         }
     }
+    /// Run sleeping shell fixtures with an eight-byte output cap and a 100ms timeout, requiring limit
+    /// and timeout errors.
+    ///
+    /// Writes/chmods temporary shell executables, launches fixture children through configure and
+    /// deletes fixture roots on success; no real project is configured.
+    ///
+    /// # Arguments
+    /// None. The test builds its own fixture and expected results.
+    ///
+    /// # Returns
+    /// `()` after all checks pass; no data or output parameter is returned.
+    ///
+    /// # Panics
+    /// If a stated invariant fails or an unwrapped fixture/setup operation fails.
+    ///
+    /// # Algorithm
+    /// Cancel a marker-writing fixture before configure and require interruption with no marker. The
+    /// test checks returned errors/marker, not a separate PID probe for the first two children.
+    ///
+    /// # Flow
+    /// ```text
+    ///   [noisy / sleeping fixtures]
+    ///    |
+    ///   [run with cap or timeout]------------> [pre-cancel marker fixture]
+    ///                                         |
+    ///                                        [check errors + absent marker]
+    ///                                         |
+    ///                                        < checks hold? >
+    ///                                         /         \
+    ///                                       [pass]     [panic]
+    /// ```
+    ///
+    /// # Examples
+    /// Direct local call outside any Tokio runtime (the test attribute creates its runtime):
+    /// ```text
+    /// output_limits_timeouts_and_precancel_do_not_leave_running_children();
+    /// ```
     #[tokio::test]
     async fn output_limits_timeouts_and_precancel_do_not_leave_running_children() {
         let mut bounded = options("printf '01234567890123456789' >&2; exec sleep 60").await;

@@ -1,3 +1,7 @@
+//! Private build-command schema tests attached by `schema::builtin::all_build`. Completion probes
+//! and structural inspections never run the CMake commands they describe.
+
+// Contains AI-generated documentation edits.
 // AI-generated tests.
 use super::schemas;
 use crate::parser::semanticer::{
@@ -7,6 +11,26 @@ use crate::parser::semanticer::{
 };
 use std::collections::BTreeSet;
 
+/// Wrap one versioned command grammar from the enclosing module's schemas in a builtin
+/// CommandSchema. Allocates local schema data only; no CMake execution or external side effects.
+///
+/// # Arguments
+/// - `command` `[in]`: Exact command name in this module's versioned catalog.
+/// - `version` `[in]`: CMake (major, minor) selecting available grammar nodes.
+///
+/// # Returns
+/// An owned builtin schema with its argument nodes wrapped as ArgSchema entries and generic builtin
+/// command kind.
+///
+/// # Panics
+/// If the requested command is absent at that version.
+///
+/// # Examples
+/// Local test-module context:
+/// ```text
+/// let grammar = schema("add_library", (4, 4));
+/// assert!(!grammar.args.is_empty());
+/// ```
 fn schema(command: &str, version: (u32, u32)) -> CommandSchema {
     let (_, args) = schemas(version)
         .into_iter()
@@ -20,6 +44,27 @@ fn schema(command: &str, version: (u32, u32)) -> CommandSchema {
     }
 }
 
+/// Collect owned completion words for a partial argument list using [`schema`]. Cancellation is
+/// disabled; only local allocations occur and no represented command is executed.
+///
+/// # Arguments
+/// - `command` `[in]`: Exact command name from the enclosing grammar family.
+/// - `version` `[in]`: CMake (major, minor) used to construct the schema.
+/// - `prefix` `[in]`: Arguments through the active slot; the final string is the typed prefix,
+///   including an empty string for a new slot.
+///
+/// # Returns
+/// Sorted, deduplicated keyword strings returned by the production completion matcher; empty for
+/// scalar or unreachable slots.
+///
+/// # Panics
+/// If the command is absent at the requested version.
+///
+/// # Examples
+/// Local test-module context:
+/// ```text
+/// assert!(keywords("add_library", (4, 4), &["lib", "ST"]).contains(&"STATIC".to_owned()));
+/// ```
 fn keywords(command: &str, version: (u32, u32), prefix: &[&str]) -> Vec<String> {
     completion_keywords(&schema(command, version), prefix, || false)
         .into_iter()
@@ -27,6 +72,27 @@ fn keywords(command: &str, version: (u32, u32), prefix: &[&str]) -> Vec<String> 
         .collect()
 }
 
+/// Assert that a build-grammar prefix offers the expected literal. Calls [`keywords`] with no
+/// external side effects.
+///
+/// # Arguments
+/// - `command` `[in]`: Exact build-family command name.
+/// - `version` `[in]`: CMake (major, minor) selecting the schema.
+/// - `prefix` `[in]`: Arguments through the active completion slot.
+/// - `expected` `[in]`: Word whose presence is required.
+///
+/// # Returns
+/// `()` after the membership assertion succeeds; no output buffer is changed.
+///
+/// # Panics
+/// If schema lookup fails or the expected word is absent; the assertion includes the actual
+/// completion list.
+///
+/// # Examples
+/// Local test-module context:
+/// ```text
+/// has("add_library", (4, 4), &["lib", "ST"], "STATIC");
+/// ```
 fn has(command: &str, version: (u32, u32), prefix: &[&str], expected: &str) {
     let actual = keywords(command, version, prefix);
     assert!(
@@ -35,6 +101,27 @@ fn has(command: &str, version: (u32, u32), prefix: &[&str], expected: &str) {
     );
 }
 
+/// Assert that a build-grammar prefix excludes a literal from the wrong form or version. Calls
+/// [`keywords`] with no external side effects.
+///
+/// # Arguments
+/// - `command` `[in]`: Exact build-family command name.
+/// - `version` `[in]`: CMake (major, minor) selecting the schema.
+/// - `prefix` `[in]`: Arguments through the active completion slot.
+/// - `expected` `[in]`: Word whose absence is required.
+///
+/// # Returns
+/// `()` after the membership assertion succeeds; no output buffer is changed.
+///
+/// # Panics
+/// If schema lookup fails or the expected exclusion is violated; the assertion includes the actual
+/// completion list.
+///
+/// # Examples
+/// Local test-module context:
+/// ```text
+/// lacks("add_library", (4, 4), &["lib", "STATIC", ""], "SYMBOLIC");
+/// ```
 fn lacks(command: &str, version: (u32, u32), prefix: &[&str], expected: &str) {
     let actual = keywords(command, version, prefix);
     assert!(
@@ -43,6 +130,45 @@ fn lacks(command: &str, version: (u32, u32), prefix: &[&str], expected: &str) {
     );
 }
 
+/// Walk build argument nodes, appending literal keywords to a sorted set while rejecting
+/// unstructured fallback nodes. Mutates only the supplied set, without clearing existing entries or
+/// performing I/O.
+///
+/// # Arguments
+/// - `kind` `[in]`: Root schema node, recursively including optional/repeated/intersection groups
+///   and choices.
+/// - `words` `[in,out]`: Existing keyword set; new owned words are inserted and duplicates retained
+///   only once, never cleared.
+///
+/// # Returns
+/// `()` after traversal; accumulated words remain in words. Ordinary typed scalars add nothing.
+///
+/// # Panics
+/// On Unmodeled, Unknown or Action nodes, signaling a grammar coverage gap.
+///
+/// # Algorithm
+/// Visit each group/choice recursively, insert Keyword leaves and ignore modeled scalar leaves.
+///
+/// # Flow
+/// ```text
+///       [schema node]
+///             |
+///      +------+-------+
+///      |              |
+/// [group/choice]   [leaf kind]
+///      |           /    |    \
+///  [recurse]   keyword scalar fallback
+///      |          |      |       |
+///      +----> [insert] [skip]  [panic]
+/// ```
+///
+/// # Examples
+/// Local test-module context:
+/// ```text
+/// let mut words = BTreeSet::new();
+/// catalog(&K::Optional(vec![K::Keyword("PUBLIC".into())]), &mut words);
+/// assert!(words.contains("PUBLIC"));
+/// ```
 fn catalog(kind: &K, words: &mut BTreeSet<String>) {
     match kind {
         K::Keyword(word) => {
@@ -63,6 +189,41 @@ fn catalog(kind: &K, words: &mut BTreeSet<String>) {
     }
 }
 
+/// Enumerate build schemas at 3.0, 3.31, 4.0 and 4.4, requiring unique names and no fallback nodes.
+///
+/// Only local values and analysis buffers are created or changed; no file, network or process side
+/// effects.
+///
+/// # Arguments
+/// None. The test builds its own fixture and expected results.
+///
+/// # Returns
+/// `()` after all checks pass; no data or output parameter is returned.
+///
+/// # Panics
+/// If a stated invariant fails.
+///
+/// # Algorithm
+/// Check target_sources begins at 3.1 and precompiled-header support at 3.16.
+///
+/// # Flow
+/// ```text
+///   [versioned build schemas]
+///    |
+///   [walk every argument tree]----------> [command introduction cases]
+///                                        |
+///                                       [check names/counts/no fallback]
+///                                        |
+///                                       < checks hold? >
+///                                        /         \
+///                                      [pass]     [panic]
+/// ```
+///
+/// # Examples
+/// Local test-module call:
+/// ```text
+/// keyword_build_all_owned_commands_are_structured();
+/// ```
 #[test]
 fn keyword_build_all_owned_commands_are_structured() {
     for version in [(3, 0), (3, 31), (4, 0), (4, 4)] {
@@ -89,6 +250,42 @@ fn keyword_build_all_owned_commands_are_structured() {
     }
 }
 
+/// Probe OUTPUT versus TARGET custom-command prefixes at 4.4.
+///
+/// Only local values and analysis buffers are created or changed; no file, network or process side
+/// effects.
+///
+/// # Arguments
+/// None. The test builds its own fixture and expected results.
+///
+/// # Returns
+/// `()` after all checks pass; no data or output parameter is returned.
+///
+/// # Panics
+/// If a stated invariant fails.
+///
+/// # Algorithm
+/// Require event and COMMAND ordering, output-only options and empty suggestions inside required
+/// scalar operands.
+///
+/// # Flow
+/// ```text
+///   [OUTPUT / TARGET prefixes]
+///    |
+///   [probe mode-specific keywords]----------> [required scalar prefixes]
+///                                            |
+///                                           [require empty completion]
+///                                            |
+///                                           < checks hold? >
+///                                            /         \
+///                                          [pass]     [panic]
+/// ```
+///
+/// # Examples
+/// Local test-module call:
+/// ```text
+/// keyword_build_custom_command_modes_and_scalar_slots();
+/// ```
 #[test]
 fn keyword_build_custom_command_modes_and_scalar_slots() {
     let v = (4, 4);
@@ -177,6 +374,43 @@ fn keyword_build_custom_command_modes_and_scalar_slots() {
     }
 }
 
+/// Probe custom-command and custom-target option introductions immediately before/at their
+/// versions, from BYPRODUCTS/USES_TERMINAL in 3.2 through CODEGEN in 3.31.
+///
+/// Only local values and analysis buffers are created or changed; no file, network or process side
+/// effects.
+///
+/// # Arguments
+/// None. The test builds its own fixture and expected results.
+///
+/// # Returns
+/// `()` after all checks pass; no data or output parameter is returned.
+///
+/// # Panics
+/// If a stated invariant fails.
+///
+/// # Algorithm
+/// Probe custom-command and custom-target option introductions immediately before/at their
+/// versions, from BYPRODUCTS/USES_TERMINAL in 3.2 through CODEGEN in 3.31.
+///
+/// # Flow
+/// ```text
+///   [before/introduced versions]
+///    |
+///   [probe custom command options]----------> [custom target options]
+///                                            |
+///                                           [compare absent/present words]
+///                                            |
+///                                           < checks hold? >
+///                                            /         \
+///                                          [pass]     [panic]
+/// ```
+///
+/// # Examples
+/// Local test-module call:
+/// ```text
+/// keyword_build_custom_command_version_boundaries();
+/// ```
 #[test]
 fn keyword_build_custom_command_version_boundaries() {
     for (word, before, after) in [
@@ -204,6 +438,42 @@ fn keyword_build_custom_command_version_boundaries() {
     }
 }
 
+/// Probe a custom target before/after ALL and implicit executable arguments.
+///
+/// Only local values and analysis buffers are created or changed; no file, network or process side
+/// effects.
+///
+/// # Arguments
+/// None. The test builds its own fixture and expected results.
+///
+/// # Returns
+/// `()` after all checks pass; no data or output parameter is returned.
+///
+/// # Panics
+/// If a stated invariant fails.
+///
+/// # Algorithm
+/// Require shared command options, but suppress ALL once an explicit COMMAND starts and never offer
+/// OUTPUT.
+///
+/// # Flow
+/// ```text
+///   [implicit / explicit commands]
+///    |
+///   [probe options after target]------------> [ALL and OUTPUT exclusions]
+///                                            |
+///                                           [check mode-specific suggestions]
+///                                            |
+///                                           < checks hold? >
+///                                            /         \
+///                                          [pass]     [panic]
+/// ```
+///
+/// # Examples
+/// Local test-module call:
+/// ```text
+/// keyword_build_custom_target_implicit_and_explicit_commands();
+/// ```
 #[test]
 fn keyword_build_custom_target_implicit_and_explicit_commands() {
     let v = (4, 4);
@@ -244,6 +514,42 @@ fn keyword_build_custom_target_implicit_and_explicit_commands() {
     );
 }
 
+/// Probe executable/library names, alias operands, imported GLOBAL, object imports and
+/// interface-only options.
+///
+/// Only local values and analysis buffers are created or changed; no file, network or process side
+/// effects.
+///
+/// # Arguments
+/// None. The test builds its own fixture and expected results.
+///
+/// # Returns
+/// `()` after all checks pass; no data or output parameter is returned.
+///
+/// # Panics
+/// If a stated invariant fails.
+///
+/// # Algorithm
+/// Check version gates and ensure SYMBOLIC never leaks into STATIC library forms.
+///
+/// # Flow
+/// ```text
+///   [executable / library forms]
+///    |
+///   [probe alias/import/interface]----------> [versioned special options]
+///                                            |
+///                                           [check gates and non-leakage]
+///                                            |
+///                                           < checks hold? >
+///                                            /         \
+///                                          [pass]     [panic]
+/// ```
+///
+/// # Examples
+/// Local test-module call:
+/// ```text
+/// keyword_build_target_creation_forms();
+/// ```
 #[test]
 fn keyword_build_target_creation_forms() {
     for command in ["add_executable", "add_library"] {
@@ -281,6 +587,42 @@ fn keyword_build_target_creation_forms() {
     lacks("add_library", (4, 4), &["lib", "STATIC", ""], "SYMBOLIC");
 }
 
+/// Contrast named tests with legacy positional tests.
+///
+/// Only local values and analysis buffers are created or changed; no file, network or process side
+/// effects.
+///
+/// # Arguments
+/// None. The test builds its own fixture and expected results.
+///
+/// # Returns
+/// `()` after all checks pass; no data or output parameter is returned.
+///
+/// # Panics
+/// If a stated invariant fails.
+///
+/// # Algorithm
+/// Require NAME/COMMAND scalar ordering, named-only options and introduction gates for command-list
+/// expansion and build dependencies.
+///
+/// # Flow
+/// ```text
+///   [NAME / legacy prefixes]
+///    |
+///   [probe test option slots]----------> [before/introduced versions]
+///                                       |
+///                                      [check ordering + version gates]
+///                                       |
+///                                      < checks hold? >
+///                                       /         \
+///                                     [pass]     [panic]
+/// ```
+///
+/// # Examples
+/// Local test-module call:
+/// ```text
+/// keyword_build_add_test_named_vs_legacy();
+/// ```
 #[test]
 fn keyword_build_add_test_named_vs_legacy() {
     let v = (4, 4);
@@ -322,6 +664,42 @@ fn keyword_build_add_test_named_vs_legacy() {
     );
 }
 
+/// Probe subdirectories, build-command outputs, external projects and legacy install/subdirs forms.
+///
+/// Only local values and analysis buffers are created or changed; no file, network or process side
+/// effects.
+///
+/// # Arguments
+/// None. The test builds its own fixture and expected results.
+///
+/// # Returns
+/// `()` after all checks pass; no data or output parameter is returned.
+///
+/// # Panics
+/// If a stated invariant fails.
+///
+/// # Algorithm
+/// Require supported options, SYSTEM/PARALLEL_LEVEL version gates and no keywords in required
+/// target/project-file operands.
+///
+/// # Flow
+/// ```text
+///   [small/legacy build forms]
+///    |
+///   [probe each option prefix]----------> [SYSTEM / PARALLEL_LEVEL gates]
+///                                        |
+///                                       [check scalars stay uncompleted]
+///                                        |
+///                                       < checks hold? >
+///                                        /         \
+///                                      [pass]     [panic]
+/// ```
+///
+/// # Examples
+/// Local test-module call:
+/// ```text
+/// keyword_build_small_commands_and_legacy_signatures();
+/// ```
 #[test]
 fn keyword_build_small_commands_and_legacy_signatures() {
     for (command, prefix, word) in [
@@ -361,6 +739,43 @@ fn keyword_build_small_commands_and_legacy_signatures() {
     assert!(keywords("include_external_msproject", (4, 4), &["external", ""]).is_empty());
 }
 
+/// Require two configure_file path operands before options, restrict newline spellings to
+/// NEWLINE_STYLE and check permission-option introductions and OWNER_READ completion.
+///
+/// Only local values and analysis buffers are created or changed; no file, network or process side
+/// effects.
+///
+/// # Arguments
+/// None. The test builds its own fixture and expected results.
+///
+/// # Returns
+/// `()` after all checks pass; no data or output parameter is returned.
+///
+/// # Panics
+/// If a stated invariant fails.
+///
+/// # Algorithm
+/// Require two configure_file path operands before options, restrict newline spellings to
+/// NEWLINE_STYLE and check permission-option introductions and OWNER_READ completion.
+///
+/// # Flow
+/// ```text
+///   [two path operands]
+///    |
+///   [probe configure_file options]----------> [newline / permission slots]
+///                                            |
+///                                           [check nested choices + gates]
+///                                            |
+///                                           < checks hold? >
+///                                            /         \
+///                                          [pass]     [panic]
+/// ```
+///
+/// # Examples
+/// Local test-module call:
+/// ```text
+/// keyword_build_configure_file_permissions_and_newlines();
+/// ```
 #[test]
 fn keyword_build_configure_file_permissions_and_newlines() {
     assert!(keywords("configure_file", (4, 4), &[""]).is_empty());
@@ -393,6 +808,42 @@ fn keyword_build_configure_file_permissions_and_newlines() {
     );
 }
 
+/// Probe visibility groups, file-set name/type/options and precompiled-header reuse.
+///
+/// Only local values and analysis buffers are created or changed; no file, network or process side
+/// effects.
+///
+/// # Arguments
+/// None. The test builds its own fixture and expected results.
+///
+/// # Returns
+/// `()` after all checks pass; no data or output parameter is returned.
+///
+/// # Panics
+/// If a stated invariant fails.
+///
+/// # Algorithm
+/// Check FILE_SET, CXX_MODULES and SOURCES version gates, while preventing file-set options and
+/// REUSE_FROM from escaping their forms.
+///
+/// # Flow
+/// ```text
+///   [visibility + FILE_SET prefixes]
+///    |
+///   [probe names/types/options]---------------> [precompiled-header REUSE_FROM]
+///                                              |
+///                                             [check scope + introductions]
+///                                              |
+///                                             < checks hold? >
+///                                              /         \
+///                                            [pass]     [panic]
+/// ```
+///
+/// # Examples
+/// Local test-module call:
+/// ```text
+/// keyword_build_target_sources_file_sets_and_reuse();
+/// ```
 #[test]
 fn keyword_build_target_sources_file_sets_and_reuse() {
     let v = (4, 4);
@@ -468,6 +919,42 @@ fn keyword_build_target_sources_file_sets_and_reuse() {
     assert!(keywords("target_precompile_headers", v, &["app", "REUSE_FROM", ""]).is_empty());
 }
 
+/// Probe export root modes and their nested options, including SETUP dependencies/targets and AUTO.
+///
+/// Only local values and analysis buffers are created or changed; no file, network or process side
+/// effects.
+///
+/// # Arguments
+/// None. The test builds its own fixture and expected results.
+///
+/// # Returns
+/// `()` after all checks pass; no data or output parameter is returned.
+///
+/// # Panics
+/// If a stated invariant fails.
+///
+/// # Algorithm
+/// Check Android/module/dependency/SBOM version gates and required scalar suppression without
+/// creating export files.
+///
+/// # Flow
+/// ```text
+///   [export mode prefixes]
+///    |
+///   [probe mode-specific options]----------> [SETUP nested dependency/target]
+///                                           |
+///                                          [check gates + scalar suppression]
+///                                           |
+///                                          < checks hold? >
+///                                           /         \
+///                                         [pass]     [panic]
+/// ```
+///
+/// # Examples
+/// Local test-module call:
+/// ```text
+/// keyword_build_export_modes();
+/// ```
 #[test]
 fn keyword_build_export_modes() {
     let v = (4, 4);
@@ -551,6 +1038,42 @@ fn keyword_build_export_modes() {
     assert!(keywords("export", v, &["TARGETS", "app", "NAMESPACE", ""]).is_empty());
 }
 
+/// Probe install root forms, target artifact sections, file sets and runtime dependency filters.
+///
+/// Only local values and analysis buffers are created or changed; no file, network or process side
+/// effects.
+///
+/// # Arguments
+/// None. The test builds its own fixture and expected results.
+///
+/// # Returns
+/// `()` after all checks pass; no data or output parameter is returned.
+///
+/// # Panics
+/// If a stated invariant fails.
+///
+/// # Algorithm
+/// Require INCLUDES DESTINATION ordering and prevent runtime-only filters or ARCHIVE from appearing
+/// in unrelated forms.
+///
+/// # Flow
+/// ```text
+///   [install root/artifact forms]
+///    |
+///   [probe target sections]----------------> [runtime vs unrelated forms]
+///                                           |
+///                                          [check allowed and excluded filters]
+///                                           |
+///                                          < checks hold? >
+///                                           /         \
+///                                         [pass]     [panic]
+/// ```
+///
+/// # Examples
+/// Local test-module call:
+/// ```text
+/// keyword_build_install_artifact_and_runtime_modes();
+/// ```
 #[test]
 fn keyword_build_install_artifact_and_runtime_modes() {
     let v = (4, 4);
@@ -654,6 +1177,43 @@ fn keyword_build_install_artifact_and_runtime_modes() {
     );
 }
 
+/// Probe file destination/type alternatives, directory match filters, script/code bodies and export
+/// options.
+///
+/// Only local values and analysis buffers are created or changed; no file, network or process side
+/// effects.
+///
+/// # Arguments
+/// None. The test builds its own fixture and expected results.
+///
+/// # Returns
+/// `()` after all checks pass; no data or output parameter is returned.
+///
+/// # Panics
+/// If a stated invariant fails.
+///
+/// # Algorithm
+/// Require scalar destination/body slots and keep PATTERN-only suboptions and DESTINATION scoped to
+/// the correct forms.
+///
+/// # Flow
+/// ```text
+///   [files/directory/script/export]
+///    |
+///   [probe destination/body slots]-----------> [PATTERN nested options]
+///                                             |
+///                                            [check exact option scope]
+///                                             |
+///                                            < checks hold? >
+///                                             /         \
+///                                           [pass]     [panic]
+/// ```
+///
+/// # Examples
+/// Local test-module call:
+/// ```text
+/// keyword_build_install_files_directories_scripts_and_exports();
+/// ```
 #[test]
 fn keyword_build_install_files_directories_scripts_and_exports() {
     let v = (4, 4);
@@ -760,6 +1320,43 @@ fn keyword_build_install_files_directories_scripts_and_exports() {
     }
 }
 
+/// Probe install options immediately before and at each introduction, from MESSAGE_NEVER in 3.1
+/// through SBOM in 4.3, including artifact, file-set and package metadata forms.
+///
+/// Only local values and analysis buffers are created or changed; no file, network or process side
+/// effects.
+///
+/// # Arguments
+/// None. The test builds its own fixture and expected results.
+///
+/// # Returns
+/// `()` after all checks pass; no data or output parameter is returned.
+///
+/// # Panics
+/// If a stated invariant fails.
+///
+/// # Algorithm
+/// Probe install options immediately before and at each introduction, from MESSAGE_NEVER in 3.1
+/// through SBOM in 4.3, including artifact, file-set and package metadata forms.
+///
+/// # Flow
+/// ```text
+///   [old/new install versions]
+///    |
+///   [probe contextual prefix]-----------> [introduced option word]
+///                                        |
+///                                       [check absent then present]
+///                                        |
+///                                       < checks hold? >
+///                                        /         \
+///                                      [pass]     [panic]
+/// ```
+///
+/// # Examples
+/// Local test-module call:
+/// ```text
+/// keyword_build_install_version_boundaries();
+/// ```
 #[test]
 fn keyword_build_install_version_boundaries() {
     for (word, before, after, prefix) in [
@@ -826,6 +1423,42 @@ fn keyword_build_install_version_boundaries() {
     }
 }
 
+/// Check PACKAGE_INFO moves from nested EXPORT syntax to a root form in 4.3.
+///
+/// Only local values and analysis buffers are created or changed; no file, network or process side
+/// effects.
+///
+/// # Arguments
+/// None. The test builds its own fixture and expected results.
+///
+/// # Returns
+/// `()` after all checks pass; no data or output parameter is returned.
+///
+/// # Panics
+/// If a stated invariant fails.
+///
+/// # Algorithm
+/// Probe version-dependent metadata, VERSION-only compatibility options, APPENDIX exclusions and
+/// required SBOM name/EXPORTS ordering; SBOM means software bill of materials.
+///
+/// # Flow
+/// ```text
+///   [historical PACKAGE_INFO forms]
+///    |
+///   [probe versioned metadata]---------------> [VERSION / APPENDIX / SBOM]
+///                                             |
+///                                            [check dependent options]
+///                                             |
+///                                            < checks hold? >
+///                                             /         \
+///                                           [pass]     [panic]
+/// ```
+///
+/// # Examples
+/// Local test-module call:
+/// ```text
+/// keyword_build_package_info_metadata_historical_forms_and_sbom();
+/// ```
 #[test]
 fn keyword_build_package_info_metadata_historical_forms_and_sbom() {
     lacks("export", (4, 0), &["EXPORT", "set", ""], "PACKAGE_INFO");
@@ -909,6 +1542,42 @@ fn keyword_build_package_info_metadata_historical_forms_and_sbom() {
     }
 }
 
+/// Contrast modern PROJECT/source-generation try_compile forms with legacy binary/source operands.
+///
+/// Only local values and analysis buffers are created or changed; no file, network or process side
+/// effects.
+///
+/// # Arguments
+/// None. The test builds its own fixture and expected results.
+///
+/// # Returns
+/// `()` after all checks pass; no data or output parameter is returned.
+///
+/// # Panics
+/// If a stated invariant fails.
+///
+/// # Algorithm
+/// Require source/project-specific options, generated-source scalar slots and COPY_FILE_ERROR only
+/// after COPY_FILE.
+///
+/// # Flow
+/// ```text
+///   [PROJECT / sources / legacy]
+///    |
+///   [probe try_compile prefixes]----------> [generated-source / COPY_FILE]
+///                                          |
+///                                         [check required and nested slots]
+///                                          |
+///                                         < checks hold? >
+///                                          /         \
+///                                        [pass]     [panic]
+/// ```
+///
+/// # Examples
+/// Local test-module call:
+/// ```text
+/// keyword_build_try_compile_source_project_and_legacy_modes();
+/// ```
 #[test]
 fn keyword_build_try_compile_source_project_and_legacy_modes() {
     let v = (4, 4);
@@ -1018,6 +1687,42 @@ fn keyword_build_try_compile_source_project_and_legacy_modes() {
     has("try_compile", (3, 25), &["result", ""], "PROJECT");
 }
 
+/// Probe try_compile/try_run source-generation, logging, language and linking introductions.
+///
+/// Only local values and analysis buffers are created or changed; no file, network or process side
+/// effects.
+///
+/// # Arguments
+/// None. The test builds its own fixture and expected results.
+///
+/// # Returns
+/// `()` after all checks pass; no data or output parameter is returned.
+///
+/// # Panics
+/// If a stated invariant fails.
+///
+/// # Algorithm
+/// Build prefixes with one or two result variables as appropriate, then check older versus
+/// introduced schemas.
+///
+/// # Flow
+/// ```text
+///   [one/two result prefixes]
+///    |
+///   [append versioned option case]----------> [before/introduced schemas]
+///                                            |
+///                                           [check keyword availability]
+///                                            |
+///                                           < checks hold? >
+///                                            /         \
+///                                          [pass]     [panic]
+/// ```
+///
+/// # Examples
+/// Local test-module call:
+/// ```text
+/// keyword_build_try_compile_and_run_version_boundaries();
+/// ```
 #[test]
 fn keyword_build_try_compile_and_run_version_boundaries() {
     for command in ["try_compile", "try_run"] {
@@ -1091,6 +1796,42 @@ fn keyword_build_try_compile_and_run_version_boundaries() {
     );
 }
 
+/// Require both try_run result variables before options.
+///
+/// Only local values and analysis buffers are created or changed; no file, network or process side
+/// effects.
+///
+/// # Arguments
+/// None. The test builds its own fixture and expected results.
+///
+/// # Returns
+/// `()` after all checks pass; no data or output parameter is returned.
+///
+/// # Panics
+/// If a stated invariant fails.
+///
+/// # Algorithm
+/// Contrast modern split stdout/stderr outputs with legacy OUTPUT_VARIABLE and require no keyword
+/// completion inside the trailing ARGS payload.
+///
+/// # Flow
+/// ```text
+///   [modern / legacy try_run]
+///    |
+///   [probe output options]-------------> [trailing ARGS payload]
+///                                       |
+///                                      [check no keyword suggestions]
+///                                       |
+///                                      < checks hold? >
+///                                       /         \
+///                                     [pass]     [panic]
+/// ```
+///
+/// # Examples
+/// Local test-module call:
+/// ```text
+/// keyword_build_try_run_order_outputs_and_opaque_args();
+/// ```
 #[test]
 fn keyword_build_try_run_order_outputs_and_opaque_args() {
     let v = (4, 4);
@@ -1147,6 +1888,43 @@ fn keyword_build_try_run_order_outputs_and_opaque_args() {
     );
 }
 
+/// Feed partial prefixes to build schemas and require variable, generic target, executable or
+/// library roles in result, alias, reuse, install and export positions.
+///
+/// Only local values and analysis buffers are created or changed; no file, network or process side
+/// effects.
+///
+/// # Arguments
+/// None. The test builds its own fixture and expected results.
+///
+/// # Returns
+/// `()` after all checks pass; no data or output parameter is returned.
+///
+/// # Panics
+/// If a stated invariant fails.
+///
+/// # Algorithm
+/// Feed partial prefixes to build schemas and require variable, generic target, executable or
+/// library roles in result, alias, reuse, install and export positions.
+///
+/// # Flow
+/// ```text
+///   [build typed-slot prefixes]
+///    |
+///   [infer completion roles]-------------> [expected variable/target kind]
+///                                         |
+///                                        [check role membership]
+///                                         |
+///                                        < checks hold? >
+///                                         /         \
+///                                       [pass]     [panic]
+/// ```
+///
+/// # Examples
+/// Local test-module call:
+/// ```text
+/// keyword_build_name_roles_are_preserved();
+/// ```
 #[test]
 fn keyword_build_name_roles_are_preserved() {
     for (command, args, role) in [
@@ -1207,6 +1985,45 @@ fn keyword_build_name_roles_are_preserved() {
     }
 }
 
+/// Search depth-first for the first matching Keyword and borrow its following sibling slice. Reads
+/// schema nodes only, with no side effects.
+///
+/// # Arguments
+/// - `kinds` `[in]`: Argument sequence searched recursively through optional, repeated,
+///   intersection and choice groups.
+/// - `word` `[in]`: Exact keyword spelling to locate.
+///
+/// # Returns
+/// Some following siblings from the keyword's own containing sequence, possibly empty; None when no
+/// keyword matches. The borrow is tied to kinds, not word.
+///
+/// # Algorithm
+/// Search siblings in order, returning immediately for a literal match. Recursively search each
+/// group or choice before continuing later siblings; the first nested match wins.
+///
+/// # Flow
+/// ```text
+///   [next sibling]
+///         |
+///  < matching literal? >
+///     /          \
+/// [return tail] [group/choice?]
+///                    |
+///             [search children]
+///                    |
+///               < found? >
+///                /      \
+///            [return] [next sibling]
+///                         |
+///                   [None at end]
+/// ```
+///
+/// # Examples
+/// Local test-module context:
+/// ```text
+/// let kinds = [K::Keyword("COPY_FILE_ERROR".into()), K::Out];
+/// assert!(matches!(keyword_suffix(&kinds, "COPY_FILE_ERROR"), Some([K::Out])));
+/// ```
 fn keyword_suffix<'a>(kinds: &'a [K], word: &str) -> Option<&'a [K]> {
     for (index, kind) in kinds.iter().enumerate() {
         match kind {
@@ -1229,6 +2046,45 @@ fn keyword_suffix<'a>(kinds: &'a [K], word: &str) -> Option<&'a [K]> {
     None
 }
 
+/// Inspect schema trees rather than only completions: generated-source operand types, copy
+/// output/error slots, pre-3.11 source minima, configure/subdirectory input/output paths and
+/// generic runtime search directories must retain their specific roles.
+///
+/// Only local values and analysis buffers are created or changed; no file, network or process side
+/// effects.
+///
+/// # Arguments
+/// None. The test builds its own fixture and expected results.
+///
+/// # Returns
+/// `()` after all checks pass; no data or output parameter is returned.
+///
+/// # Panics
+/// If a stated invariant fails or an unwrapped fixture/setup operation fails.
+///
+/// # Algorithm
+/// Inspect schema trees rather than only completions: generated-source operand types, copy
+/// output/error slots, pre-3.11 source minima, configure/subdirectory input/output paths and
+/// generic runtime search directories must retain their specific roles.
+///
+/// # Flow
+/// ```text
+///   [build schema trees]
+///    |
+///   [find keyword sibling suffix]----------> [typed path/source operands]
+///                                           |
+///                                          [check exact roles + minima]
+///                                           |
+///                                          < checks hold? >
+///                                           /         \
+///                                         [pass]     [panic]
+/// ```
+///
+/// # Examples
+/// Local test-module call:
+/// ```text
+/// keyword_build_required_operands_and_path_roles_are_structural();
+/// ```
 #[test]
 fn keyword_build_required_operands_and_path_roles_are_structural() {
     for command in ["try_compile", "try_run"] {

@@ -1,3 +1,7 @@
+//! Version-layered builtin variable names and template names.
+//!
+//! Records have no proven writes or values. Catalog lookup does not inspect or execute projects.
+// Contains AI-generated documentation additions.
 // AI-generated implementation.
 use crate::parser::semanticer::model::SemanticVariable;
 use std::{collections::HashSet, sync::LazyLock};
@@ -824,14 +828,17 @@ static CMAKE_4_NAMES: &[(u32, &str)] = &[
     (4, "CTEST_TEST_PRESET"),
 ];
 
+/// Lazily allocated baseline builtin seed records. No runtime values or writes are established. Example: `BASE_VARIABLES.len()`.
 pub static BASE_VARIABLES: LazyLock<Vec<SemanticVariable>> =
     LazyLock::new(|| BASE_NAMES.iter().map(|name| variable(name)).collect());
+/// Lazily allocated CMake 3 minor-release additions. Example: `CMAKE_3_ADDITIONS.iter().filter(|(minor, _)| *minor <= 31).count()`.
 pub static CMAKE_3_ADDITIONS: LazyLock<Vec<(u32, SemanticVariable)>> = LazyLock::new(|| {
     CMAKE_3_NAMES
         .iter()
         .map(|(minor, name)| (*minor, variable(name)))
         .collect()
 });
+/// Lazily allocated CMake 4 minor-release additions. Example: `CMAKE_4_ADDITIONS.len()`.
 pub static CMAKE_4_ADDITIONS: LazyLock<Vec<(u32, SemanticVariable)>> = LazyLock::new(|| {
     CMAKE_4_NAMES
         .iter()
@@ -839,6 +846,21 @@ pub static CMAKE_4_ADDITIONS: LazyLock<Vec<(u32, SemanticVariable)>> = LazyLock:
         .collect()
 });
 
+/// Clone builtin records available in a supported version. Names are catalog candidates, not initialized runtime variables; no I/O.
+///
+/// # Arguments
+/// - `major` `[in]`: major CMake release.
+/// - `minor` `[in]`: minor release, ignoring patch version.
+///
+/// # Returns
+/// Some baseline plus deduplicated additions for 3.0–3.31 and 4.0–4.4; None outside those ranges.
+///
+/// # Examples
+/// ```
+/// use cmake_analyzer::parser::semanticer::variables::builtin::variables_for_version;
+/// let variables = variables_for_version(3, 31).unwrap();
+/// assert!(variables.iter().any(|v| v.name == "CMAKE_SOURCE_DIR"));
+/// ```
 pub fn variables_for_version(major: u32, minor: u32) -> Option<Vec<SemanticVariable>> {
     if !matches!((major, minor), (3, 0..=31) | (4, 0..=4)) {
         return None;
@@ -859,7 +881,20 @@ pub fn variables_for_version(major: u32, minor: u32) -> Option<Vec<SemanticVaria
     Some(variables)
 }
 // AI-generated implementation.
-/// Borrow versioned template names without cloning variable records.
+/// Borrow version-layered builtin names containing placeholders without cloning records. No I/O.
+///
+/// # Arguments
+/// - `major` `[in]`: major release used for lexicographic catalog filtering.
+/// - `minor` `[in]`: minor release; unlike variables_for_version, this function does not validate supported ranges.
+///
+/// # Returns
+/// Iterator of static names containing `<`, from baseline and additions up to the supplied pair.
+///
+/// # Examples
+/// ```
+/// use cmake_analyzer::parser::semanticer::variables::builtin::template_names_for_version;
+/// assert!(template_names_for_version(3, 31).any(|name| name == "CMAKE_<LANG>_COMPILER"));
+/// ```
 pub fn template_names_for_version(major: u32, minor: u32) -> impl Iterator<Item = &'static str> {
     BASE_NAMES
         .iter()
@@ -879,6 +914,19 @@ pub fn template_names_for_version(major: u32, minor: u32) -> impl Iterator<Item 
         .filter(|name| name.contains('<'))
 }
 
+/// Create an unwritten builtin variable seed. No I/O or runtime initialization.
+///
+/// # Arguments
+/// - `name` `[in]`: catalog spelling copied into the record.
+///
+/// # Returns
+/// Builtin variable with no first write, local scope, changes or references.
+///
+/// # Examples
+/// ```text
+/// let seed = variable("CMAKE_SOURCE_DIR");
+/// assert!(seed.builtin);
+/// ```
 fn variable(name: &str) -> SemanticVariable {
     SemanticVariable {
         name: name.to_owned(),

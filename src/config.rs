@@ -1,3 +1,8 @@
+//! Layered analyzer configuration. [`ConfigStore::load`] reads user/explicit sources;
+//! [`ConfigStore::for_directory`] merges project overrides and caches effective [`Settings`].
+//! Loading never configures a project or runs a script; optional builtin discovery queries only `cmake --version`.
+//!
+//! Contains AI-generated documentation additions.
 // AI-authored configuration entrypoint.
 mod defaults;
 mod diagnostics;

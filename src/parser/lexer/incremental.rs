@@ -1,9 +1,28 @@
+//! Reuse lexical prefixes/suffixes only at whole-unit boundaries with matching state.
+//! Updates replace shared buffers, preserving retained snapshots; no I/O.
+//! Contains AI-generated documentation additions.
+
 // AI-authored incremental lexer.
 use super::model::*;
 use crate::model::incremental::{IncrementalWork, SourceChange, SourcePositions};
 use std::{collections::HashMap, sync::Arc};
 
 impl IncrementalLexer {
+    /// Fully lex an owned/shared source snapshot and initialize work counts; no I/O.
+    ///
+    /// # Arguments
+    /// - `source` `[in]`: source converted into `Arc<str>`; conversion may allocate for borrowed input.
+    ///
+    /// # Returns
+    /// Cache with immutable lexical output, recomputed equal to emitted token count and reused zero.
+    ///
+    /// # Examples
+    /// ```
+    /// use cmake_analyzer::parser::lexer::model::IncrementalLexer;
+    /// let lexer = IncrementalLexer::new("f()");
+    /// assert_eq!(lexer.work.recomputed, 3);
+    /// assert_eq!(lexer.work.reused, 0);
+    /// ```
     pub fn new(source: impl Into<Arc<str>>) -> Self {
         let source = source.into();
         let buffer = Lexer::new(RawBuffer::new(&source)).parse();
@@ -17,7 +36,62 @@ impl IncrementalLexer {
             work,
         }
     }
-    /// Relex from the previous whole unit until the unchanged suffix has the same scan state.
+    /// Refresh lexical output by rescanning a changed region and remapping reusable ranges; no I/O.
+    /// Replaces source/buffer/work on a changed snapshot. Equal text only updates work,
+    /// keeping the existing source/buffer Arcs; retained old buffers are never mutated.
+    ///
+    /// # Arguments
+    /// - `self` `[in,out]`: cache whose current state is replaced and work counts overwritten.
+    /// - `source` `[in]`: new complete snapshot converted into `Arc<str>`, not a text-edit operation.
+    ///
+    /// # Returns
+    /// UTF-8-safe change envelope connecting old and new text for downstream caches. Equal text yields empty EOF ranges.
+    ///
+    /// # Algorithm
+    /// Find the byte replacement envelope. Resume from the last whole-unit checkpoint
+    /// strictly before it, or default state at zero. Scan with the full lexer until an
+    /// unchanged suffix checkpoint has the same depth and, when depth is nonzero, the
+    /// same remapped most-recent opener. Without alignment, scan through EOF.
+    /// Splice prefix/chunk/suffix tokens, comments, errors and checkpoint counts; rebuild
+    /// suffix coordinates from the new source. Work counts tokens, not total CPU cost.
+    ///
+    /// # Flow
+    /// ```text
+    ///                 [compare source]
+    ///                        |
+    ///                   <identical?>
+    ///                   /         \
+    ///                 yes         no
+    ///                  |           |
+    ///         [work: all reused] [envelope + position index]
+    ///                  |           |
+    ///               [return] [checkpoint before edit]
+    ///                              |
+    ///                        [scan whole units] <------+
+    ///                              |                  |
+    ///                        <suffix/state match?> ---+ no, more input
+    ///                          /            \
+    ///                        yes          [EOF]
+    ///                         |              |
+    ///                [remap suffix]    [no suffix reuse]
+    ///                         +------+-------+
+    ///                                |
+    ///                      [replace Arc output/work]
+    /// ```
+    ///
+    /// # Panics
+    /// The public cache fields must remain mutually consistent. Manually replacing
+    /// source or buffer independently can invalidate checkpoint slices and cursor bounds.
+    ///
+    /// # Examples
+    /// ```
+    /// use cmake_analyzer::parser::lexer::model::IncrementalLexer;
+    /// let mut lexer = IncrementalLexer::new("f(x) g(y)");
+    /// let old = lexer.buffer.clone();
+    /// let change = lexer.update("f(z) g(y)");
+    /// assert_eq!(change.old, 2..3);
+    /// assert_eq!(old.lex[2].text("f(x) g(y)"), Some("x"));
+    /// ```
     pub fn update(&mut self, source: impl Into<Arc<str>>) -> SourceChange {
         let source = source.into();
         let change = SourceChange::between(&self.source, &source);

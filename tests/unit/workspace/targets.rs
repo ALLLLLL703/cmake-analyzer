@@ -1,8 +1,51 @@
 // AI-generated target-reference aggregation and snapshot regression tests.
+
+//! Check owner-qualified target references without mutating retained file snapshots.
+//! Writes temporary source and analyzes overlays; no configure or project commands are executed.
+
 use super::Project;
 use cmake_analyzer::parser::{build_struct::model::BuildEffect, semanticer::model::ReferenceKind};
 use std::sync::Arc;
 
+/// Include Core, read it with target_sources, shift root spans, then rename the declaration to NewCore.
+/// Writes/reads/removes temporary files and updates overlays; no project execution.
+///
+/// # Arguments
+/// None; the test constructs its own fixtures.
+///
+/// # Returns
+/// `()` after all checks pass.
+///
+/// # Panics
+/// If fixture setup or any documented assertion fails.
+///
+/// # Algorithm
+/// Require owner references to refresh while local/old snapshots remain unchanged, shared argument/source arrays, graph reuse on shift, and removal of the stale read on rename.
+///
+/// # Flow
+/// ```text
+/// [included Core] --> [root target_sources read]
+///        |                       |
+///        v                       v
+/// [local definition only] [owner definition + read]
+///                                |
+///                                v
+///                       [shift root / flush]
+///                                |
+///                                v
+///                  [new read key/span; old data unchanged]
+///                                |
+///                                v
+/// [rename to NewCore] --> [definition only, no stale read]
+/// ```
+///
+/// # Examples
+/// Local test-module context, outside any running Tokio runtime:
+/// the macro-generated test wrapper runs its own runtime and returns `()`.
+/// Prefer the test harness; ignored measurements require explicit selection.
+/// ```text
+/// target_references_stay_on_declarations_without_mutating_shared_file_snapshots();
+/// ```
 #[tokio::test]
 async fn target_references_stay_on_declarations_without_mutating_shared_file_snapshots() {
     let p = Project::new().await;
@@ -85,6 +128,43 @@ async fn target_references_stay_on_declarations_without_mutating_shared_file_sna
     drop(p);
 }
 
+/// Include a guarded CoreAlias from two child directories while declaring duplicate target names.
+/// Writes/reads/removes temporary files; no project execution.
+///
+/// # Arguments
+/// None; the test constructs its own fixtures.
+///
+/// # Returns
+/// `()` after all checks pass.
+///
+/// # Panics
+/// If fixture setup or any documented assertion fails.
+///
+/// # Algorithm
+/// Require one alias with three references, including TARGET, and two ambiguous Duplicate declarations with definition-only references.
+///
+/// # Flow
+/// ```text
+/// [two children include guarded CoreAlias]
+///                      |
+///                      v
+///         [root links CoreAlias / Duplicate]
+///                      |
+///          +-----------+------------+
+///          v                        v
+/// [one alias / 3 references]  [two Duplicate declarations]
+///                                   |
+///                                   v
+///                           [definition-only each]
+/// ```
+///
+/// # Examples
+/// Local test-module context, outside any running Tokio runtime:
+/// the macro-generated test wrapper runs its own runtime and returns `()`.
+/// Prefer the test harness; ignored measurements require explicit selection.
+/// ```text
+/// global_aliases_are_visible_above_their_declaration_directory_and_duplicates_do_not_bind();
+/// ```
 #[tokio::test]
 async fn global_aliases_are_visible_above_their_declaration_directory_and_duplicates_do_not_bind() {
     let p = Project::new().await;
@@ -126,6 +206,40 @@ async fn global_aliases_are_visible_above_their_declaration_directory_and_duplic
     drop(p);
 }
 
+/// Link App against 2,048 repeated literal Core operands.
+/// Writes/reads/removes temporary fixture text; no project execution.
+///
+/// # Arguments
+/// None; the test constructs its own fixtures.
+///
+/// # Returns
+/// `()` after all checks pass.
+///
+/// # Panics
+/// If fixture setup or any documented assertion fails.
+///
+/// # Algorithm
+/// Require Core to retain 2,049 references including its definition.
+///
+/// # Flow
+/// ```text
+/// [Core definition]       [2048 repeated Core operands]
+///         |                          |
+///         +-------------+------------+
+///                       v
+///               [Workspace::flush]
+///                       |
+///                       v
+///           [require 2049 Core references]
+/// ```
+///
+/// # Examples
+/// Local test-module context, outside any running Tokio runtime:
+/// the macro-generated test wrapper runs its own runtime and returns `()`.
+/// Prefer the test harness; ignored measurements require explicit selection.
+/// ```text
+/// large_link_lists_keep_every_target_reference();
+/// ```
 #[tokio::test]
 async fn large_link_lists_keep_every_target_reference() {
     let p = Project::new().await;
@@ -145,6 +259,39 @@ async fn large_link_lists_keep_every_target_reference() {
     assert_eq!(core.references.len(), 2049);
 }
 
+/// Include a user function named add_library before calling add_library(NotNative INTERFACE).
+/// Writes/reads/removes temporary files; no project execution.
+///
+/// # Arguments
+/// None; the test constructs its own fixtures.
+///
+/// # Returns
+/// `()` after all checks pass.
+///
+/// # Panics
+/// If fixture setup or any documented assertion fails.
+///
+/// # Algorithm
+/// Require the owner target list to be empty because the call is user-defined, not native.
+///
+/// # Flow
+/// ```text
+/// [include commands.cmake] --> [user function add_library]
+///                                       |
+///                                       v
+/// [add_library(NotNative ...)] --> [user-bound call]
+///                                       |
+///                                       v
+///                             [owner targets empty]
+/// ```
+///
+/// # Examples
+/// Local test-module context, outside any running Tokio runtime:
+/// the macro-generated test wrapper runs its own runtime and returns `()`.
+/// Prefer the test harness; ignored measurements require explicit selection.
+/// ```text
+/// imported_user_functions_suppress_native_target_declarations_in_the_owner_index();
+/// ```
 #[tokio::test]
 async fn imported_user_functions_suppress_native_target_declarations_in_the_owner_index() {
     let p = Project::new().await;

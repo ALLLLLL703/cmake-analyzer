@@ -1,9 +1,72 @@
+//! Runtime execution boundary: own one CMake child, capture bounded stderr, wait or
+//! kill/reap on cancellation/timeout/read/overflow errors, then decode on a worker.
+//! Project code is not sandboxed; only the direct child is explicitly controlled.
+//!
+//! Contains AI-generated documentation additions.
 // AI-authored cancellable CMake process with bounded captured trace output.
 use super::{model::*, trace};
 use lspally::server::model::Cancellation;
 use std::{io, process::Stdio};
 use tokio::io::AsyncReadExt;
 
+/// Run configure or a script with expanded JSON trace, owning one direct CMake child.
+/// Child cwd is source_directory; stdin/stdout are null and stderr is captured. Project/script
+/// code can write arbitrary files, access networks and spawn descendants; this is not a sandbox.
+/// On cancellation, timeout or capture failure, kill and reap the direct child best-effort.
+/// On successful capture/exit, decode on a joined blocking worker. No build-target invocation.
+///
+/// # Arguments
+/// - `run` `[in]`: caller-assigned identity attached to the resulting trace.
+/// - `options` `[in]`: consumed executable, arguments, mode, paths and time/output limits; caller is responsible for authorization and validation.
+/// - `cancel` `[in]`: shared cancellation token consumed here; callers may retain clones to request stopping.
+///
+/// # Returns
+/// `Ok(trace)` only for successful child exit and valid nonempty command trace; `Err` otherwise.
+/// File/process effects from the child are not rolled back on any outcome.
+///
+/// # Errors
+/// Interrupted for pre-launch/running/decoder cancellation; TimedOut for the capture/wait deadline;
+/// InvalidInput for an unrepresentable limit+1. Spawn/read/wait/worker errors, output overflow,
+/// nonzero child exit with bounded-detail suffix, malformed events or empty trace also fail.
+/// The timeout does not bound blocking decoding; it checks cancellation per input line.
+/// Dropping the future uses kill-on-drop but does not promise joined reaping or descendant termination.
+///
+/// # Algorithm
+/// Precheck cancellation and overflow-safe read bound. Append owned trace and -S/-B or -P
+/// flags, spawn the child and race cancellation/deadline against capped stderr read plus wait.
+/// Kill/reap on capture errors; otherwise reject unsuccessful status or decode captured bytes.
+///
+/// # Flow
+/// ```text
+///  [options + cancellation]
+///             |
+///  [precheck + spawn child] ---> [project side effects]
+///             |
+///       [race capture/wait]
+///        /      |       \
+///   cancelled timeout  complete
+///        \     /         |
+///       [kill + wait]  <exit success?>
+///            |          /      \
+///          [Err]     [Err]  [blocking decode]
+///                                 |
+///                             [Trace / Err]
+/// ```
+///
+/// # Examples
+/// ```no_run
+/// # use cmake_analyzer::runtime_cmake::{execute, model::{ConfigureOptions, ExecutionMode, RunId}};
+/// # use lspally::server::model::Cancellation;
+/// # use std::time::Duration;
+/// # async fn example() -> std::io::Result<()> {
+/// // Requires installed CMake and a trusted saved project; executes its code.
+/// let options = ConfigureOptions { mode: ExecutionMode::Configure, executable: "cmake".into(),
+///     source_directory: "/work/project".into(), build_directory: "/work/analysis-build".into(),
+///     arguments: vec![], timeout: Duration::from_secs(30), max_output_bytes: 1_048_576, max_error_bytes: 4096 };
+/// let trace = execute(RunId::new(1), options, Cancellation::default()).await?;
+/// # Ok(())
+/// # }
+/// ```
 pub async fn execute(
     run: RunId,
     options: ConfigureOptions,
@@ -88,6 +151,40 @@ pub async fn execute(
         }
     }
 }
+/// Collect the tail of nonempty, non-JSON-looking stderr lines for a failure message.
+/// In-memory only; no I/O or mutation of input.
+///
+/// # Arguments
+/// - `bytes` `[in]`: complete captured stderr; lines beginning with { are skipped.
+/// - `limit` `[in]`: source-byte budget for suffix extraction, not a strict rendered UTF-8 bound.
+///
+/// # Returns
+/// Lossy UTF-8 text in original line order, joined by LF. Replacement characters can exceed the input-byte budget.
+///
+/// # Algorithm
+/// Scan lines backwards, skipping empty/JSON-looking lines. Keep each eligible suffix
+/// within the remaining input-byte budget, then reverse retained lines for display.
+/// A zero budget can retain an empty suffix; decoding uses UTF-8 replacement characters.
+///
+/// # Flow
+/// ```text
+///  [captured stderr] ---> [last line] <---------------+
+///                             |                      |
+///                     <empty or starts {?> --yes-----+
+///                             | no                   |
+///                     [retain budgeted suffix]       |
+///                             |                      |
+///                        <budget left?> --yes---------+
+///                             | no / exhausted input
+///                     [reverse retained lines]
+///                             |
+///                     [join + lossy UTF-8 text]
+/// ```
+///
+/// # Examples
+/// ```text
+/// assert_eq!(error_detail(b"{trace}\nerror message\n", 7), "message");
+/// ```
 fn error_detail(bytes: &[u8], limit: usize) -> String {
     let mut lines = Vec::new();
     let mut remaining = limit;

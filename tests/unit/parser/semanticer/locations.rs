@@ -1,7 +1,31 @@
+//! Variable write spans through ordinary, conditional, scoped and incremental analysis. Workspace
+//! tests use overlays; retained snapshots must remain unchanged.
+
+// Contains AI-generated documentation edits.
 // AI-generated variable write-location tests.
 use super::analyze;
 use cmake_analyzer::workspace::Workspace;
 
+/// Analyze repeated Chinese, quoted and bracket variable writes plus duplicate list output names.
+/// Require exact argument spans, a stable first-write location, distinct duplicate positions and no
+/// write location on an untouched builtin.
+///
+/// Builds lexer, parser and semantic buffers in memory; no workspace, filesystem or process effects.
+///
+/// # Arguments
+/// None. The test builds its own fixture and expected results.
+///
+/// # Returns
+/// `()` after all checks pass; no data or output parameter is returned.
+///
+/// # Panics
+/// If a stated invariant fails or an unwrapped fixture/setup operation fails.
+///
+/// # Examples
+/// Direct local call outside any Tokio runtime (the test attribute creates its runtime):
+/// ```text
+/// first_write_and_each_argument_location_are_preserved();
+/// ```
 #[tokio::test]
 async fn first_write_and_each_argument_location_are_preserved() {
     let source = "cmake_minimum_required(VERSION 3.31)\nset(变量 first)\nset(变量 second)\nset(\"QUOTED\" x)\nset([=[BRACKET]=] x)\nlist(POP_BACK ITEMS DUP DUP)\n";
@@ -33,6 +57,25 @@ async fn first_write_and_each_argument_location_are_preserved() {
     assert!(builtin.changing.is_empty());
 }
 
+/// Analyze two conditional global writes and a same-named function-local write. Require first-write
+/// rows from static source order, independent write counts and separate scope locations.
+///
+/// Builds lexer, parser and semantic buffers in memory; no workspace, filesystem or process effects.
+///
+/// # Arguments
+/// None. The test builds its own fixture and expected results.
+///
+/// # Returns
+/// `()` after all checks pass; no data or output parameter is returned.
+///
+/// # Panics
+/// If a stated invariant fails or an unwrapped fixture/setup operation fails.
+///
+/// # Examples
+/// Direct local call outside any Tokio runtime (the test attribute creates its runtime):
+/// ```text
+/// conditional_first_write_is_static_and_scopes_have_separate_locations();
+/// ```
 #[tokio::test]
 async fn conditional_first_write_is_static_and_scopes_have_separate_locations() {
     let source = "cmake_minimum_required(VERSION 3.31)\nif(FLAG)\nset(V first)\nelse()\nset(V second)\nendif()\nfunction(f)\nset(V local)\nendfunction()\n";
@@ -53,6 +96,43 @@ async fn conditional_first_write_is_static_and_scopes_have_separate_locations() 
     assert_eq!(local.first_write.unwrap().row, 7);
 }
 
+/// Insert a Unicode comment before overlay writes and require reused semantics with shifted current
+/// spans but unchanged old snapshots.
+///
+/// Mutates only local workspace overlays/snapshots and may read supporting paths; no source-file
+/// writes or CMake execution.
+///
+/// # Arguments
+/// None. The test builds its own fixture and expected results.
+///
+/// # Returns
+/// `()` after all checks pass; no data or output parameter is returned.
+///
+/// # Panics
+/// If a stated invariant fails or an unwrapped fixture/setup operation fails.
+///
+/// # Algorithm
+/// Delete the first A write and compare with fresh analysis, then rename the remaining write and
+/// require A to disappear.
+///
+/// # Flow
+/// ```text
+///   [overlay + retained snapshot]
+///    |
+///   [shift by Unicode comment]-------------> [delete/rename first writes]
+///                                           |
+///                                          [compare fresh spans + old snapshot]
+///                                           |
+///                                          < checks hold? >
+///                                           /         \
+///                                         [pass]     [panic]
+/// ```
+///
+/// # Examples
+/// Direct local call outside any Tokio runtime (the test attribute creates its runtime):
+/// ```text
+/// incremental_locations_follow_reused_commands_and_deleted_first_writes();
+/// ```
 #[tokio::test]
 async fn incremental_locations_follow_reused_commands_and_deleted_first_writes() {
     let file = std::env::temp_dir().join(format!(

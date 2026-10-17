@@ -1,7 +1,33 @@
+//! Completion catalog cancellation and bounded conditional package-target discovery. Temporary
+//! package files exercise cache retention/removal without executing CMake.
+
+// Contains AI-generated documentation edits.
 // AI-generated tests.
 use crate::workspace::{Workspace, completion::model::Request, model::WorkspaceLimits};
 use std::sync::atomic::{AtomicU64, Ordering};
+/// Process-local suffix counter for collision-free temporary fixture names.
+/// Example: `NEXT.fetch_add(1, Ordering::Relaxed)` reserves the next local suffix.
 static NEXT: AtomicU64 = AtomicU64::new(0);
+/// Request all catalog kinds for a not-created entry with cancellation already true. Require
+/// Interrupted before any source-read failure can occur.
+///
+/// Creates local workspace state, then returns Interrupted without loading sources or changing
+/// overlays/snapshots. No filesystem or process effects.
+///
+/// # Arguments
+/// None. The test builds its own fixture and expected results.
+///
+/// # Returns
+/// `()` after all checks pass; no data or output parameter is returned.
+///
+/// # Panics
+/// If a stated invariant fails or an unwrapped fixture/setup operation fails.
+///
+/// # Examples
+/// Direct local call outside any Tokio runtime (the test attribute creates its runtime):
+/// ```text
+/// catalogue_cancellation_returns_before_reading_sources();
+/// ```
 #[tokio::test]
 async fn catalogue_cancellation_returns_before_reading_sources() {
     let path = std::env::temp_dir().join("cmake-cancelled-catalogue/CMakeLists.txt");
@@ -22,6 +48,43 @@ async fn catalogue_cancellation_returns_before_reading_sources() {
         .unwrap();
     assert_eq!(error.kind(), std::io::ErrorKind::Interrupted);
 }
+/// Write a package config whose conditional include declares an imported target.
+///
+/// Writes/removes a temporary package tree and mutates local workspace caches/overlays; reads
+/// fixture sources without running CMake.
+///
+/// # Arguments
+/// None. The test builds its own fixture and expected results.
+///
+/// # Returns
+/// `()` after all checks pass; no data or output parameter is returned.
+///
+/// # Panics
+/// If a stated invariant fails or an unwrapped fixture/setup operation fails.
+///
+/// # Algorithm
+/// With a two-file cap, catalog discovery must not load or expose the target file. In an
+/// unrestricted workspace, load it, retain its snapshot across an unrelated entry edit and remove
+/// it once the package call disappears.
+///
+/// # Flow
+/// ```text
+///   [package + conditional target file]
+///    |
+///   [catalog under two-file cap]-----------------> [unlimited cached workspace]
+///                                                 |
+///                                                [retain on edit; drop on detach]
+///                                                 |
+///                                                < checks hold? >
+///                                                 /         \
+///                                               [pass]     [panic]
+/// ```
+///
+/// # Examples
+/// Direct local call outside any Tokio runtime (the test attribute creates its runtime):
+/// ```text
+/// conditional_target_candidates_respect_workspace_file_budget();
+/// ```
 #[tokio::test]
 async fn conditional_target_candidates_respect_workspace_file_budget() {
     let root = std::env::temp_dir().join(format!(

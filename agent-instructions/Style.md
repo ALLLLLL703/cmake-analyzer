@@ -2,11 +2,12 @@
 
 # Rustdoc
 
-- Document every module, function/method, struct, field, enum, variant and variant field, regardless of visibility; include test helpers and trait items. Update generators for generated code.
+- Document every module, function/method, struct, field, enum, variant and variant field, regardless of visibility; include test helpers and trait items. Update generators that remain in use; one-time generated files may be documented directly.
 - Use `//!` for module contents; `///` for declarations. Start with the item's meaning, behavior/effect and side effects; explicitly state when none occur. Describe the item, not just its name/type.
 - Struct/enum docs: meaning, likely call sites, related APIs with rustdoc links and their roles, and a minimal usage example. For complex internals/impls, add an explanation and a text/Mermaid flow diagram showing calls, state changes and side effects.
 - Function docs: purpose/effects first; `# Arguments` lists **every** parameter, including receivers, with `[in]`, `[out]` or `[in,out]`. Explicitly identify output parameters and whether they overwrite/append. `# Returns` explains every returned value, including tuple parts, `Option` cases, `Result` outcomes or `()`. Add `# Errors`, `# Panics` and `# Safety` when applicable.
-- Complex functions also need `# Algorithm` and `# Flow`: explain the principle and diagram branches, calls, mutation/I/O and outputs. Avoid line-by-line narration.
+- Complex functions also need `# Algorithm` and `# Flow`: explain the principle, calls, state changes, file/network access and outputs. Avoid line-by-line narration.
+- Diagrams must be genuinely two-dimensional: multiple rows/columns with connected nodes, not a one-line arrow chain. Choose a flowchart, state/sequence diagram, ownership map or component diagram to fit the item. Show real branches/loops, inputs, changed state and side effects where relevant. Prefer boxed ASCII for portable rustdoc; Mermaid requires renderer support.
 - Use plain English and short sentences. Avoid jargon/acronyms; explain unavoidable terms once in everyday words.
 - Every function/method, struct field, enum variant and variant field needs its own usage example: call the function, read/write the field, or construct/use/match the variant. Use `# Examples` for functions; short inline examples suffice for fields/variants. An enclosing type's example alone is not enough.
 - Keep docs short; link shared explanations. Examples must match the API; complete code blocks must compile after adapting template imports. No undocumented obvious-item exception.
@@ -24,7 +25,20 @@
 ///
 /// # Flow
 /// ```text
-/// caller -> Mode -> apply -> bytes + removed counter + returned length
+///    [Caller]             [Mode]
+///        |                   |
+///        +--------+----------+
+///                 v
+///       +-------------------+
+///       | Buffer::apply     |
+///       +---------+---------+
+///                 |
+///         +-------+--------+
+///         v                v
+///   [bytes changed]  [removed written]
+///         |
+///         v
+///   [length returned]
 /// ```
 /// # Examples
 /// ```
@@ -66,9 +80,9 @@ impl Buffer {
     /// Changes this buffer and `removed`; no file/network access.
     ///
     /// # Arguments
-    /// - `self` [in,out]: buffer that may lose bytes from its end.
-    /// - `mode` [in]: whether to keep all bytes or only the first bytes.
-    /// - `removed` [out]: overwritten with the number of discarded bytes.
+    /// - `self` `[in,out]`: buffer that may lose bytes from its end.
+    /// - `mode` `[in]`: whether to keep all bytes or only the first bytes.
+    /// - `removed` `[out]`: overwritten with the number of discarded bytes.
     ///
     /// # Returns
     /// Remaining byte count; never exceeds the original length.
@@ -78,7 +92,20 @@ impl Buffer {
     ///
     /// # Flow
     /// ```text
-    /// old length -> Keep / Trim -> change bytes -> write removed -> return length
+    ///          [Save old length]
+    ///                  |
+    ///              < Mode? >
+    ///              /       \
+    ///           Keep       Trim
+    ///            |           |
+    ///       [No change] [Remove excess]
+    ///            |           |
+    ///            +-----+-----+
+    ///                  v
+    ///           [Write removed]
+    ///                  |
+    ///                  v
+    ///           [Return length]
     /// ```
     /// # Examples
     /// ```
