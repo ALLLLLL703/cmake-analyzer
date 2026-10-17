@@ -7,6 +7,31 @@ use lspally::server::model::*;
 pub(super) fn document_symbols(input: SymbolInput) -> ServerResult<Option<DocumentSymbolResponse>> {
     let buffer = &input.snapshot.semantics;
     let index = TextIndex::new(&input.snapshot.text, input.encoding);
+    if input.functions_only {
+        let mut symbols = Vec::new();
+        for function in &buffer.functions {
+            let Some(definition) = &function.definition else {
+                continue;
+            };
+            let Some(block) = function
+                .block
+                .and_then(|block| buffer.blocks.get(block.id as usize))
+                .filter(|block| block.parent.is_none())
+            else {
+                continue;
+            };
+            symbols.push(make_symbol(
+                function.name.clone(),
+                12,
+                block.span,
+                definition.span,
+                &index,
+            )?);
+        }
+        return Ok(Some(DocumentSymbolResponse::Flat(flatten(
+            symbols, input.uri,
+        ))));
+    }
     let mut blocks: Vec<Option<DocumentSymbol>> = (0..buffer.blocks.len()).map(|_| None).collect();
     // Blocks are created before their descendants; assemble bottom-up without recursive traversal.
     for block in buffer.blocks.iter().rev() {

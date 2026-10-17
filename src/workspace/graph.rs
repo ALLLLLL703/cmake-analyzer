@@ -108,6 +108,10 @@ impl Workspace {
             edge: None,
             depth: 0,
         }];
+        let source_root = root.file.parent().unwrap_or(Path::new("/")).to_owned();
+        let source_root = tokio::fs::canonicalize(&source_root)
+            .await
+            .unwrap_or(source_root);
         let mut attempts = 0;
         // A -> B -> A is a loop. A -> B, then A -> B again is allowed.
         let mut active = HashSet::new();
@@ -141,6 +145,26 @@ impl Workspace {
                         });
                         continue;
                     }
+                    let physical = tokio::fs::canonicalize(&file)
+                        .await
+                        .unwrap_or_else(|_| file.clone());
+                    let index = if parent.is_some_and(|parent| {
+                        graph.invocations[parent].index == ExternalIndex::Functions
+                    }) {
+                        ExternalIndex::Functions
+                    } else if edge.is_some() && !physical.starts_with(&source_root) {
+                        match edge.map(|edge| graph.edges[edge].kind) {
+                            Some(DependencyKind::Package) => self.external_find_package,
+                            Some(DependencyKind::Include) => self.external_include,
+                            _ => ExternalIndex::Full,
+                        }
+                    } else {
+                        ExternalIndex::Full
+                    };
+                    if index == ExternalIndex::None {
+                        graph.scopes[scope].values.invalidate();
+                        continue;
+                    }
                     let snapshot = match loaded.get(&file) {
                         Some(snapshot) => snapshot.clone(),
                         None => match self.ensure_snapshot(&file).await {
@@ -169,6 +193,7 @@ impl Workspace {
                         graph.edges[edge].invocation = Some(invocation);
                     }
                     graph.invocations.push(Invocation {
+                        index,
                         snapshot: snapshot.clone(),
                         file: file.clone(),
                         analysis: snapshot.build.analysis,
@@ -204,13 +229,26 @@ impl Workspace {
                 Task::Resume(mut frame) => {
                     let Some(fact) = frame.snapshot.build.facts.get(frame.next).cloned() else {
                         let last = frame.snapshot.semantics.commands.len().saturating_sub(1);
-                        values::advance(&mut frame, &mut graph, last);
+                        if graph.invocations[frame.invocation].index == ExternalIndex::Full {
+                            values::advance(&mut frame, &mut graph, last);
+                        }
                         continue;
                     };
-                    values::advance(&mut frame, &mut graph, fact.source.command.id as usize);
+                    let functions_only =
+                        graph.invocations[frame.invocation].index == ExternalIndex::Functions;
+                    if functions_only && !matches!(fact.effect, BuildEffect::Dependency(_)) {
+                        frame.next += 1;
+                        tasks.push(Task::Resume(frame));
+                        continue;
+                    }
+                    if !functions_only {
+                        values::advance(&mut frame, &mut graph, fact.source.command.id as usize);
+                    }
                     frame.next += 1;
                     let caller = frame.invocation;
-                    graph.facts.push((caller, frame.next - 1));
+                    if !functions_only {
+                        graph.facts.push((caller, frame.next - 1));
+                    }
                     // Keep the facts, but do not assume a branch or function body actually runs.
                     if fact.source.conditional || fact.source.deferred {
                         if let BuildEffect::Dependency(dependency) = &fact.effect {
@@ -258,15 +296,41 @@ impl Workspace {
                                     }
                                 }
                             }
+                            if dependency.kind == DependencyKind::Package {
+                                let command = &frame.snapshot.semantics.commands
+                                    [fact.source.command.id as usize];
+                                for (argument, source) in dependency
+                                    .arguments
+                                    .iter_mut()
+                                    .zip(command.args.iter().skip(1))
+                                {
+                                    if !argument.literal {
+                                        if let Some(value) = graph.scopes[scope]
+                                            .values
+                                            .expand(source, Some(&frame.directories))
+                                            .filter(|value| !value.text().contains(';'))
+                                        {
+                                            argument.text = value.text().to_owned();
+                                            argument.literal = true;
+                                        }
+                                    }
+                                }
+                            }
                             let invocation = &graph.invocations[caller];
                             let (resolved, candidates) = self
-                                .resolve_dependency(
+                                .resolve_dependency_in(
                                     &dependency,
                                     &invocation.file,
                                     &invocation.directory,
+                                    Some(&graph.scopes[scope].values),
                                 )
                                 .await;
-                            if resolved.is_none() && dependency.kind == DependencyKind::Include {
+                            if resolved.is_none()
+                                && matches!(
+                                    dependency.kind,
+                                    DependencyKind::Include | DependencyKind::Package
+                                )
+                            {
                                 graph.scopes[scope].values.invalidate();
                             }
                             let edge = graph.edges.len();
@@ -353,11 +417,50 @@ impl Workspace {
     }
     // Return the chosen file and checked paths, including missing earlier choices.
     /// Resolve using Workspace module precedence; direct file candidates may not exist yet.
-    pub(crate) async fn resolve_dependency(
+    pub(crate) async fn resolve_dependency_at(
         &self,
         dependency: &Dependency,
         caller: &Path,
         directory: &DirectoryContext,
+        scope: Option<usize>,
+    ) -> (Option<PathBuf>, Vec<PathBuf>) {
+        self.resolve_dependency_in(
+            dependency,
+            caller,
+            directory,
+            scope
+                .and_then(|scope| self.graph.as_ref()?.scopes.get(scope))
+                .map(|scope| &scope.values),
+        )
+        .await
+    }
+    pub(crate) async fn resolve_dependency_in(
+        &self,
+        dependency: &Dependency,
+        caller: &Path,
+        directory: &DirectoryContext,
+        values: Option<&ValueBindings>,
+    ) -> (Option<PathBuf>, Vec<PathBuf>) {
+        if !dependency.path.literal {
+            return (None, Vec::new());
+        }
+        if dependency.kind == DependencyKind::Package {
+            if !self.module_lookup_enabled {
+                return (None, Vec::new());
+            }
+            self.resolve_package(dependency, caller, directory, values)
+                .await
+        } else {
+            self.resolve_module(dependency, caller, directory, values)
+                .await
+        }
+    }
+    pub(super) async fn resolve_module(
+        &self,
+        dependency: &Dependency,
+        caller: &Path,
+        directory: &DirectoryContext,
+        values: Option<&ValueBindings>,
     ) -> (Option<PathBuf>, Vec<PathBuf>) {
         if !dependency.path.literal {
             return (None, Vec::new());
@@ -368,9 +471,16 @@ impl Workspace {
             let path = absolute(&directory.source.join(input).join("CMakeLists.txt")).ok();
             return (path.clone(), path.into_iter().collect());
         }
-        if input.is_absolute() || input.extension().is_some() || input.components().count() > 1 {
+        if dependency.kind != DependencyKind::Package
+            && (input.is_absolute()
+                || input.extension().is_some()
+                || input.components().count() > 1)
+        {
             let path = absolute(&directory.source.join(input)).ok();
             return (path.clone(), path.into_iter().collect());
+        }
+        if !self.module_lookup_enabled {
+            return (None, Vec::new());
         }
         let name = format!("{}.cmake", dependency.path.text);
         // A builtin module checks the builtin directory first; other callers check user paths first.
@@ -381,6 +491,15 @@ impl Workspace {
         let mut paths = Vec::new();
         if caller_builtin {
             paths.extend(self.builtin_module_directory.iter().cloned());
+        }
+        if let Some(value) = values.and_then(|values| values.get("CMAKE_MODULE_PATH", None)) {
+            paths.extend(
+                value
+                    .text()
+                    .split(';')
+                    .filter(|path| !path.is_empty())
+                    .map(|path| directory.source.join(path)),
+            );
         }
         paths.extend(self.module_paths.iter().map(|path| {
             if path.is_absolute() {

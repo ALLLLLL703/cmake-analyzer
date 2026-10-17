@@ -6,6 +6,7 @@ pub(crate) use documents::absolute;
 mod graph;
 mod incremental;
 pub mod model;
+mod packages;
 mod parser;
 mod reference_values;
 mod references;

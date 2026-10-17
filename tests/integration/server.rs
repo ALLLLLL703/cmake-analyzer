@@ -9,10 +9,14 @@ mod cli;
 mod completion;
 #[path = "server/configuration.rs"]
 mod configuration;
+#[path = "server/diagnostic_rules.rs"]
+mod diagnostic_rules;
 #[path = "server/discovery.rs"]
 mod discovery;
 #[path = "server/documentation.rs"]
 mod documentation;
+#[path = "server/external_imports.rs"]
+mod external_imports;
 #[path = "server/formatting.rs"]
 mod formatting;
 #[path = "server/hovers.rs"]

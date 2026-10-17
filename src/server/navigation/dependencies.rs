@@ -17,15 +17,75 @@ use lspally::server::model::*;
 use std::{collections::BTreeSet, path::Path};
 
 fn native(command: &SemanticCommandRepresent) -> bool {
-    command.closed
-        && (command.name.eq_ignore_ascii_case("include")
-            || command.name.eq_ignore_ascii_case("add_subdirectory"))
+    (command.name.eq_ignore_ascii_case("include")
+        || command.name.eq_ignore_ascii_case("find_package")
+        || command.name.eq_ignore_ascii_case("add_subdirectory"))
         && command.schema.as_ref().is_some_and(|schema| {
             matches!(
                 schema.from,
                 CommandSchemaFrom::Builtin | CommandSchemaFrom::KeyWord
             )
         })
+}
+fn first_argument<'a>(
+    snapshot: &'a DocumentSnapshot,
+    command: &'a SemanticCommandRepresent,
+) -> Option<(crate::model::TextSpan, &'a str, bool)> {
+    if let Some(argument) = command.args.first() {
+        return Some((
+            argument_name_span(&snapshot.text, argument),
+            &argument.content,
+            argument.literal_text().is_some(),
+        ));
+    }
+    if command.closed {
+        return None;
+    }
+    // Unfinished literals have no parsed argument; recover only the first operand.
+    let open = snapshot
+        .lexed
+        .lex
+        .iter()
+        .find(|token| token.span.start_byte >= command.span.end_byte)?;
+    if open.content != crate::parser::lexer::model::LexContent::LeftParentheses {
+        return None;
+    }
+    for error in &snapshot.lexed.errors {
+        if error.span.start_byte < open.span.end_byte
+            || !snapshot
+                .text
+                .get(open.span.end_byte..error.span.start_byte)?
+                .trim()
+                .is_empty()
+        {
+            continue;
+        }
+        let mut span = error.span;
+        let bracket = match error.content {
+            crate::parser::lexer::model::LexError::UnclosedStringLiteral => {
+                span.start_byte += 1;
+                false
+            }
+            crate::parser::lexer::model::LexError::UnclosedBracketArgument => {
+                let raw = span.text(&snapshot.text)?;
+                span.start_byte += raw.bytes().skip(1).take_while(|byte| *byte == b'=').count() + 2;
+                let tail = snapshot.text.get(span.start_byte..)?;
+                span.start_byte += if tail.starts_with("\r\n") {
+                    2
+                } else {
+                    usize::from(tail.starts_with('\n'))
+                };
+                true
+            }
+            _ => continue,
+        };
+        let raw = span.text(&snapshot.text)?;
+        if !bracket && raw.contains(['$', '\\']) {
+            return None;
+        }
+        return Some((span, raw, true));
+    }
+    None
 }
 fn selected(
     snapshot: &DocumentSnapshot,
@@ -39,11 +99,12 @@ fn selected(
         .iter()
         .filter(|command| native(command))
     {
-        let Some(argument) = command.args.first() else {
+        let Some((span, _, _)) = first_argument(snapshot, command) else {
             continue;
         };
-        let span = argument_name_span(&snapshot.text, argument);
-        if !(span.start_byte <= offset && offset < span.end_byte) {
+        if !(span.start_byte <= offset
+            && (offset < span.end_byte || !command.closed && offset == span.end_byte))
+        {
             continue;
         }
         // Names inside ${...} retain ordinary variable-definition navigation.
@@ -104,10 +165,11 @@ async fn resolve(
     dependency: &Dependency,
     caller: &Path,
     directory: &DirectoryContext,
+    scope: Option<usize>,
     targets: &mut BTreeSet<String>,
 ) {
     if let Some(path) = workspace
-        .resolve_dependency(dependency, caller, directory)
+        .resolve_dependency_at(dependency, caller, directory, scope)
         .await
         .0
     {
@@ -136,13 +198,15 @@ pub(super) async fn query(
             .commands
             .iter()
             .filter(|command| native(command))
-            .filter_map(|command| command.args.first())
-            .any(|argument| {
-                argument.span.row <= u64::from(position.line)
-                    && argument.span.text(&snapshot.text).is_some_and(|text| {
-                        u64::from(position.line)
-                            <= argument.span.row
-                                + text.bytes().filter(|byte| *byte == b'\n').count() as u64
+            .any(|command| {
+                !command.closed
+                    || command.args.first().is_some_and(|argument| {
+                        argument.span.row <= u64::from(position.line)
+                            && argument.span.text(&snapshot.text).is_some_and(|text| {
+                                u64::from(position.line)
+                                    <= argument.span.row
+                                        + text.bytes().filter(|byte| *byte == b'\n').count() as u64
+                            })
                     })
             })
         {
@@ -164,6 +228,19 @@ pub(super) async fn query(
             continue;
         }
         matched = true;
+        let command = &snapshot.semantics.commands[id.id as usize];
+        let fallback =
+            crate::parser::build_struct::dependencies::from_command(command).or_else(|| {
+                let (_, text, literal) = first_argument(&snapshot, command)?;
+                Some(crate::parser::build_struct::dependencies::from_arguments(
+                    &command.name.to_ascii_lowercase(),
+                    crate::parser::build_struct::model::Argument {
+                        text: text.to_owned(),
+                        literal,
+                    },
+                    Vec::new(),
+                ))
+            });
         let dependency = snapshot
             .build
             .facts
@@ -175,7 +252,8 @@ pub(super) async fn query(
                 } else {
                     None
                 }
-            });
+            })
+            .or(fallback.as_ref());
         let mut has_edge = false;
         if let Some(graph) = workspace.root_graph() {
             for edge in graph.edges.iter().filter(|edge| {
@@ -196,6 +274,7 @@ pub(super) async fn query(
                         dependency,
                         path,
                         &caller.directory,
+                        Some(caller.scope),
                         &mut targets,
                     )
                     .await;
@@ -216,6 +295,7 @@ pub(super) async fn query(
                             dependency,
                             path,
                             &caller.directory,
+                            Some(caller.scope),
                             &mut targets,
                         )
                         .await;
@@ -236,6 +316,7 @@ pub(super) async fn query(
                         dependency,
                         path,
                         &directory,
+                        None,
                         &mut targets,
                     )
                     .await;

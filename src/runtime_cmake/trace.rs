@@ -100,13 +100,17 @@ pub(super) fn parse(
         }
         let kind = match event.command.as_str() {
             "include" => DependencyKind::Include,
+            "find_package" => DependencyKind::Package,
             "add_subdirectory" => DependencyKind::Subdirectory,
             _ => continue,
         };
         // The first deeper event belongs to the loaded file; no path-variable evaluation is needed.
         let resolved = events
             .get(index + 1)
-            .filter(|next| next.frame.depth() > event.frame.depth())
+            .filter(|next| {
+                next.frame.depth() > event.frame.depth()
+                    && (kind != DependencyKind::Package || next.file != event.file)
+            })
             .map(|next| next.file.clone())
             .or_else(|| {
                 if kind == DependencyKind::Include
@@ -116,6 +120,9 @@ pub(super) fn parse(
                         .skip(1)
                         .any(|argument| argument == "OPTIONAL")
                 {
+                    return None;
+                }
+                if kind == DependencyKind::Package {
                     return None;
                 }
                 let argument = event.arguments.first()?;

@@ -36,15 +36,7 @@ impl Default for Limits {
         DEFAULT_LIMITS
     }
 }
-#[derive(Clone, Debug)]
-pub struct Diagnostics {
-    pub enable: bool,
-}
-impl Default for Diagnostics {
-    fn default() -> Self {
-        Self { enable: true }
-    }
-}
+pub use super::diagnostics::Diagnostics;
 #[derive(Clone, Debug)]
 pub struct DocumentSymbols {
     pub enable: bool,
@@ -78,6 +70,9 @@ pub struct Completion {
 }
 #[derive(Clone, Debug)]
 pub struct Modules {
+    pub external_include: crate::workspace::model::ExternalIndex,
+    pub external_find_package: crate::workspace::model::ExternalIndex,
+    pub package_search_paths: Vec<PathBuf>,
     pub enable: bool,
     pub search_paths: Vec<PathBuf>,
     pub builtin_directory: Option<PathBuf>,
@@ -86,6 +81,13 @@ impl Default for Modules {
     fn default() -> Self {
         Self {
             enable: true,
+            external_include: crate::workspace::model::ExternalIndex::Full,
+            external_find_package: crate::workspace::model::ExternalIndex::Full,
+            package_search_paths: if cfg!(unix) {
+                vec!["/usr/local".into(), "/usr".into()]
+            } else {
+                Vec::new()
+            },
             search_paths: super::defaults::PROJECT_SEARCH_PATHS
                 .iter()
                 .map(PathBuf::from)

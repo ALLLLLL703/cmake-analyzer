@@ -81,6 +81,7 @@ impl BuildStructAnalyzer<'_> {
                 | "target_sources"
                 | "target_link_libraries"
                 | "include"
+                | "find_package"
                 | "add_subdirectory" => {
                     let mut arguments = args.into_iter();
                     let Some(first) = arguments.next() else {
@@ -100,30 +101,9 @@ impl BuildStructAnalyzer<'_> {
                             target: first,
                             arguments: rest,
                         },
-                        "include" | "add_subdirectory" => BuildEffect::Dependency(Dependency {
-                            kind: if name == "include" {
-                                DependencyKind::Include
-                            } else {
-                                DependencyKind::Subdirectory
-                            },
-                            path: first,
-                            binary: (name == "add_subdirectory")
-                                .then(|| {
-                                    rest.first()
-                                        .filter(|a| {
-                                            !matches!(
-                                                a.text.as_str(),
-                                                "EXCLUDE_FROM_ALL" | "SYSTEM"
-                                            )
-                                        })
-                                        .cloned()
-                                })
-                                .flatten(),
-                            optional: rest.iter().any(|a| a.literal && a.text == "OPTIONAL"),
-                            no_policy_scope: rest
-                                .iter()
-                                .any(|a| a.literal && a.text == "NO_POLICY_SCOPE"),
-                        }),
+                        "include" | "find_package" | "add_subdirectory" => BuildEffect::Dependency(
+                            super::dependencies::from_arguments(&name, first, rest),
+                        ),
                         _ => BuildEffect::Target(super::targets::target(&name, first, rest)),
                     })
                 }

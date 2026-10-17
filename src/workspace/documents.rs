@@ -144,6 +144,21 @@ impl Workspace {
                 })
         })
     }
+    pub fn set_module_lookup_enabled(&mut self, enabled: bool) {
+        self.module_lookup_enabled = enabled;
+        self.graph_invalidated = true;
+    }
+    pub fn set_external_indexing(
+        &mut self,
+        include: super::model::ExternalIndex,
+        find_package: super::model::ExternalIndex,
+        package_search_paths: Vec<PathBuf>,
+    ) {
+        self.external_include = include;
+        self.external_find_package = find_package;
+        self.package_search_paths = package_search_paths;
+        self.graph_invalidated = true;
+    }
     pub fn set_module_paths(&mut self, paths: Vec<PathBuf>) {
         self.module_paths = paths;
         self.refresh_root();

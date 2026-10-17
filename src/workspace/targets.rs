@@ -21,6 +21,9 @@ pub(super) fn analyze(graph: &RootGraph) -> Vec<TargetDeclaration> {
             (parent, _) => collector.directory(parent),
         };
         directories.push(directory);
+        if visit.index != super::model::ExternalIndex::Full {
+            continue;
+        }
         collector.file(
             &visit.snapshot.build,
             &visit.snapshot.semantics,

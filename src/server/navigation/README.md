@@ -3,7 +3,7 @@
 # Definition and references
 
 - `definition.rs` and `references.rs` implement the LSP entrypoints.
-- `dependencies.rs` handles native include/module and add_subdirectory source paths.
+- `dependencies.rs` handles native include/module, find_package entrypoints, and add_subdirectory source paths.
 - `targets.rs` adapts TargetDeclaration.references to shared symbol-location rendering.
 - `mod.rs` sends cancellable requests through the ordered service actor.
 - `query.rs` captures each owner's immutable reference/target indexes and snapshots.
@@ -66,15 +66,20 @@ caller-directory evaluation are not modeled.
 
 ## Dependency paths
 
-Definition on include's first argument opens its resolved module/file. Definition
-on add_subdirectory's first argument opens the source directory's CMakeLists.txt,
+Definition on include's first argument opens its resolved module/file, including
+unfinished calls and first quoted/bracket operands recovered from lexer errors.
+Definition on find_package's first argument opens a statically resolved Find module
+or config entrypoint. Module/config preference and search limits are described in
+[package discovery](../../workspace/packages/README.md). File jumps remain available
+when external symbol importing is disabled.
+Definition on add_subdirectory's first argument opens the source directory's CMakeLists.txt,
 not its binary directory. Targets use an empty range at file start. Native command
 names, later arguments/options, and names inside ${...} keep symbol navigation.
 Known user shadows are not treated as imports.
 
 Resolved dependency edges preserve each visit's source directory. Literal paths
 in conditional/deferred commands and standalone files reuse Workspace module
-precedence through resolve_dependency without loading/traversing their contents.
+precedence through resolve_dependency_at without loading/traversing their contents.
 Installed runtime dependency observations can supply executed dynamic targets;
 navigation never starts a run. Unknown expressions, missing files, and directories
 without CMakeLists.txt have no target. Open unsaved target files remain usable.

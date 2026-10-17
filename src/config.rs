@@ -1,5 +1,7 @@
 // AI-authored configuration entrypoint.
 mod defaults;
+mod diagnostics;
+pub use diagnostics::{DiagnosticLevel, DiagnosticRules};
 mod loader;
 mod model;
 mod patch_model;

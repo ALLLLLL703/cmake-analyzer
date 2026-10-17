@@ -1,4 +1,5 @@
 // AI-generated tests.
+mod imports;
 mod references;
 mod runtime;
 mod targets;

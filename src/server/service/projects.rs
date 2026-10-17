@@ -109,6 +109,16 @@ impl Service {
                 .set_script_working_directory(&self.config.sources.cwd)
                 .map_err(internal)?;
         }
+        workspace.set_module_lookup_enabled(settings.modules.enable);
+        workspace.set_external_indexing(
+            settings.modules.external_include,
+            settings.modules.external_find_package,
+            if settings.modules.enable {
+                settings.modules.package_search_paths.clone()
+            } else {
+                Vec::new()
+            },
+        );
         workspace.set_module_paths(if settings.modules.enable {
             settings.modules.search_paths.clone()
         } else {

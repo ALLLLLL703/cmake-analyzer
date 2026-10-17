@@ -1,6 +1,6 @@
 pub mod builtin;
 pub(crate) mod languages;
-unsafe extern "C" {}
+unsafe extern "Rust" {}
 use crate::parser::semanticer::model::CommandKind;
 
 #[derive(Clone, Debug)]

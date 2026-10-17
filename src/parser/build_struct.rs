@@ -1,5 +1,6 @@
 // AI-generated implementation.
 mod analyze;
+pub(crate) mod dependencies;
 mod display;
 mod incremental;
 pub mod model;

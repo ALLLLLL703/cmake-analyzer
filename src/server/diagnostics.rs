@@ -10,6 +10,7 @@ pub(super) fn snapshot_diagnostics(
     encoding: CoordinateEncoding,
     contextual: bool,
     resolved_calls: &[crate::parser::semanticer::model::CommandId],
+    rules: crate::config::DiagnosticRules,
 ) -> ServerResult<Vec<Diagnostic>> {
     let index = TextIndex::new(&snapshot.text, encoding);
     let mut diagnostics =
@@ -25,12 +26,24 @@ pub(super) fn snapshot_diagnostics(
         {
             continue;
         }
-        diagnostics.push(diagnostic(&index, error.span, message(&error.content))?);
+        let level = if matches!(error.content, SemanticError::CommandNotFound(_)) {
+            rules.unknown_function
+        } else {
+            crate::config::DiagnosticLevel::Error
+        };
+        if let Some(severity) = severity(level) {
+            let mut item = diagnostic(&index, error.span, message(&error.content))?;
+            item.severity = Some(DiagnosticSeverity(i32::from(severity)));
+            diagnostics.push(item);
+        }
     }
     if !contextual {
         for warning in &snapshot.semantics.warnings {
+            let Some(severity) = variable_severity(warning.content.kind, rules) else {
+                continue;
+            };
             let mut item = diagnostic(&index, warning.span, warning.content.message())?;
-            item.severity = Some(DiagnosticSeverity(2));
+            item.severity = Some(DiagnosticSeverity(i32::from(severity)));
             diagnostics.push(item);
         }
     }
@@ -42,6 +55,26 @@ pub(super) fn snapshot_diagnostics(
         )?);
     }
     Ok(diagnostics)
+}
+pub(super) fn severity(level: crate::config::DiagnosticLevel) -> Option<u8> {
+    use crate::config::DiagnosticLevel::*;
+    match level {
+        Error => Some(1),
+        Warn => Some(2),
+        Info => Some(3),
+        Hint => Some(4),
+        None => Option::None,
+    }
+}
+pub(super) fn variable_severity(
+    kind: crate::parser::semanticer::model::SemanticWarnKind,
+    rules: crate::config::DiagnosticRules,
+) -> Option<u8> {
+    if kind == crate::parser::semanticer::model::SemanticWarnKind::Empty {
+        Some(2)
+    } else {
+        severity(rules.unknown_variable)
+    }
 }
 pub(super) fn diagnostic(
     index: &TextIndex<'_>,

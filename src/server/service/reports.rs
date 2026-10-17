@@ -22,6 +22,23 @@ impl Service {
             {
                 continue;
             }
+            let rules = owners
+                .iter()
+                .filter(|owner| self.projects[**owner].settings.diagnostics.enable)
+                .fold(
+                    crate::config::DiagnosticRules {
+                        unknown_function: crate::config::DiagnosticLevel::None,
+                        unknown_variable: crate::config::DiagnosticLevel::None,
+                    },
+                    |mut combined, owner| {
+                        let rules = self.projects[*owner].settings.diagnostics.rules;
+                        combined.unknown_function =
+                            combined.unknown_function.min(rules.unknown_function);
+                        combined.unknown_variable =
+                            combined.unknown_variable.min(rules.unknown_variable);
+                        combined
+                    },
+                );
             let mut snapshot = None;
             let mut extra = Vec::new();
             let mut contextual = false;
@@ -58,11 +75,15 @@ impl Service {
                             .iter()
                             .filter(|warning| warning.location.file == file)
                         {
-                            extra.push((
-                                warning.warning.span,
-                                2,
-                                warning.warning.content.message(),
-                            ));
+                            if let Some(severity) =
+                                diagnostics::variable_severity(warning.warning.content.kind, rules)
+                            {
+                                extra.push((
+                                    warning.warning.span,
+                                    severity,
+                                    warning.warning.content.message(),
+                                ));
+                            }
                         }
                         resolved_calls.extend(
                             graph
@@ -111,6 +132,7 @@ impl Service {
             resolved_calls.sort_by_key(|id| id.id);
             resolved_calls.dedup();
             let key = ReportKey {
+                rules,
                 version: document.version,
                 enabled,
                 snapshot: snapshot.as_ref().map(Arc::downgrade),
@@ -178,6 +200,7 @@ impl Service {
             .await
             .map_err(internal)?;
         let input = SymbolInput {
+            functions_only: false,
             uri,
             snapshot,
             encoding: self.encoding,
@@ -203,6 +226,7 @@ fn convert_reports(
                     encoding,
                     input.key.contextual,
                     &input.key.resolved_calls,
+                    input.key.rules,
                 )?;
                 let index = TextIndex::new(&snapshot.text, encoding);
                 for (span, severity, message) in &input.key.extra {

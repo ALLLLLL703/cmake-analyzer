@@ -172,6 +172,29 @@ impl ReferenceCollector {
                 .push(location);
         }
     }
+    /// Replay only unconditional declarations, preserving include order without variable/body effects.
+    pub(crate) fn function_command(
+        &mut self,
+        context: &FileContext,
+        buffer: &SemanticedBuffer,
+        command: &SemanticCommandRepresent,
+    ) -> ReferenceEnvironmentId {
+        if let Some(function) = context
+            .definitions
+            .get(&command.id)
+            .filter(|_| command.closed)
+            .and_then(|id| buffer.functions.get(id.index()))
+            .filter(|function| {
+                function
+                    .block
+                    .and_then(|block| buffer.blocks.get(block.id as usize))
+                    .is_some_and(|block| block.parent.is_none())
+            })
+        {
+            self.define_function(function, context.root);
+        }
+        context.root
+    }
     fn define_function(
         &mut self,
         function: &SemanticFunction,

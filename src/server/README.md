@@ -58,6 +58,20 @@ The service has a 64-message queue and a 64-edit batch policy, both named static
 
 Interpreter commands select -S/-B project or -P script entries without executing during parsing. Configured scripts can subsequently run through their manual action. Default module paths include entry-relative cmake, cmake/Modules, and cmake/modules. Builtin modules are discovered once per configuration generation from PATH CMake's executable location and version for standard installation layouts; explicit configuration takes precedence. Detection never runs configure or project scripts. Pull diagnostics and filesystem watching are not implemented. Other LSP features remain unadvertised.
 
+## External CMake sources
+
+include module/file navigation also works on unfinished calls. find_package source
+navigation resolves Find modules or config entrypoints without running a configure.
+Related external sources default to full static indexing. modules.external_include
+and modules.external_find_package independently select full/functions/none; function-
+only imports retain function/macro completion and definition navigation without
+external variables or targets. None retains file jumps without importing symbols.
+See [package discovery](../workspace/packages/README.md) for search paths and limits.
+
+[diagnostics.rules] configures unknown_function (error by default) and unknown_variable
+(warn by default), each accepting error/warn/info/hint/none. Severity/import settings
+follow normal transactional configuration reload. See [configuration](../config/README.md).
+
 ## Formatting
 
 `cmake-analyzer format [PROJECT]` formats only resolved project-local dependency

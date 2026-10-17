@@ -16,6 +16,13 @@ pub(super) fn advance(frame: &mut Frame, graph: &mut RootGraph, through: usize) 
             graph,
         );
         let values = &mut graph.scopes[scope].values;
+        // Package effects are replayed by its dependency visit, not an opaque-call invalidation.
+        if command.name.eq_ignore_ascii_case("find_package") {
+            if conditional {
+                values.invalidate();
+            }
+            continue;
+        }
         values.apply(command, conditional, Some(&frame.directories));
         if conditional && command.name.eq_ignore_ascii_case("include") {
             values.invalidate();

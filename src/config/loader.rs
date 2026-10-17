@@ -131,6 +131,11 @@ fn parse_layer(text: &str, path: &Path, cwd: &Path) -> io::Result<Layer> {
     let mut patch: SettingsPatch =
         toml::from_str(text).map_err(|error| invalid(error.to_string()))?;
     let base = path.parent().unwrap_or(Path::new("/"));
+    if let Some(paths) = &mut patch.modules.package_search_paths {
+        for value in paths {
+            *value = resolve_path(base, value)?;
+        }
+    }
     if let Some(paths) = &mut patch.modules.search_paths {
         for value in paths {
             *value = resolve_path(base, value)?;
@@ -181,6 +186,21 @@ fn apply(settings: &mut Settings, layer: &Layer) {
     }
     if let Some(value) = layer.patch.completion.reserve_arg {
         settings.completion.reserve_arg = value;
+    }
+    if let Some(level) = layer.patch.diagnostics.rules.unknown_function {
+        settings.diagnostics.rules.unknown_function = level.into();
+    }
+    if let Some(level) = layer.patch.diagnostics.rules.unknown_variable {
+        settings.diagnostics.rules.unknown_variable = level.into();
+    }
+    if let Some(mode) = layer.patch.modules.external_include {
+        settings.modules.external_include = mode.into();
+    }
+    if let Some(mode) = layer.patch.modules.external_find_package {
+        settings.modules.external_find_package = mode.into();
+    }
+    if let Some(paths) = &layer.patch.modules.package_search_paths {
+        settings.modules.package_search_paths = paths.clone();
     }
     if let Some(enable) = layer.patch.diagnostics.enable {
         settings.diagnostics.enable = enable;

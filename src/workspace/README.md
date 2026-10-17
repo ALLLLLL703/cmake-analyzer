@@ -25,7 +25,8 @@ File, `-`/stdin, and `--text` work like the other inspection CLIs. Stdin/text us
 | `display.rs` | Workspace overview, colored ASCII dependency tree, scopes, diagnostics |
 | `documents.rs` | Editor text, disk fallback, paths, root-bound construction, queries |
 | `parser.rs` | Process pending changes; save results; refresh this project |
-| `graph.rs`, `graph/values.rs` | Follow dependencies with scoped literal values |
+| `graph.rs`, `graph/values.rs` | Follow dependencies with scoped literal values and external import policy |
+| `packages.rs`, `packages/` | Static Find-module/config entrypoint search, parsed requests, conventional candidates |
 | `reference_values.rs` | Sparse contextual values alongside reference aggregation |
 | `runtime.rs`, `runtime/model.rs` | Independent observed events, values, functions, and source snapshots |
 
@@ -90,6 +91,7 @@ The child is read before the caller's next command. Files stay on the active cal
 | Command | Variable scope | Source directory |
 | --- | --- | --- |
 | `include(file)` | Caller scope | Unchanged |
+| `find_package(Package)` | Caller scope for resolved scripts | Unchanged |
 | `add_subdirectory(dir)` | New child scope | Child directory |
 | Variable-scoping `block()` | New local scope | Unchanged |
 
@@ -110,7 +112,9 @@ Facts inside conditions, loops, functions, and macros are kept but not applied. 
 
 - Paths become absolute; `.` and `..` are cleaned without requiring the file to exist. Symlink aliases still get separate IDs.
 - Relative file includes use the current source directory, not automatically the included file's directory.
-- Bare module names search supplied module paths, then the supplied builtin module directory. A builtin caller reverses that order. Workspace does not yet discover these paths from variable values or the executable.
+- Bare module names search known CMAKE_MODULE_PATH values, supplied module paths, then the supplied builtin module directory. A builtin caller checks builtin modules first. Workspace does not discover the executable itself; the configuration layer supplies its builtin directory.
+- find_package resolves Find<Package>.cmake or config entrypoints using static package hints and configured prefixes; module/package lookup can be disabled independently from literal file includes. See [package sources and limits](packages/README.md).
+- External include and package visits independently select full/functions/none (default full). Functions-only replay follows statically resolvable dependencies but exports only unconditional function/macro declarations; variables, values, targets, and body references stay unimported. None retains file edges for navigation. Import setters invalidate the graph; canonical saved paths establish the project boundary.
 - Missing paths and earlier module-search choices remain recorded. If a missing module appears, `invalidate_disk(path)` can refresh its callers. Path setters mark this root for refresh.
 - A set holds this project's files and searched paths. If any changes, `flush` rebuilds the graph and replaces the set; removed includes stop triggering rebuilds. Unchanged file results are reused.
 - `snapshot(path)` returns results matching the known document version. Call `flush` to refresh disk changes. `root_graph()` returns `None` while that root's inputs/search paths are pending or out of date.

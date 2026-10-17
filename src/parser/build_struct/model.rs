@@ -27,11 +27,13 @@ pub struct Argument {
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum DependencyKind {
+    Package,
     Include,
     Subdirectory,
 }
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Dependency {
+    pub arguments: Vec<Argument>,
     pub kind: DependencyKind,
     pub path: Argument,
     pub binary: Option<Argument>,

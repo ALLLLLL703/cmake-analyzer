@@ -34,21 +34,26 @@ fn analyze(graph: &RootGraph) -> (ReferenceIndex, Vec<VariableValueAt>) {
         let Some(context) = contexts.get_mut(&invocation) else {
             continue;
         };
-        let environment = collector.command(
-            context,
-            &visit.snapshot.semantics,
-            &visit.snapshot.text,
-            command,
-            invocation,
-        );
-        values.command(
-            &collector,
-            environment,
-            visit,
-            command,
-            invocation,
-            children.contains_key(&(invocation, command.id)),
-        );
+        let environment = if visit.index == ExternalIndex::Functions {
+            collector.function_command(context, &visit.snapshot.semantics, command)
+        } else {
+            let environment = collector.command(
+                context,
+                &visit.snapshot.semantics,
+                &visit.snapshot.text,
+                command,
+                invocation,
+            );
+            values.command(
+                &collector,
+                environment,
+                visit,
+                command,
+                invocation,
+                children.contains_key(&(invocation, command.id)),
+            );
+            environment
+        };
         stack.push((invocation, next + 1));
         if let Some(children) = children.get(&(invocation, command.id)) {
             for &(child, kind) in children.iter().rev() {

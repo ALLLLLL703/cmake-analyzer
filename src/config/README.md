@@ -14,6 +14,10 @@ Missing fields inherit defaults/lower layers. Arrays replace earlier arrays; int
 [diagnostics]
 enable = true
 
+[diagnostics.rules]
+unknown_function = "error"
+unknown_variable = "warn"
+
 [document_symbols]
 enable = true
 
@@ -30,6 +34,9 @@ line_width = 100
 enable = true
 search_paths = ["cmake/modules", "/opt/company/cmake"]
 builtin_directory = "/usr/share/cmake/Modules"
+external_include = "full"
+external_find_package = "full"
+package_search_paths = ["/usr/local", "/usr"]
 
 [interpreter_commands]
 "tools/check.cmake" = "cmake -P tools/check.cmake"
@@ -40,9 +47,48 @@ Diagnostics, document symbols, and module lookup default to enabled. Default mod
 
 When modules are enabled and `builtin_directory` is omitted, the server locates CMake on PATH, resolves its executable symlink, and queries `cmake --version`. It checks `<prefix>/share/cmake-<major>.<minor>/Modules`, then `<prefix>/share/cmake/Modules`. This is best-effort discovery for standard installation layouts; missing CMake, failed detection, or nonstandard layouts leave the builtin directory unset. An explicit `builtin_directory` always wins. No configure, system-information probe, or project script is run.
 
-Discovery results, including failures, are cached once per ConfigStore and retried after explicit configuration reload. Explicit builtin overrides and disabled modules skip discovery. Disabling `modules` disables both custom/default search directories and builtin lookup; literal include paths and subdirectories are still analyzed.
+Discovery results, including failures, are cached once per ConfigStore and retried after explicit configuration reload. Explicit builtin overrides and disabled modules skip discovery. Disabling modules disables module/package lookup, including variable/environment search paths and builtin lookup; literal include paths and subdirectories are still analyzed.
 
 Disabling diagnostics clears previously published reports and suppresses new ones. Disabling document symbols returns null for document queries and omits that owner's buffers from workspace/symbol; capability advertisement remains stable for multiple projects and later reloads. Shared files receive diagnostics from enabled owners.
+
+## External modules and packages
+
+modules.external_include and modules.external_find_package independently accept
+full (default), functions, or none. They apply to files outside the analysis entry
+directory, including symlinked external files. full performs ordinary conservative
+static indexing; functions imports only unconditional top-level function/macro
+symbols and their statically resolved dependency declarations, without external
+variable/target/value effects. none keeps file navigation but imports no symbols.
+Project-local files and add_subdirectory sources retain normal analysis. Explicitly
+opened external files remain locally analyzable.
+
+modules.package_search_paths supplies package prefixes or exact config directories.
+Defaults are /usr/local and /usr on Unix, empty elsewhere; an explicit array replaces
+them, and [] removes these defaults. Relative entries resolve against the defining
+configuration file. Static <Package>_DIR/<Package>_ROOT, CMAKE_PREFIX_PATH, environment
+paths, and literal HINTS/PATHS also contribute. Find-module search uses module paths,
+including known CMAKE_MODULE_PATH values. MODULE/CONFIG/NO_MODULE and
+CMAKE_FIND_PACKAGE_PREFER_CONFIG determine entrypoint precedence.
+
+All fields inherit user/project/explicit layers and apply on transactional reload.
+Package version/component/toolchain selection is not executed or fully emulated;
+see [static discovery and limits](../workspace/packages/README.md). No source downloads
+or FetchContent/ExternalProject checkout discovery occur.
+
+## Diagnostic rules
+
+The diagnostics configuration module defines independent unknown_function and
+unknown_variable rules. Each accepts error, warn, info, hint, or none. Defaults are
+error and warn respectively. unknown_variable controls unset/possibly-unset reads;
+known-empty variable warnings retain their ordinary warning level. Resolved imported
+functions suppress unknown-command reports regardless of level. Syntax, dependency,
+and missing-input diagnostics retain their existing policies.
+
+Rules merge independently through user/project/explicit layers. Unknown rule names,
+levels, or types reject reload without changing live settings. Severity changes
+republish diagnostics even without a document edit. For shared files, the strongest
+level requested by an enabled owner wins; none suppresses a rule only when all enabled
+owners disable it. diagnostics.enable remains the master switch.
 
 ## Completion
 

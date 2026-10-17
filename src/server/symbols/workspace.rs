@@ -25,6 +25,7 @@ impl Service {
         cancel: Cancellation,
     ) -> ServerResult<Option<WorkspaceSymbolResponse>> {
         let mut snapshots = BTreeMap::new();
+        let mut full = std::collections::BTreeSet::new();
         for project in &self.projects {
             if cancel.is_cancelled() {
                 return Err(ServerError::cancelled());
@@ -35,6 +36,9 @@ impl Service {
             let workspace = &project.workspace;
             if let Some(graph) = workspace.root_graph() {
                 for visit in &graph.invocations {
+                    if visit.index == crate::workspace::model::ExternalIndex::Full {
+                        full.insert(visit.file.clone());
+                    }
                     snapshots
                         .entry(visit.file.clone())
                         .or_insert_with(|| visit.snapshot.clone());
@@ -42,6 +46,7 @@ impl Service {
             }
             if let Some(layer) = workspace.runtime() {
                 for (path, snapshot) in &layer.documents {
+                    full.insert(path.clone());
                     snapshots
                         .entry(path.clone())
                         .or_insert_with(|| snapshot.clone());
@@ -49,6 +54,7 @@ impl Service {
             }
             for path in std::iter::once(&workspace.root().file).chain(project.overlays.keys()) {
                 if let Some(snapshot) = workspace.snapshot(path).map_err(internal)? {
+                    full.insert(path.clone());
                     snapshots.insert(path.clone(), snapshot);
                 }
             }
@@ -56,6 +62,7 @@ impl Service {
         let inputs = snapshots
             .into_iter()
             .map(|(path, snapshot)| SymbolInput {
+                functions_only: !full.contains(&path),
                 uri: self.documents.get(&path).map_or_else(
                     || uri::from_path(&path),
                     |document| Uri(document.uri.0.clone()),

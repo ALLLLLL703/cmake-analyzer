@@ -40,6 +40,16 @@ pub(super) async fn run(
         Err(error) => return Err(error),
     };
     let mut workspace = Workspace::new(&root, Some(binary))?;
+    workspace.set_module_lookup_enabled(settings.modules.enable);
+    workspace.set_external_indexing(
+        settings.modules.external_include,
+        settings.modules.external_find_package,
+        if settings.modules.enable {
+            settings.modules.package_search_paths.clone()
+        } else {
+            Vec::new()
+        },
+    );
     workspace.set_module_paths(if settings.modules.enable {
         settings.modules.search_paths.clone()
     } else {

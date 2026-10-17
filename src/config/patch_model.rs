@@ -6,6 +6,49 @@ use std::{collections::BTreeMap, num::NonZeroUsize, path::PathBuf};
 #[serde(default, deny_unknown_fields)]
 pub(super) struct DiagnosticsPatch {
     pub enable: Option<bool>,
+    pub rules: DiagnosticRulesPatch,
+}
+#[derive(Default, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub(super) struct DiagnosticRulesPatch {
+    pub unknown_function: Option<DiagnosticLevelPatch>,
+    pub unknown_variable: Option<DiagnosticLevelPatch>,
+}
+#[derive(Clone, Copy, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub(super) enum DiagnosticLevelPatch {
+    Error,
+    Warn,
+    Info,
+    Hint,
+    None,
+}
+impl From<DiagnosticLevelPatch> for super::DiagnosticLevel {
+    fn from(value: DiagnosticLevelPatch) -> Self {
+        match value {
+            DiagnosticLevelPatch::Error => Self::Error,
+            DiagnosticLevelPatch::Warn => Self::Warn,
+            DiagnosticLevelPatch::Info => Self::Info,
+            DiagnosticLevelPatch::Hint => Self::Hint,
+            DiagnosticLevelPatch::None => Self::None,
+        }
+    }
+}
+#[derive(Clone, Copy, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub(super) enum ExternalIndexPatch {
+    Full,
+    Functions,
+    None,
+}
+impl From<ExternalIndexPatch> for crate::workspace::model::ExternalIndex {
+    fn from(value: ExternalIndexPatch) -> Self {
+        match value {
+            ExternalIndexPatch::Full => Self::Full,
+            ExternalIndexPatch::Functions => Self::Functions,
+            ExternalIndexPatch::None => Self::None,
+        }
+    }
 }
 #[derive(Default, Deserialize)]
 #[serde(default, deny_unknown_fields)]
@@ -28,6 +71,9 @@ pub(super) struct CompletionPatch {
 #[derive(Default, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub(super) struct ModulesPatch {
+    pub external_include: Option<ExternalIndexPatch>,
+    pub external_find_package: Option<ExternalIndexPatch>,
+    pub package_search_paths: Option<Vec<PathBuf>>,
     pub enable: Option<bool>,
     pub search_paths: Option<Vec<PathBuf>>,
     pub builtin_directory: Option<PathBuf>,

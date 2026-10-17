@@ -80,7 +80,9 @@ impl ValueReplay {
                 possible_value: values.get(&reference.name, Some(dirs)),
             });
         }
-        values.apply(command, conditional, Some(dirs));
+        if !(traversed && command.name.eq_ignore_ascii_case("find_package")) {
+            values.apply(command, conditional, Some(dirs));
+        }
         if !traversed && command.name.eq_ignore_ascii_case("include") {
             values.invalidate();
         }

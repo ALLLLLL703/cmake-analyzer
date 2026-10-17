@@ -170,6 +170,7 @@ pub(super) struct RuntimeCompletion {
     pub result: std::io::Result<crate::runtime_cmake::model::Trace>,
 }
 pub(super) struct ReportKey {
+    pub rules: crate::config::DiagnosticRules,
     pub version: i32,
     pub enabled: bool,
     // Weak identity does not retain obsolete snapshots just for publication caching.
@@ -180,7 +181,8 @@ pub(super) struct ReportKey {
 }
 impl ReportKey {
     pub fn same(&self, other: &Self) -> bool {
-        self.version == other.version
+        self.rules == other.rules
+            && self.version == other.version
             && self.enabled == other.enabled
             && self.extra == other.extra
             && self.contextual == other.contextual
@@ -204,6 +206,7 @@ pub(super) struct ReportInput {
     pub snapshot: Option<Arc<DocumentSnapshot>>,
 }
 pub(super) struct SymbolInput {
+    pub functions_only: bool,
     pub uri: Uri,
     pub snapshot: Arc<DocumentSnapshot>,
     pub encoding: CoordinateEncoding,

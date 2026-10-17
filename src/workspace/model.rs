@@ -77,8 +77,15 @@ pub struct VariableScope {
     pub project: Option<String>,
     pub(super) values: crate::parser::semanticer::model::ValueBindings,
 }
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ExternalIndex {
+    Full,
+    Functions,
+    None,
+}
 #[derive(Clone, Debug)]
 pub struct Invocation {
+    pub index: ExternalIndex,
     pub snapshot: Arc<DocumentSnapshot>,
     pub file: PathBuf,
     pub analysis: crate::parser::build_struct::model::AnalysisKey,
@@ -140,6 +147,10 @@ pub struct DependencyGraphDisplay<'a> {
 
 /// One root project and its files. Changes wait for flush().
 pub struct Workspace {
+    pub(super) module_lookup_enabled: bool,
+    pub(super) external_include: ExternalIndex,
+    pub(super) external_find_package: ExternalIndex,
+    pub(super) package_search_paths: Vec<PathBuf>,
     pub(super) limits: WorkspaceLimits,
     pub(super) workers: Arc<tokio::sync::Semaphore>,
     pub(super) documents: HashMap<PathBuf, Document>,
@@ -161,6 +172,10 @@ impl Workspace {
     pub(super) fn from_root(root: Root, limits: WorkspaceLimits) -> Self {
         let dirty = BTreeSet::from([root.file.clone()]);
         Self {
+            module_lookup_enabled: true,
+            external_include: ExternalIndex::Full,
+            external_find_package: ExternalIndex::Full,
+            package_search_paths: Vec::new(),
             workers: Arc::new(tokio::sync::Semaphore::new(limits.workers.max(1))),
             limits,
             documents: HashMap::new(),

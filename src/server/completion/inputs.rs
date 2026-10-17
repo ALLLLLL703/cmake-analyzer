@@ -24,7 +24,11 @@ pub(super) fn capture(workspace: &Workspace, path: &Path) -> Option<Input> {
                 current = graph.scopes.get(scope).and_then(|scope| scope.parent);
             }
         }
-        for visit in &graph.invocations {
+        for visit in graph
+            .invocations
+            .iter()
+            .filter(|visit| visit.index == crate::workspace::model::ExternalIndex::Full)
+        {
             let visible = scopes.contains(&visit.scope);
             sources
                 .entry(visit.snapshot.semantics.id)

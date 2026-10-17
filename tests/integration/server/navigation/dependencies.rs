@@ -4,6 +4,50 @@ use crate::server::session::{HEADER, Project, Session, uri};
 use serde_json::json;
 
 #[tokio::test]
+async fn unfinished_modules_and_package_entrypoints_navigate_without_execution() {
+    let p = Project::new().await;
+    let module = p
+        .write("cmake/Partial.cmake", "file(WRITE should-not-run yes)\n")
+        .await;
+    let finder = p
+        .write(
+            "cmake/FindDemo.cmake",
+            "function(package_call)\nendfunction()\n",
+        )
+        .await;
+    let config = p
+        .write(
+            "prefix/lib/cmake/Demo/DemoConfig.cmake",
+            "function(config_call)\nendfunction()\n",
+        )
+        .await;
+    tokio::fs::write(
+        p.0.join(".cmake-analyzer.toml"),
+        "[modules]\npackage_search_paths=[\"prefix\"]\n",
+    )
+    .await
+    .unwrap();
+    let root = p.write("CMakeLists.txt", "").await;
+    let mut client = Session::start(&p.0, vec![], true).await;
+    client.open(&root, "").await;
+    client.diagnostics(&root, 1).await;
+    for (index,(body,line,column,target)) in [
+        ("include(Partial",0,15,&module),
+        ("include(\"Partial",0,10,&module),
+        ("find_package(Demo MODULE)",0,15,&finder),
+        ("find_package(Demo CONFIG)",0,15,&config),
+        ("set(Demo_DIR \"${CMAKE_CURRENT_SOURCE_DIR}/prefix/lib/cmake/Demo\")\nfind_package(Demo",1,16,&finder),
+        ("set(Demo_DIR \"${CMAKE_CURRENT_SOURCE_DIR}/prefix/lib/cmake/Demo\")\nfind_package(Demo CONFIG",1,15,&config),
+    ].into_iter().enumerate() {
+        client.send(json!({"jsonrpc":"2.0","method":"textDocument/didChange","params":{"textDocument":{"uri":uri(&root),"version":index+2},"contentChanges":[{"text":format!("{HEADER}{body}")}]}})).await;
+        let result=definition(&mut client,&root,line,column,index as i32+10).await;
+        assert_eq!(result["result"][0]["uri"],uri(target),"{body}: {result}");
+    }
+    assert!(!p.0.join("should-not-run").exists());
+    client.finish().await;
+    p.remove().await;
+}
+#[tokio::test]
 async fn module_precedence_relative_files_and_subdirectory_source_targets_are_reused() {
     let p = Project::new().await;
     let module = p.write("cmake/Foo.cmake", "set(FOO yes)\n").await;

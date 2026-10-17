@@ -73,6 +73,7 @@ impl DependencyGraphDisplay<'_> {
         dependency: Option<&Dependency>,
     ) -> fmt::Result {
         let (name, style) = match edge.kind {
+            DependencyKind::Package => ("find_package", INCLUDE),
             DependencyKind::Include => ("include", INCLUDE),
             DependencyKind::Subdirectory => ("add_subdirectory", CHILD),
         };
