@@ -1,4 +1,6 @@
 // AI-generated command completion syntax and snippet tests.
+#[path = "completion/imports.rs"]
+mod imports;
 #[path = "completion/keywords.rs"]
 mod keywords;
 #[path = "completion/names.rs"]

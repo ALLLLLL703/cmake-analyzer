@@ -20,6 +20,8 @@ pub enum NameRole {
     Library,
     CustomTarget,
     LanguageType,
+    Module,
+    Package,
 }
 
 #[derive(Clone, Debug)]

@@ -171,6 +171,8 @@ pub(crate) fn completion_roles(
     [
         NameRole::Variable,
         NameRole::LanguageType,
+        NameRole::Module,
+        NameRole::Package,
         NameRole::Target,
         NameRole::Executable,
         NameRole::Library,
@@ -375,6 +377,8 @@ fn matches_role(kind: &ArgSchemaKind, role: MatchRole) -> bool {
                 | (ArgSchemaKind::TargetLib, NameRole::Library)
                 | (ArgSchemaKind::CustomTarget(_), NameRole::CustomTarget)
                 | (ArgSchemaKind::LanguageType, NameRole::LanguageType)
+                | (ArgSchemaKind::ModulePath, NameRole::Module)
+                | (ArgSchemaKind::PackageName, NameRole::Package)
         );
     }
     matches!(

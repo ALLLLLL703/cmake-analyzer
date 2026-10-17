@@ -5,6 +5,7 @@ mod context;
 mod inputs;
 pub mod model;
 mod names;
+mod prepare;
 mod query;
 mod render;
 mod roles;

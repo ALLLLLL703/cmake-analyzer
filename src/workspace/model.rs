@@ -147,6 +147,8 @@ pub struct DependencyGraphDisplay<'a> {
 
 /// One root project and its files. Changes wait for flush().
 pub struct Workspace {
+    pub(super) name_cache: super::completion::model::DiscoveryCache,
+    pub(super) completion_files: HashSet<PathBuf>,
     pub(super) module_lookup_enabled: bool,
     pub(super) external_include: ExternalIndex,
     pub(super) external_find_package: ExternalIndex,
@@ -172,6 +174,8 @@ impl Workspace {
     pub(super) fn from_root(root: Root, limits: WorkspaceLimits) -> Self {
         let dirty = BTreeSet::from([root.file.clone()]);
         Self {
+            name_cache: Default::default(),
+            completion_files: HashSet::new(),
             module_lookup_enabled: true,
             external_include: ExternalIndex::Full,
             external_find_package: ExternalIndex::Full,

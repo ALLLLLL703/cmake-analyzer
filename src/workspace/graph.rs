@@ -483,34 +483,7 @@ impl Workspace {
             return (None, Vec::new());
         }
         let name = format!("{}.cmake", dependency.path.text);
-        // A builtin module checks the builtin directory first; other callers check user paths first.
-        let caller_builtin = self
-            .builtin_module_directory
-            .as_ref()
-            .is_some_and(|base| caller.parent() == Some(base.as_path()));
-        let mut paths = Vec::new();
-        if caller_builtin {
-            paths.extend(self.builtin_module_directory.iter().cloned());
-        }
-        if let Some(value) = values.and_then(|values| values.get("CMAKE_MODULE_PATH", None)) {
-            paths.extend(
-                value
-                    .text()
-                    .split(';')
-                    .filter(|path| !path.is_empty())
-                    .map(|path| directory.source.join(path)),
-            );
-        }
-        paths.extend(self.module_paths.iter().map(|path| {
-            if path.is_absolute() {
-                path.clone()
-            } else {
-                directory.source.join(path)
-            }
-        }));
-        if !caller_builtin {
-            paths.extend(self.builtin_module_directory.iter().cloned());
-        }
+        let paths = self.module_search_paths(caller, directory, values);
         let mut candidates = Vec::new();
         for base in paths {
             let Ok(path) = absolute(&base.join(&name)) else {
@@ -529,5 +502,38 @@ impl Workspace {
             }
         }
         (None, candidates)
+    }
+    pub(super) fn module_search_paths(
+        &self,
+        caller: &Path,
+        directory: &DirectoryContext,
+        values: Option<&ValueBindings>,
+    ) -> Vec<PathBuf> {
+        let builtin = self
+            .builtin_module_directory
+            .as_ref()
+            .is_some_and(|base| caller.parent() == Some(base.as_path()));
+        let mut paths = Vec::new();
+        if builtin {
+            paths.extend(self.builtin_module_directory.iter().cloned());
+        }
+        if let Some(value) = values.and_then(|values| values.get("CMAKE_MODULE_PATH", None)) {
+            paths.extend(
+                value
+                    .text()
+                    .split(';')
+                    .filter(|path| !path.is_empty())
+                    .map(|path| directory.source.join(path)),
+            );
+        }
+        paths.extend(
+            self.module_paths
+                .iter()
+                .map(|path| directory.source.join(path)),
+        );
+        if !builtin {
+            paths.extend(self.builtin_module_directory.iter().cloned());
+        }
+        paths
     }
 }

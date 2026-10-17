@@ -7,7 +7,7 @@ the document version, plus NONE for project. These are plain-text EnumMember
 items, including in quoted/bracket arguments. No compiler detection or project
 execution is performed. See [language catalogue](../../parser/semanticer/schema/README.md#language-names).
 
-- `query.rs` dispatches command-name or argument-name completion on a joined worker.
+- `prepare.rs` selects sites and schema lookup roles on a joined worker; query.rs performs optional async source discovery before joined candidate/render work.
 - `inputs.rs` captures owner snapshots/indexes and unique dependency snapshots,
   retaining directory-scope ancestry for inherited names.
 - `context.rs` handles outer command positions and comments using shared lexer data.
@@ -67,6 +67,20 @@ remaining arguments, including unfinished quoted arguments. They are always plai
 text, independent of reserve_arg. Keyword and target/name alternatives can coexist;
 results are deduplicated and sorted by label/kind. No extra help lookup or execution.
 
+## Module and package names
+
+ModulePath slots, including include's first operand, offer bare module names from
+configured/default/builtin module directories and known CMAKE_MODULE_PATH values.
+PackageName slots, including find_package's first operand, offer Find-module and
+config-package names from known/configured prefixes. Items use Module kind and
+plain-text edits, preserving quotes/brackets and unfinished arguments. Native user
+shadows, comments, ${...} references, and unrelated schema slots do not acquire
+module/package alternatives. modules.enable=false suppresses filesystem catalogues.
+
+Catalogues reuse bounded per-Workspace root caches, refreshed by reload, path changes,
+known disk invalidation, and new/closed overlays. No recursive source-tree scan,
+compiler/package execution, or network lookup occurs. See [source catalogues](../../workspace/completion/README.md).
+
 ## Variable and target names
 
 Variable names use Variable icons in schema Variable/Out/Unset slots and ordinary
@@ -79,7 +93,10 @@ outer reference names are not completed; a simple nested inner reference is supp
 
 Target names use EnumMember icons in schema Target/TargetExe/TargetLib/CustomTarget
 slots. Candidates come from literal target declarations in the document and owning
-dependency snapshots, including imported targets and aliases. Executable/library
+dependency snapshots, including imported targets and aliases. Literal conditional
+Config.cmake -> Targets.cmake imports can supplement library-name candidates for
+full-indexed packages. This does not assert condition execution or create ordinary
+reference/diagnostic bindings; functions/none indexing still suppresses these targets. Executable/library
 slots filter by declaration kind; directly declared nonglobal imports from unrelated
 child directories are excluded. Alias-directory visibility and full runtime scope
 are not modeled. Dynamically named declarations are not evaluated into new targets.

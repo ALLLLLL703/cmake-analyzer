@@ -58,6 +58,9 @@ impl Workspace {
     ) -> io::Result<()> {
         let path = absolute(path.as_ref())?;
         let text = text.into();
+        if !self.documents.contains_key(&path) {
+            self.name_cache = Default::default();
+        }
         let document = self.document(&path)?;
         if document.overlay.as_ref().is_some_and(|old| **old == *text) {
             return Ok(());
@@ -79,6 +82,7 @@ impl Workspace {
     }
     /// Go back to disk text. Closing the editor does not remove the file from its project.
     pub fn close_overlay(&mut self, path: impl AsRef<Path>) -> io::Result<()> {
+        self.name_cache = Default::default();
         self.clear_runtime();
         let path = absolute(path.as_ref())?;
         if let Some(document) = self.documents.get_mut(&path) {
@@ -93,6 +97,7 @@ impl Workspace {
         Ok(())
     }
     pub fn invalidate_disk(&mut self, path: impl AsRef<Path>) -> io::Result<()> {
+        self.name_cache = Default::default();
         self.clear_runtime();
         self.dirty.insert(absolute(path.as_ref())?);
         Ok(())
@@ -145,6 +150,7 @@ impl Workspace {
         })
     }
     pub fn set_module_lookup_enabled(&mut self, enabled: bool) {
+        self.name_cache = Default::default();
         self.module_lookup_enabled = enabled;
         self.graph_invalidated = true;
     }
@@ -160,20 +166,35 @@ impl Workspace {
         self.graph_invalidated = true;
     }
     pub fn set_module_paths(&mut self, paths: Vec<PathBuf>) {
+        self.name_cache = Default::default();
         self.module_paths = paths;
         self.refresh_root();
     }
     pub fn set_builtin_module_directory(&mut self, path: Option<PathBuf>) -> io::Result<()> {
+        self.name_cache = Default::default();
         self.builtin_module_directory = path.as_deref().map(absolute).transpose()?;
         self.refresh_root();
         Ok(())
     }
     pub(super) fn release_unused_snapshots(&mut self) {
+        if !self.graph.as_ref().is_some_and(|graph| {
+            graph
+                .edges
+                .iter()
+                .filter(|edge| {
+                    edge.kind == crate::parser::build_struct::model::DependencyKind::Package
+                })
+                .filter_map(|edge| edge.invocation)
+                .any(|visit| graph.invocations[visit].index == super::model::ExternalIndex::Full)
+        }) {
+            self.completion_files.clear();
+        }
         // Drop unused parse data, but keep file IDs. Readers may still hold the old results.
         for (path, document) in &mut self.documents {
             if document.overlay.is_none()
                 && !self.dirty.contains(path)
                 && !self.dependencies.contains(path)
+                && !self.completion_files.contains(path)
             {
                 document.snapshot = None;
                 document.analysis = None;

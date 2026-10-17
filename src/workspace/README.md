@@ -27,6 +27,7 @@ File, `-`/stdin, and `--text` work like the other inspection CLIs. Stdin/text us
 | `parser.rs` | Process pending changes; save results; refresh this project |
 | `graph.rs`, `graph/values.rs` | Follow dependencies with scoped literal values and external import policy |
 | `packages.rs`, `packages/` | Static Find-module/config entrypoint search, parsed requests, conventional candidates |
+| `completion.rs`, `completion/` | Schema-requested module/package name catalogues and possible package-export target sources |
 | `reference_values.rs` | Sparse contextual values alongside reference aggregation |
 | `runtime.rs`, `runtime/model.rs` | Independent observed events, values, functions, and source snapshots |
 
@@ -73,6 +74,12 @@ include(extra.cmake)
 ```
 
 These share one parse result but create two visits. Each has its caller and scope. `RootGraph.facts` stores `(visit index, fact index)` instead of copying each BuildStruct.
+
+Module/package completion uses async shallow source discovery and a bounded per-Workspace
+root cache. Existing Target schema slots can also receive literal names from conditional
+package-export includes. This supplements completion, not execution/reference bindings;
+see [completion sources](completion/README.md). Supplemental parse data is retained only
+for the latest bounded source set and released when no full-indexed package needs it.
 
 ## Visit order and scopes
 

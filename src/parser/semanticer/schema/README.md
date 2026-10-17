@@ -4,7 +4,7 @@
 
 `builtin.rs` registers the 132 command names present in the CMake 4.4 command
 catalogue, including legacy commands, with version additions for CMake 3.0–3.31
-and 4.0–4.4. Scalar operands remain roles; LanguageType has an explicit supported-language catalogue.
+and 4.0–4.4. Scalar operands remain roles; LanguageType has an explicit supported-language catalogue. ModulePath and PackageName expose filesystem-backed name roles.
 
 The final version layer supplies structured keyword grammars:
 
@@ -42,6 +42,15 @@ slot from a stronger completed branch. Only the current payload is replaced.
 Search hints, runtime dependency directories, installed paths, and mixed system
 header tokens are not universally required existing source inputs. Their generic
 Path/Value roles avoid speculative missing-file diagnostics.
+
+## Module, package, and library names
+
+ModulePath maps to NameRole::Module and PackageName to NameRole::Package through the
+same unfinished-argument matcher. Source catalogues are requested only for reachable
+roles; there is no command-name-specific completion fallback. Existing Target roles
+in target_link_libraries already cover library/imported/alias names and continue to
+use the shared target candidate collector. Full-indexed package export files may
+supply additional literal target-name candidates without changing full-call bindings.
 
 ## Language names
 

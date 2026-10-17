@@ -104,7 +104,10 @@ Variable names are completed in schema Variable/Out/Unset positions and ordinary
 ${...} references. Target names are completed in schema target positions with
 EnumMember icons. Explicit schema keywords are completed in reachable argument
 positions with Keyword icons. These features do not require reserve_arg; arbitrary
-values, other scalar enums, and paths are not completed. LanguageType slots offer
+values, other scalar enums, and general paths are not completed. ModulePath/PackageName
+slots offer discovered module/package names using Module items. Imported library names
+use existing Target slots; full-indexed conditional package export files can supplement
+these candidates without execution. LanguageType slots offer
 version-supported CMake languages as EnumMember items, plus NONE in project.
 
 The field follows user/project/explicit precedence. Missing values inherit; an

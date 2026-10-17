@@ -160,7 +160,9 @@ fn targets<'a>(
                     | TargetKind::InterfaceLibrary
                     | TargetKind::UnknownLibrary
             ),
-            NameRole::Variable | NameRole::LanguageType => false,
+            NameRole::Variable | NameRole::LanguageType | NameRole::Module | NameRole::Package => {
+                false
+            }
         }) {
             add(out, &target.name.text, prefix, Kind::EnumMember);
         }
@@ -197,6 +199,16 @@ pub(super) fn collect(
         if accepted.contains(&NameRole::Variable) {
             variables(input, argument.command, prefix, &mut out, cancel)?;
         }
+        if accepted.contains(&NameRole::Module) {
+            for name in input.catalog.modules.iter() {
+                add(&mut out, name, prefix, Kind::Module);
+            }
+        }
+        if accepted.contains(&NameRole::Package) {
+            for name in input.catalog.packages.iter() {
+                add(&mut out, name, prefix, Kind::Module);
+            }
+        }
         if accepted.contains(&NameRole::LanguageType) {
             for language in crate::parser::semanticer::schema::languages::supported(
                 input.snapshot.semantics.version,
@@ -207,10 +219,15 @@ pub(super) fn collect(
                 add(&mut out, "NONE", prefix, Kind::EnumMember);
             }
         }
-        if accepted
-            .iter()
-            .any(|role| !matches!(role, NameRole::Variable | NameRole::LanguageType))
-        {
+        if accepted.iter().any(|role| {
+            matches!(
+                role,
+                NameRole::Target
+                    | NameRole::Executable
+                    | NameRole::Library
+                    | NameRole::CustomTarget
+            )
+        }) {
             targets(
                 input,
                 &input.snapshot,
@@ -220,6 +237,17 @@ pub(super) fn collect(
                 &mut out,
                 cancel,
             )?;
+            for source in &input.catalog.targets {
+                targets(
+                    input,
+                    &source.snapshot,
+                    source.visible,
+                    &accepted,
+                    prefix,
+                    &mut out,
+                    cancel,
+                )?;
+            }
             for source in &input.sources {
                 if source.snapshot.semantics.id != input.snapshot.semantics.id {
                     targets(

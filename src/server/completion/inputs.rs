@@ -40,6 +40,7 @@ pub(super) fn capture(workspace: &Workspace, path: &Path) -> Option<Input> {
         }
     }
     Some(Input {
+        catalog: Default::default(),
         snapshot,
         index: graph.map(|graph| graph.references.clone()),
         sources: sources.into_values().collect(),

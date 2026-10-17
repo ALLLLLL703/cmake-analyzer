@@ -19,7 +19,7 @@ fn accepts(class: TargetKind, role: NameRole) -> bool {
                 | TargetKind::InterfaceLibrary
                 | TargetKind::UnknownLibrary
         ),
-        NameRole::Variable | NameRole::LanguageType => false,
+        NameRole::Variable | NameRole::LanguageType | NameRole::Module | NameRole::Package => false,
     }
 }
 impl TargetCollector {

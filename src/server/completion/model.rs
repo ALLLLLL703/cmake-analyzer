@@ -1,7 +1,16 @@
 use crate::{parser::semanticer::model::ReferenceIndex, workspace::model::DocumentSnapshot};
 use std::{ops::Range, sync::Arc};
 
+pub(super) enum Prepared {
+    Commands(Site),
+    Arguments {
+        site: Site,
+        expansion: bool,
+        requests: Vec<crate::workspace::completion::model::Request>,
+    },
+}
 pub(super) struct Input {
+    pub catalog: crate::workspace::completion::model::Catalog,
     pub snapshot: Arc<DocumentSnapshot>,
     pub index: Option<Arc<ReferenceIndex>>,
     pub sources: Vec<Source>,

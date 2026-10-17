@@ -1,5 +1,6 @@
 // AI-generated implementation.
 // See src/workspace/README.md for the flow.
+pub(crate) mod completion;
 mod display;
 mod documents;
 pub(crate) use documents::absolute;
